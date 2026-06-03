@@ -4,6 +4,15 @@
 
 ## 2026-06-04
 
+### 01:24 KST
+
+- 시작: P2 Playback Stability 설계
+- 문서:
+  - `docs/superpowers/specs/2026-06-04-p2-playback-stability-design.md`
+- 범위:
+  - Spaces/full-screen 전환, monitor 변경, sleep/wake 복구, item switching, auto-pause 안정성
+  - Scene S0, Scene fallback, Metal Scene runtime, package/release 작업 제외
+
 ### 01:11 KST
 
 - 완료: 개발 가이드에 기본 운영 기준 보강
