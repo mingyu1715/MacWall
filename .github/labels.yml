@@ -1,0 +1,45 @@
+- name: type:bug
+  color: d73a4a
+  description: Bug or behavioral regression
+- name: type:feature
+  color: a2eeef
+  description: New user-facing capability
+- name: type:docs
+  color: 0075ca
+  description: Documentation-only work
+- name: type:refactor
+  color: cfd3d7
+  description: Internal restructuring without intended behavior change
+- name: area:playback
+  color: fbca04
+  description: Live wallpaper playback
+- name: area:web
+  color: fbca04
+  description: Web wallpaper runtime
+- name: area:scene
+  color: fbca04
+  description: Scene parsing or rendering
+- name: area:fallback
+  color: fbca04
+  description: Desktop fallback cache or refresh
+- name: area:release
+  color: 5319e7
+  description: Packaging, signing, notarization, or release artifacts
+- name: priority:p1
+  color: b60205
+  description: Highest priority
+- name: priority:p2
+  color: d93f0b
+  description: Planned next priority
+- name: status:needs-design
+  color: fef2c0
+  description: Needs design/spec before implementation
+- name: status:needs-triage
+  color: fef2c0
+  description: Needs maintainer triage
+- name: status:ready
+  color: 0e8a16
+  description: Ready for implementation
+- name: status:blocked
+  color: e99695
+  description: Blocked on a decision or external dependency

@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Development guide
+    url: https://github.com/mingyu1715/workshop-wallpaper-bridge/blob/main/docs/development-guide.md
+    about: Check project workflow, logging, verification, and scope rules.
+  - name: Roadmap
+    url: https://github.com/mingyu1715/workshop-wallpaper-bridge/blob/main/docs/development-roadmap.md
+    about: Check current phase and planned direction.

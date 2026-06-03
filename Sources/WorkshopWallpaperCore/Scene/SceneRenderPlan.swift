@@ -1,0 +1,520 @@
+import Foundation
+// swiftlint:disable identifier_name
+
+public struct SceneSize: Equatable, Sendable {
+    public let width: Double
+    public let height: Double
+
+    public init(width: Double, height: Double) {
+        self.width = width
+        self.height = height
+    }
+}
+
+public struct SceneVector3: Equatable, Sendable {
+    public let x: Double
+    public let y: Double
+    public let z: Double
+
+    public init(x: Double, y: Double, z: Double) {
+        self.x = x
+        self.y = y
+        self.z = z
+    }
+}
+
+public struct SceneVectorKeyframe: Equatable, Sendable {
+    public let time: Double
+    public let value: SceneVector3
+
+    public init(time: Double, value: SceneVector3) {
+        self.time = time
+        self.value = value
+    }
+}
+
+public struct SceneVectorAnimation: Equatable, Sendable {
+    public let duration: Double
+    public let isRelative: Bool
+    public let keyframes: [SceneVectorKeyframe]
+
+    public init(duration: Double, isRelative: Bool, keyframes: [SceneVectorKeyframe]) {
+        self.duration = duration
+        self.isRelative = isRelative
+        self.keyframes = keyframes
+    }
+}
+
+public struct SceneScalarKeyframe: Equatable, Sendable {
+    public let time: Double
+    public let value: Double
+
+    public init(time: Double, value: Double) {
+        self.time = time
+        self.value = value
+    }
+}
+
+public struct SceneScalarAnimation: Equatable, Sendable {
+    public let duration: Double
+    public let isRelative: Bool
+    public let keyframes: [SceneScalarKeyframe]
+
+    public init(duration: Double, isRelative: Bool, keyframes: [SceneScalarKeyframe]) {
+        self.duration = duration
+        self.isRelative = isRelative
+        self.keyframes = keyframes
+    }
+}
+
+public struct SceneLayer: Equatable, Sendable {
+    public let id: Int
+    public let name: String
+    public let texturePath: String
+    public let origin: SceneVector3
+    public let size: SceneSize
+    public let scale: SceneVector3
+    public let angles: SceneVector3
+    public let alpha: Double
+    public let originAnimation: SceneVectorAnimation?
+    public let scaleAnimation: SceneVectorAnimation?
+    public let angleAnimation: SceneVectorAnimation?
+    public let alphaAnimation: SceneScalarAnimation?
+
+    public var hasAnimation: Bool {
+        originAnimation != nil || scaleAnimation != nil || angleAnimation != nil || alphaAnimation != nil
+    }
+
+    public init(
+        id: Int,
+        name: String,
+        texturePath: String,
+        origin: SceneVector3,
+        size: SceneSize,
+        scale: SceneVector3,
+        alpha: Double,
+        angles: SceneVector3 = SceneVector3(x: 0, y: 0, z: 0),
+        originAnimation: SceneVectorAnimation?,
+        scaleAnimation: SceneVectorAnimation? = nil,
+        angleAnimation: SceneVectorAnimation? = nil,
+        alphaAnimation: SceneScalarAnimation? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.texturePath = texturePath
+        self.origin = origin
+        self.size = size
+        self.scale = scale
+        self.angles = angles
+        self.alpha = alpha
+        self.originAnimation = originAnimation
+        self.scaleAnimation = scaleAnimation
+        self.angleAnimation = angleAnimation
+        self.alphaAnimation = alphaAnimation
+    }
+}
+
+public struct SceneRenderPlan: Equatable, Sendable {
+    public let canvasSize: SceneSize
+    public let layers: [SceneLayer]
+    public let textures: [String: SceneTexture]
+
+    public init(canvasSize: SceneSize, layers: [SceneLayer], textures: [String: SceneTexture]) {
+        self.canvasSize = canvasSize
+        self.layers = layers
+        self.textures = textures
+    }
+}
+
+public struct SceneRenderPlanBuilder: Sendable {
+    private let maximumDecodedLayerCount: Int
+
+    public init(maximumDecodedLayerCount: Int = 16) {
+        self.maximumDecodedLayerCount = maximumDecodedLayerCount
+    }
+
+    public func canBuild(url: URL) -> Bool {
+        guard let plan = try? build(url: url, decodeTextures: true) else {
+            return false
+        }
+        return !plan.layers.isEmpty && !plan.textures.isEmpty
+    }
+
+    public func build(url: URL) throws -> SceneRenderPlan {
+        try build(url: url, decodeTextures: true)
+    }
+
+    public func buildLayout(url: URL) throws -> SceneRenderPlan {
+        try build(url: url, decodeTextures: false)
+    }
+
+    private func build(url: URL, decodeTextures: Bool) throws -> SceneRenderPlan {
+        let package = try ScenePackageReader().read(url: url)
+        guard let sceneData = package.data(forPath: "scene.json"),
+              let scene = try JSONSerialization.jsonObject(with: sceneData) as? [String: Any] else {
+            throw SceneRenderPlanError.missingSceneJSON
+        }
+        let objects = scene["objects"] as? [[String: Any]] ?? []
+        let canvasSize = Self.canvasSize(from: scene)
+        var layers: [SceneLayer] = []
+        var textures: [String: SceneTexture] = [:]
+
+        for object in objects where Self.isVisible(object["visible"]) {
+            guard let imagePath = Self.stringValue(object["image"]),
+                  let texturePath = try resolveTexturePath(imagePath: imagePath, package: package) else {
+                continue
+            }
+            var texture: SceneTexture?
+            if decodeTextures {
+                guard let textureData = package.data(forPath: texturePath) else {
+                    continue
+                }
+                do {
+                    texture = try SceneTextureDecoder().decode(data: textureData)
+                } catch {
+                    continue
+                }
+                textures[texturePath] = texture
+            }
+            layers.append(Self.layer(from: object, texturePath: texturePath, texture: texture, canvasSize: canvasSize))
+            if decodeTextures, layers.count >= maximumDecodedLayerCount {
+                break
+            }
+        }
+
+        guard !layers.isEmpty else {
+            throw SceneRenderPlanError.noRenderableLayers
+        }
+        return SceneRenderPlan(canvasSize: canvasSize, layers: layers, textures: textures)
+    }
+
+    private func resolveTexturePath(imagePath: String, package: ScenePackage) throws -> String? {
+        guard let modelData = package.data(forPath: imagePath),
+              let model = try JSONSerialization.jsonObject(with: modelData) as? [String: Any],
+              let materialPath = Self.stringValue(model["material"]),
+              let materialData = package.data(forPath: materialPath),
+              let material = try JSONSerialization.jsonObject(with: materialData) as? [String: Any] else {
+            return nil
+        }
+        guard let textureName = Self.firstTextureName(in: material) else {
+            return nil
+        }
+        let candidates = Self.textureCandidates(for: textureName)
+        return candidates.first { package.entry(named: $0) != nil }
+    }
+
+    private static func firstTextureName(in material: [String: Any]) -> String? {
+        if let textures = material["textures"] as? [String], let first = textures.first {
+            return first
+        }
+        if let texture = stringValue(material["texture"]) {
+            return texture
+        }
+        guard let passes = material["passes"] as? [[String: Any]] else {
+            return nil
+        }
+        for pass in passes {
+            if let textures = pass["textures"] as? [String], let first = textures.first {
+                return first
+            }
+            if let textures = pass["textures"] as? [Any] {
+                for item in textures {
+                    if let value = stringValue(item) {
+                        return value
+                    }
+                }
+            }
+            if let texture = stringValue(pass["texture"]) {
+                return texture
+            }
+        }
+        return nil
+    }
+
+    private static func textureCandidates(for textureName: String) -> [String] {
+        let name = textureName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else {
+            return []
+        }
+        if name.hasSuffix(".tex") {
+            return name.contains("/") ? [name] : ["materials/\(name)", name]
+        }
+        if name.contains("/") {
+            return ["\(name).tex", name]
+        }
+        return ["materials/\(name).tex", "\(name).tex", name]
+    }
+
+    private static func layer(
+        from object: [String: Any],
+        texturePath: String,
+        texture: SceneTexture?,
+        canvasSize: SceneSize
+    ) -> SceneLayer {
+        let originValue = vectorValue(object["origin"]) ?? SceneVector3(
+            x: canvasSize.width / 2,
+            y: canvasSize.height / 2,
+            z: 0
+        )
+        let scaleValue = vectorValue(object["scale"]) ?? SceneVector3(x: 1, y: 1, z: 1)
+        let anglesValue = vectorValue(object["angles"]) ?? SceneVector3(x: 0, y: 0, z: 0)
+        let alphaValue = scalarValue(object["alpha"]) ?? 1
+        let sizeValue = sizeValue(object["size"]) ?? SceneSize(
+            width: texture.map { Double($0.width) } ?? canvasSize.width,
+            height: texture.map { Double($0.height) } ?? canvasSize.height
+        )
+        return SceneLayer(
+            id: intValue(object["id"]) ?? 0,
+            name: stringValue(object["name"]) ?? stringValue(object["id"]) ?? texturePath,
+            texturePath: texturePath,
+            origin: originValue,
+            size: sizeValue,
+            scale: scaleValue,
+            alpha: alphaValue,
+            angles: anglesValue,
+            originAnimation: vectorAnimation(object["origin"], fallback: originValue),
+            scaleAnimation: vectorAnimation(object["scale"], fallback: scaleValue),
+            angleAnimation: vectorAnimation(object["angles"], fallback: anglesValue),
+            alphaAnimation: scalarAnimation(object["alpha"], fallback: alphaValue)
+        )
+    }
+
+    private static func canvasSize(from scene: [String: Any]) -> SceneSize {
+        let projection = (scene["general"] as? [String: Any])?["orthogonalprojection"] as? [String: Any]
+        let width = doubleValue(projection?["width"]) ?? 1920
+        let height = doubleValue(projection?["height"]) ?? 1080
+        return SceneSize(width: width, height: height)
+    }
+
+    private static func isVisible(_ value: Any?) -> Bool {
+        if let bool = value as? Bool {
+            return bool
+        }
+        if let dict = value as? [String: Any] {
+            return boolValue(dict["value"]) ?? true
+        }
+        return true
+    }
+
+    private static func vectorAnimation(_ value: Any?, fallback: SceneVector3) -> SceneVectorAnimation? {
+        guard let dict = value as? [String: Any],
+              let animation = dict["animation"] as? [String: Any] else {
+            return nil
+        }
+        let fps = doubleValue((animation["options"] as? [String: Any])?["fps"]) ?? 30
+        let isRelative = boolValue((animation["options"] as? [String: Any])?["relative"]) ?? false
+        let missingChannelValue = isRelative ? SceneVector3(x: 0, y: 0, z: 0) : fallback
+        let channels = [
+            channelFrames(animation["c0"], fps: fps),
+            channelFrames(animation["c1"], fps: fps),
+            channelFrames(animation["c2"], fps: fps)
+        ]
+        let duration = animationDuration(animation, fps: fps, channels: channels)
+        let times = Set(channels.flatMap { $0.keys }).sorted()
+        let keyframes = times.map { time in
+            SceneVectorKeyframe(
+                time: time,
+                value: SceneVector3(
+                    x: interpolatedValue(at: time, in: channels[0], fallback: missingChannelValue.x),
+                    y: interpolatedValue(at: time, in: channels[1], fallback: missingChannelValue.y),
+                    z: interpolatedValue(at: time, in: channels[2], fallback: missingChannelValue.z)
+                )
+            )
+        }
+        guard keyframes.count >= 2 else {
+            return nil
+        }
+        return SceneVectorAnimation(duration: max(duration, 0.1), isRelative: isRelative, keyframes: keyframes)
+    }
+
+    private static func scalarAnimation(_ value: Any?, fallback: Double) -> SceneScalarAnimation? {
+        guard let dict = value as? [String: Any],
+              let animation = dict["animation"] as? [String: Any] else {
+            return nil
+        }
+        let fps = doubleValue((animation["options"] as? [String: Any])?["fps"]) ?? 30
+        let isRelative = boolValue((animation["options"] as? [String: Any])?["relative"]) ?? false
+        let frames = channelFrames(animation["c0"], fps: fps)
+        let duration = animationDuration(animation, fps: fps, channels: [frames])
+        let missingChannelValue = isRelative ? 0 : fallback
+        let keyframes = frames.keys.sorted().map { time in
+            SceneScalarKeyframe(time: time, value: frames[time] ?? missingChannelValue)
+        }
+        guard keyframes.count >= 2 else {
+            return nil
+        }
+        return SceneScalarAnimation(duration: max(duration, 0.1), isRelative: isRelative, keyframes: keyframes)
+    }
+
+    private static func animationDuration(
+        _ animation: [String: Any],
+        fps: Double,
+        channels: [[Double: Double]]
+    ) -> Double {
+        let rawLength = doubleValue((animation["options"] as? [String: Any])?["length"])
+        let maxKeyTime = channels.flatMap { $0.keys }.max() ?? 0
+        guard let rawLength else {
+            return max(maxKeyTime, 0.1)
+        }
+        let safeFPS = max(fps, 1)
+        let interpretedLength = maxKeyTime > 0 && rawLength > maxKeyTime * 1.5
+            ? rawLength / safeFPS
+            : rawLength
+        return max(interpretedLength, maxKeyTime, 0.1)
+    }
+
+    private static func interpolatedValue(
+        at time: Double,
+        in frames: [Double: Double],
+        fallback: Double
+    ) -> Double {
+        guard !frames.isEmpty else {
+            return fallback
+        }
+        if let exact = frames[time] {
+            return exact
+        }
+        let times = frames.keys.sorted()
+        guard let first = times.first, let last = times.last else {
+            return fallback
+        }
+        if time <= first {
+            return frames[first] ?? fallback
+        }
+        if time >= last {
+            return frames[last] ?? fallback
+        }
+        for index in 1..<times.count {
+            let previous = times[index - 1]
+            let next = times[index]
+            guard previous <= time, time <= next,
+                  let previousValue = frames[previous],
+                  let nextValue = frames[next] else {
+                continue
+            }
+            let progress = (time - previous) / max(next - previous, 0.000_001)
+            return previousValue + ((nextValue - previousValue) * progress)
+        }
+        return fallback
+    }
+
+    private static func channelFrames(_ value: Any?, fps: Double) -> [Double: Double] {
+        guard let frames = value as? [[String: Any]] else {
+            return [:]
+        }
+        var result: [Double: Double] = [:]
+        for frame in frames {
+            guard let frameNumber = doubleValue(frame["frame"]),
+                  let value = doubleValue(frame["value"]) else {
+                continue
+            }
+            result[frameNumber / max(fps, 1)] = value
+        }
+        return result
+    }
+
+    private static func vectorValue(_ value: Any?) -> SceneVector3? {
+        if let dict = value as? [String: Any] {
+            return vectorValue(dict["value"])
+        }
+        let numbers = numericList(value)
+        guard numbers.count >= 2 else {
+            return nil
+        }
+        return SceneVector3(x: numbers[0], y: numbers[1], z: numbers.count >= 3 ? numbers[2] : 0)
+    }
+
+    private static func scalarValue(_ value: Any?) -> Double? {
+        if let dict = value as? [String: Any] {
+            return scalarValue(dict["value"])
+        }
+        return doubleValue(value)
+    }
+
+    private static func sizeValue(_ value: Any?) -> SceneSize? {
+        if let dict = value as? [String: Any] {
+            return sizeValue(dict["value"])
+        }
+        let numbers = numericList(value)
+        guard numbers.count >= 2 else {
+            return nil
+        }
+        return SceneSize(width: numbers[0], height: numbers[1])
+    }
+
+    private static func numericList(_ value: Any?) -> [Double] {
+        if let string = stringValue(value) {
+            return string
+                .replacingOccurrences(of: ",", with: " ")
+                .split(separator: " ")
+                .compactMap { Double($0) }
+        }
+        if let array = value as? [Any] {
+            return array.compactMap(doubleValue)
+        }
+        return doubleValue(value).map { [$0] } ?? []
+    }
+
+    private static func boolValue(_ value: Any?) -> Bool? {
+        if let bool = value as? Bool {
+            return bool
+        }
+        if let number = value as? NSNumber {
+            return number.boolValue
+        }
+        if let string = value as? String {
+            return ["true", "1", "yes"].contains(string.lowercased())
+        }
+        return nil
+    }
+
+    private static func intValue(_ value: Any?) -> Int? {
+        if let int = value as? Int {
+            return int
+        }
+        if let number = value as? NSNumber {
+            return number.intValue
+        }
+        if let string = value as? String {
+            return Int(string)
+        }
+        return nil
+    }
+
+    private static func doubleValue(_ value: Any?) -> Double? {
+        if let double = value as? Double {
+            return double
+        }
+        if let number = value as? NSNumber {
+            return number.doubleValue
+        }
+        if let string = value as? String {
+            return Double(string)
+        }
+        return nil
+    }
+
+    private static func stringValue(_ value: Any?) -> String? {
+        if let string = value as? String {
+            return string
+        }
+        if let number = value as? NSNumber {
+            return number.stringValue
+        }
+        return nil
+    }
+}
+
+public enum SceneRenderPlanError: Error, Equatable, LocalizedError {
+    case missingSceneJSON
+    case noRenderableLayers
+
+    public var errorDescription: String? {
+        switch self {
+        case .missingSceneJSON:
+            return "The scene package does not contain readable scene.json."
+        case .noRenderableLayers:
+            return "The scene package has no renderable image layers."
+        }
+    }
+}
