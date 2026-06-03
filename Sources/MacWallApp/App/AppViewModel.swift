@@ -14,7 +14,7 @@ final class AppViewModel: ObservableObject {
     @Published var isWorking = false
     @Published var displayMode: WallpaperDisplayMode = .fit {
         didSet {
-            WallpaperPlayer.shared.setDisplayMode(displayMode)
+            wallpaperPlayer.setDisplayMode(displayMode)
             userDefaults.set(displayMode.rawValue, forKey: PreferenceKey.displayMode)
             if lockScreenAnimationEnabled, let asset = selectedLibraryAsset {
                 _ = refreshLockScreenAnimationConfiguration(asset: asset)
@@ -23,19 +23,19 @@ final class AppViewModel: ObservableObject {
     }
     @Published var autoPauseWhenCovered = true {
         didSet {
-            WallpaperPlayer.shared.setAutoPauseWhenCovered(autoPauseWhenCovered)
+            wallpaperPlayer.setAutoPauseWhenCovered(autoPauseWhenCovered)
             userDefaults.set(autoPauseWhenCovered, forKey: PreferenceKey.autoPauseWhenCovered)
         }
     }
     @Published var experimentalSceneRendering = false {
         didSet {
-            WallpaperPlayer.shared.setExperimentalSceneRendering(experimentalSceneRendering)
+            wallpaperPlayer.setExperimentalSceneRendering(experimentalSceneRendering)
             userDefaults.set(experimentalSceneRendering, forKey: PreferenceKey.experimentalSceneRendering)
         }
     }
     @Published var webMouseInteractionEnabled = false {
         didSet {
-            WallpaperPlayer.shared.setWebMouseInteractionEnabled(webMouseInteractionEnabled)
+            wallpaperPlayer.setWebMouseInteractionEnabled(webMouseInteractionEnabled)
             userDefaults.set(webMouseInteractionEnabled, forKey: PreferenceKey.webMouseInteractionEnabled)
         }
     }
@@ -59,8 +59,9 @@ final class AppViewModel: ObservableObject {
     private let scanner = WallpaperScanner()
     private let converter = VideoConverter()
     private let systemWallpaperSetter = SystemWallpaperSetter()
-    private let desktopFallbackCoordinator: DesktopFallbackCoordinator
-    private let desktopFallbackSpaceRefreshCoordinator: DesktopFallbackSpaceRefreshCoordinator
+    private let desktopFallbackCoordinator: DesktopFallbackCoordinating
+    private let desktopFallbackSpaceRefreshCoordinator: DesktopFallbackSpaceRefreshCoordinating
+    private let wallpaperPlayer: WallpaperPlayerManaging
     private let store: LibraryStore
     private let loginItemController: LoginItemManaging
     private let lockScreenAnimationController: LockScreenAnimationManaging
@@ -72,6 +73,7 @@ final class AppViewModel: ObservableObject {
         userDefaults = .standard
         loginItemController = LoginItemController()
         lockScreenAnimationController = LockScreenAnimationController()
+        wallpaperPlayer = WallpaperPlayer.shared
         let fallbackCoordinator = DesktopFallbackCoordinator()
         desktopFallbackCoordinator = fallbackCoordinator
         desktopFallbackSpaceRefreshCoordinator = DesktopFallbackSpaceRefreshCoordinator(
@@ -90,30 +92,40 @@ final class AppViewModel: ObservableObject {
             status = error.localizedDescription
         }
         syncLaunchAtLoginStatus()
-        desktopFallbackSpaceRefreshCoordinator.start()
+        self.desktopFallbackSpaceRefreshCoordinator.start()
     }
 
     init(
         store: LibraryStore,
         loginItemController: LoginItemManaging = LoginItemController(),
         lockScreenAnimationController: LockScreenAnimationManaging = LockScreenAnimationController(),
-        userDefaults: UserDefaults = .standard
+        userDefaults: UserDefaults = .standard,
+        wallpaperPlayer: WallpaperPlayerManaging = WallpaperPlayer.shared,
+        desktopFallbackCoordinator: DesktopFallbackCoordinating? = nil,
+        desktopFallbackSpaceRefreshCoordinator: DesktopFallbackSpaceRefreshCoordinating? = nil
     ) {
         self.store = store
         self.loginItemController = loginItemController
         self.lockScreenAnimationController = lockScreenAnimationController
         self.userDefaults = userDefaults
-        let fallbackCoordinator = DesktopFallbackCoordinator()
-        desktopFallbackCoordinator = fallbackCoordinator
-        desktopFallbackSpaceRefreshCoordinator = DesktopFallbackSpaceRefreshCoordinator(
-            fallbackCoordinator: fallbackCoordinator
-        )
+        self.wallpaperPlayer = wallpaperPlayer
+        let fallbackCoordinator = desktopFallbackCoordinator ?? DesktopFallbackCoordinator()
+        self.desktopFallbackCoordinator = fallbackCoordinator
+        if let desktopFallbackSpaceRefreshCoordinator {
+            self.desktopFallbackSpaceRefreshCoordinator = desktopFallbackSpaceRefreshCoordinator
+        } else if let concreteFallbackCoordinator = fallbackCoordinator as? DesktopFallbackCoordinator {
+            self.desktopFallbackSpaceRefreshCoordinator = DesktopFallbackSpaceRefreshCoordinator(
+                fallbackCoordinator: concreteFallbackCoordinator
+            )
+        } else {
+            self.desktopFallbackSpaceRefreshCoordinator = NoopDesktopFallbackSpaceRefreshCoordinator()
+        }
         restorePreferences()
         loadLibrary()
         playLastWallpaperIfAvailable()
         restoreLockScreenAnimationIfNeeded()
         syncLaunchAtLoginStatus()
-        desktopFallbackSpaceRefreshCoordinator.start()
+        self.desktopFallbackSpaceRefreshCoordinator.start()
     }
 
     var selectedScannedAsset: WallpaperAsset? {
@@ -338,7 +350,7 @@ extension AppViewModel {
     }
 
     func stopPlayback() {
-        WallpaperPlayer.shared.stop()
+        wallpaperPlayer.stop()
         desktopFallbackCoordinator.clearActiveAsset()
         desktopFallbackSpaceRefreshCoordinator.setActiveAsset(nil)
         userDefaults.removeObject(forKey: PreferenceKey.lastPlayedAssetId)
@@ -505,8 +517,9 @@ extension AppViewModel {
     }
 
     private func play(asset: WallpaperAsset, remember: Bool) throws {
+        let previousSession = wallpaperPlayer.activeSessionSnapshot
         do {
-            try WallpaperPlayer.shared.play(
+            try wallpaperPlayer.play(
                 asset: asset,
                 autoPauseWhenCovered: autoPauseWhenCovered,
                 experimentalSceneRendering: experimentalSceneRendering,
@@ -514,8 +527,12 @@ extension AppViewModel {
                 displayMode: displayMode
             )
         } catch {
-            desktopFallbackCoordinator.clearActiveAsset()
-            desktopFallbackSpaceRefreshCoordinator.setActiveAsset(nil)
+            if let previousAsset = activeLibraryAsset(matching: previousSession) {
+                desktopFallbackSpaceRefreshCoordinator.setActiveAsset(previousAsset)
+            } else {
+                desktopFallbackCoordinator.clearActiveAsset()
+                desktopFallbackSpaceRefreshCoordinator.setActiveAsset(nil)
+            }
             throw error
         }
         desktopFallbackSpaceRefreshCoordinator.setActiveAsset(asset)
@@ -548,6 +565,15 @@ extension AppViewModel {
             return nil
         } catch {
             return error.localizedDescription
+        }
+    }
+
+    private func activeLibraryAsset(matching snapshot: PlaybackSessionSnapshot?) -> WallpaperAsset? {
+        guard let snapshot else {
+            return nil
+        }
+        return libraryAssets.first {
+            $0.id == snapshot.assetId && $0.projectDirectory == snapshot.projectDirectory
         }
     }
 
@@ -588,4 +614,11 @@ private enum PreferenceKey {
     static let webMouseInteractionEnabled = "webMouseInteractionEnabled"
     static let lockScreenAnimationEnabled = "lockScreenAnimationEnabled"
     static let lastPlayedAssetId = "lastPlayedAssetId"
+}
+
+@MainActor
+private final class NoopDesktopFallbackSpaceRefreshCoordinator: DesktopFallbackSpaceRefreshCoordinating {
+    func start() {}
+    func stop() {}
+    func setActiveAsset(_ asset: WallpaperAsset?) {}
 }

@@ -2,11 +2,16 @@ import AppKit
 import MacWallCore
 
 @MainActor
-final class WallpaperPlayer {
+final class WallpaperPlayer: WallpaperPlayerManaging {
     static let shared = WallpaperPlayer()
 
     private var windows: [WallpaperWindow] = []
     private var activeAsset: WallpaperAsset?
+    private var sessionState = PlaybackSessionState()
+    private let scheduler: PlaybackScheduling
+    private var screenRestoreTask: PlaybackScheduledTask?
+    private var wakeRestoreTask: PlaybackScheduledTask?
+    private var visibilityTask: PlaybackScheduledTask?
     private var autoPauseWhenCovered = true
     private var experimentalSceneRendering = false
     private var webMouseInteractionEnabled = false
@@ -16,19 +21,28 @@ final class WallpaperPlayer {
     private var isSuspended = false
     private let visibilityMonitor = DesktopVisibilityMonitor()
 
+    var activeSessionSnapshot: PlaybackSessionSnapshot? {
+        sessionState.activeSnapshot
+    }
+
+    init(scheduler: PlaybackScheduling = MainActorPlaybackScheduler()) {
+        self.scheduler = scheduler
+    }
+
+    @discardableResult
     func play(
         asset: WallpaperAsset,
         autoPauseWhenCovered: Bool = true,
         experimentalSceneRendering: Bool = false,
         webMouseInteractionEnabled: Bool = false,
         displayMode: WallpaperDisplayMode = .fit
-    ) throws {
-        closeWindows()
-        activeAsset = asset
-        self.autoPauseWhenCovered = autoPauseWhenCovered
-        self.experimentalSceneRendering = experimentalSceneRendering
-        self.webMouseInteractionEnabled = webMouseInteractionEnabled
-        self.displayMode = displayMode
+    ) throws -> PlaybackSessionSnapshot {
+        let options = PlaybackOptions(
+            autoPauseWhenCovered: autoPauseWhenCovered,
+            experimentalSceneRendering: experimentalSceneRendering,
+            webMouseInteractionEnabled: webMouseInteractionEnabled,
+            displayMode: displayMode
+        )
         guard asset.supportStatus.supportsDesktopPlayback else {
             throw PlaybackError.notPlayable(asset.supportStatus.rawValue)
         }
@@ -36,20 +50,23 @@ final class WallpaperPlayer {
             throw PlaybackError.missingEntrypoint
         }
         let url = URL(filePath: entrypoint)
-        windows = try NSScreen.screens.map { screen in
-            try WallpaperWindow(
-                asset: asset,
-                url: url,
-                frame: screen.frame,
-                displayMode: displayMode,
-                experimentalSceneRendering: experimentalSceneRendering,
-                webMouseInteractionEnabled: webMouseInteractionEnabled
-            )
-        }
-        windows.forEach { $0.show() }
+        try replaceWindows(
+            asset: asset,
+            url: url,
+            displayMode: displayMode,
+            experimentalSceneRendering: experimentalSceneRendering,
+            webMouseInteractionEnabled: webMouseInteractionEnabled
+        )
+        activeAsset = asset
+        self.autoPauseWhenCovered = autoPauseWhenCovered
+        self.experimentalSceneRendering = experimentalSceneRendering
+        self.webMouseInteractionEnabled = webMouseInteractionEnabled
+        self.displayMode = displayMode
+        let snapshot = sessionState.startPlaying(asset: asset, options: options)
         startLifecycleObservers()
         startVisibilityTimer()
         updateVisibilityState()
+        return snapshot
     }
 
     func setDisplayMode(_ displayMode: WallpaperDisplayMode) {
@@ -83,7 +100,7 @@ final class WallpaperPlayer {
     }
 
     func restoreVisibleWindowsAfterAppWindowChange() {
-        updateVisibilityState()
+        scheduleVisibilityUpdate()
         guard !isSuspended else {
             return
         }
@@ -92,6 +109,14 @@ final class WallpaperPlayer {
 
     func stop() {
         activeAsset = nil
+        sessionState.stop()
+        isSuspended = false
+        screenRestoreTask?.cancel()
+        wakeRestoreTask?.cancel()
+        visibilityTask?.cancel()
+        screenRestoreTask = nil
+        wakeRestoreTask = nil
+        visibilityTask = nil
         stopVisibilityTimer()
         stopLifecycleObservers()
         closeWindows()
@@ -112,7 +137,7 @@ final class WallpaperPlayer {
     }
 
     private func closeWindows() {
-        windows.forEach { $0.close() }
+        closeWindows(windows)
         windows = []
     }
 
@@ -120,27 +145,81 @@ final class WallpaperPlayer {
         guard let entrypoint = asset.entrypoint else {
             throw PlaybackError.missingEntrypoint
         }
-        closeWindows()
         let url = URL(filePath: entrypoint)
-        windows = try NSScreen.screens.map { screen in
-            try WallpaperWindow(
-                asset: asset,
-                url: url,
-                frame: screen.frame,
-                displayMode: displayMode,
-                experimentalSceneRendering: experimentalSceneRendering,
-                webMouseInteractionEnabled: webMouseInteractionEnabled
-            )
-        }
-        windows.forEach { $0.show() }
+        try replaceWindows(
+            asset: asset,
+            url: url,
+            displayMode: displayMode,
+            experimentalSceneRendering: experimentalSceneRendering,
+            webMouseInteractionEnabled: webMouseInteractionEnabled
+        )
         updateVisibilityState()
+    }
+
+    private func replaceWindows(
+        asset: WallpaperAsset,
+        url: URL,
+        displayMode: WallpaperDisplayMode,
+        experimentalSceneRendering: Bool,
+        webMouseInteractionEnabled: Bool
+    ) throws {
+        let oldWindows = windows
+        let replacements = try makeStagedReplacementWindows(
+            asset: asset,
+            url: url,
+            displayMode: displayMode,
+            experimentalSceneRendering: experimentalSceneRendering,
+            webMouseInteractionEnabled: webMouseInteractionEnabled
+        )
+        showReplacementWindows(replacements)
+        windows = replacements
+        closeWindows(oldWindows)
+    }
+
+    private func makeStagedReplacementWindows(
+        asset: WallpaperAsset,
+        url: URL,
+        displayMode: WallpaperDisplayMode,
+        experimentalSceneRendering: Bool,
+        webMouseInteractionEnabled: Bool
+    ) throws -> [WallpaperWindow] {
+        var replacements: [WallpaperWindow] = []
+        do {
+            for screen in NSScreen.screens {
+                let window = try WallpaperWindow(
+                    asset: asset,
+                    url: url,
+                    frame: screen.frame,
+                    displayMode: displayMode,
+                    experimentalSceneRendering: experimentalSceneRendering,
+                    webMouseInteractionEnabled: webMouseInteractionEnabled
+                )
+                replacements.append(window)
+            }
+            return replacements
+        } catch {
+            cleanupStagedWindows(replacements)
+            throw error
+        }
+    }
+
+    private func showReplacementWindows(_ replacements: [WallpaperWindow]) {
+        replacements.forEach { $0.show() }
+    }
+
+    private func closeWindows(_ oldWindows: [WallpaperWindow]) {
+        oldWindows.forEach { $0.close() }
+    }
+
+    private func cleanupStagedWindows(_ replacements: [WallpaperWindow]) {
+        replacements.forEach { $0.close() }
     }
 
     private func startVisibilityTimer() {
         stopVisibilityTimer()
         visibilityTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in
-                self?.updateVisibilityState()
+                self?.scheduleVisibilityUpdate()
             }
         }
         if let visibilityTimer {
@@ -163,6 +242,7 @@ final class WallpaperPlayer {
             return
         }
         isSuspended = suspended
+        sessionState.setSuspended(suspended)
         windows.forEach { $0.setSuspended(suspended) }
     }
 
@@ -176,14 +256,14 @@ final class WallpaperPlayer {
                 Task { @MainActor in self?.setSuspended(true) }
             },
             center.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
-                Task { @MainActor in self?.reopenAfterWake() }
+                Task { @MainActor in self?.scheduleWakeRestore() }
             },
             NotificationCenter.default.addObserver(
                 forName: NSApplication.didChangeScreenParametersNotification,
                 object: nil,
                 queue: .main
             ) { [weak self] _ in
-                Task { @MainActor in self?.reopenAfterWake() }
+                Task { @MainActor in self?.scheduleScreenRestore() }
             }
         ]
     }
@@ -197,20 +277,46 @@ final class WallpaperPlayer {
         workspaceObservers = []
     }
 
-    private func reopenAfterWake() {
-        guard let activeAsset else {
+    private func scheduleScreenRestore() {
+        screenRestoreTask?.cancel()
+        guard let generation = sessionState.beginRestoring() else {
             return
         }
+        screenRestoreTask = scheduler.schedule(after: PlaybackDelay.milliseconds(300)) { [weak self] in
+            self?.restoreIfCurrentGeneration(generation)
+        }
+    }
+
+    private func scheduleWakeRestore() {
+        wakeRestoreTask?.cancel()
+        guard let generation = sessionState.beginRestoring() else {
+            return
+        }
+        wakeRestoreTask = scheduler.schedule(after: PlaybackDelay.milliseconds(500)) { [weak self] in
+            self?.restoreIfCurrentGeneration(generation)
+        }
+    }
+
+    private func scheduleVisibilityUpdate() {
+        visibilityTask?.cancel()
+        visibilityTask = scheduler.schedule(after: PlaybackDelay.milliseconds(200)) { [weak self] in
+            self?.updateVisibilityState()
+        }
+    }
+
+    private func restoreIfCurrentGeneration(_ generation: UInt64) {
+        guard sessionState.isCurrentGeneration(generation), let activeAsset else {
+            return
+        }
+        reopenAfterWake(asset: activeAsset)
+    }
+
+    private func reopenAfterWake(asset: WallpaperAsset) {
         do {
-            try play(
-                asset: activeAsset,
-                autoPauseWhenCovered: autoPauseWhenCovered,
-                experimentalSceneRendering: experimentalSceneRendering,
-                webMouseInteractionEnabled: webMouseInteractionEnabled,
-                displayMode: displayMode
-            )
+            try reopen(asset: asset)
+            setSuspended(false)
         } catch {
-            closeWindows()
+            sessionState.setFailed()
         }
     }
 }

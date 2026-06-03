@@ -3,7 +3,17 @@ import Foundation
 import MacWallCore
 
 @MainActor
-final class DesktopFallbackCoordinator {
+protocol DesktopFallbackCoordinating: AnyObject {
+    func clearActiveAsset()
+    func hasCache(for asset: WallpaperAsset) -> Bool
+    func applyOrGenerate(asset: WallpaperAsset)
+    func invalidate(asset: WallpaperAsset)
+    func generate(asset: WallpaperAsset) async throws
+    func regenerate(asset: WallpaperAsset) async throws
+}
+
+@MainActor
+final class DesktopFallbackCoordinator: DesktopFallbackCoordinating {
     typealias GenerateFallback = @MainActor (WallpaperAsset, URL) async throws -> Void
     typealias ApplyDesktopImage = @MainActor (URL) throws -> Void
 

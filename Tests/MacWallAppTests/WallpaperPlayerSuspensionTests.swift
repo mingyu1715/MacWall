@@ -66,6 +66,78 @@ final class WallpaperPlayerSuspensionTests: XCTestCase {
         XCTAssertTrue(source.contains("window.animationBehavior = .none"))
     }
 
+    func testTransactionalReplacementStagesAllWindowsBeforeClosingOldWindows() throws {
+        // Given
+        let source = try SourceFixture.contents(of: "Sources/MacWallApp/Playback/WallpaperPlayer.swift")
+        let replaceStart = try XCTUnwrap(source.range(of: "func replaceWindows"))
+        let replaceEnd = try XCTUnwrap(
+            source.range(of: "func makeStagedReplacementWindows", range: replaceStart.lowerBound..<source.endIndex)
+        )
+        let body = String(source[replaceStart.lowerBound..<replaceEnd.lowerBound])
+
+        // Then
+        XCTAssertTrue(body.contains("makeStagedReplacementWindows"))
+        XCTAssertTrue(body.contains("showReplacementWindows(replacements)"))
+        XCTAssertTrue(body.contains("windows = replacements"))
+        XCTAssertTrue(body.contains("closeWindows(oldWindows)"))
+        let show = try XCTUnwrap(body.range(of: "showReplacementWindows(replacements)"))
+        let swap = try XCTUnwrap(body.range(of: "windows = replacements"))
+        let close = try XCTUnwrap(body.range(of: "closeWindows(oldWindows)"))
+        XCTAssertLessThan(show.lowerBound, swap.lowerBound)
+        XCTAssertLessThan(swap.lowerBound, close.lowerBound)
+    }
+
+    func testPartialReplacementFailureCleansOnlyStagedWindows() throws {
+        // Given
+        let source = try SourceFixture.contents(of: "Sources/MacWallApp/Playback/WallpaperPlayer.swift")
+
+        // Then
+        XCTAssertTrue(source.contains("cleanupStagedWindows(replacements)"))
+        XCTAssertTrue(source.contains("throw error"))
+    }
+
+    func testLifecycleRestoreUsesFixedDebounceDelays() throws {
+        // Given
+        let source = try SourceFixture.contents(of: "Sources/MacWallApp/Playback/WallpaperPlayer.swift")
+
+        // Then
+        XCTAssertTrue(source.contains("PlaybackDelay.milliseconds(300)"))
+        XCTAssertTrue(source.contains("PlaybackDelay.milliseconds(500)"))
+        XCTAssertTrue(source.contains("PlaybackDelay.milliseconds(200)"))
+        XCTAssertTrue(source.contains("screenRestoreTask?.cancel()"))
+        XCTAssertTrue(source.contains("wakeRestoreTask?.cancel()"))
+        XCTAssertTrue(source.contains("visibilityTask?.cancel()"))
+    }
+
+    func testRestoreChecksGenerationBeforeReopening() throws {
+        // Given
+        let source = try SourceFixture.contents(of: "Sources/MacWallApp/Playback/WallpaperPlayer.swift")
+
+        // Then
+        XCTAssertTrue(source.contains("beginRestoring()"))
+        XCTAssertTrue(source.contains("isCurrentGeneration"))
+    }
+
+    func testMonitorAndWakeTestsUseInjectedSchedulerNotRealSleep() throws {
+        // Given
+        let source = try SourceFixture.contents(of: "Tests/MacWallAppTests/PlaybackSchedulerTests.swift")
+
+        // Then
+        XCTAssertTrue(source.contains("TestPlaybackScheduler"))
+        XCTAssertTrue(source.contains("advance(by: .milliseconds(300))"))
+        XCTAssertTrue(source.contains("advance(by: .milliseconds(500))"))
+        XCTAssertFalse(source.contains("Task.sleep"))
+        XCTAssertFalse(source.contains("Thread.sleep"))
+    }
+
+    func testWallpaperPlayerCanBeConstructedWithSchedulerForSimulation() throws {
+        // Given
+        let source = try SourceFixture.contents(of: "Sources/MacWallApp/Playback/WallpaperPlayer.swift")
+
+        // Then
+        XCTAssertTrue(source.contains("init(scheduler: PlaybackScheduling = MainActorPlaybackScheduler())"))
+    }
+
     func testWallpaperWindowsAreNotReleasedByAppKitWhenClosed() throws {
         // Given
         let source = try SourceFixture.contents(of: "Sources/MacWallApp/Playback/WallpaperPlayer.swift")

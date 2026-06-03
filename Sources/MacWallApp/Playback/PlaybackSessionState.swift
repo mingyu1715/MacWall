@@ -68,6 +68,17 @@ struct PlaybackSessionState {
         activeSnapshot = snapshot.withPhase(.restoring)
     }
 
+    mutating func beginRestoring() -> UInt64? {
+        guard let snapshot = activeSnapshot else {
+            phase = .idle
+            return nil
+        }
+        generation &+= 1
+        phase = .restoring
+        activeSnapshot = snapshot.withPhase(.restoring, generation: generation)
+        return generation
+    }
+
     mutating func setFailed() {
         phase = .failed
         if let snapshot = activeSnapshot {
@@ -82,17 +93,17 @@ struct PlaybackSessionState {
     }
 
     func isCurrentGeneration(_ generation: UInt64) -> Bool {
-        activeSnapshot?.generation == generation && self.generation == generation
+        self.generation == generation
     }
 }
 
 private extension PlaybackSessionSnapshot {
-    func withPhase(_ phase: PlaybackSessionPhase) -> PlaybackSessionSnapshot {
+    func withPhase(_ phase: PlaybackSessionPhase, generation: UInt64? = nil) -> PlaybackSessionSnapshot {
         PlaybackSessionSnapshot(
             assetId: assetId,
             projectDirectory: projectDirectory,
             phase: phase,
-            generation: generation,
+            generation: generation ?? self.generation,
             options: options
         )
     }

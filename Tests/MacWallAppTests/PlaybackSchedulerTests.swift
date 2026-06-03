@@ -21,9 +21,14 @@ final class PlaybackSchedulerTests: XCTestCase {
     func testWakeDebounceFiresAfter500Milliseconds() {
         let scheduler = TestPlaybackScheduler()
         var fired = 0
+        let exactScheduler = TestPlaybackScheduler()
+        var exactFired = 0
 
         scheduler.schedule(after: .milliseconds(500)) {
             fired += 1
+        }
+        exactScheduler.schedule(after: .milliseconds(500)) {
+            exactFired += 1
         }
 
         scheduler.advance(by: .milliseconds(499))
@@ -31,6 +36,9 @@ final class PlaybackSchedulerTests: XCTestCase {
 
         scheduler.advance(by: .milliseconds(1))
         XCTAssertEqual(fired, 1)
+
+        exactScheduler.advance(by: .milliseconds(500))
+        XCTAssertEqual(exactFired, 1)
     }
 
     func testVisibilityDebounceFiresAfter200Milliseconds() {

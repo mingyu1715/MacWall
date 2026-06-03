@@ -3,7 +3,14 @@ import Foundation
 import MacWallCore
 
 @MainActor
-final class DesktopFallbackSpaceRefreshCoordinator {
+protocol DesktopFallbackSpaceRefreshCoordinating: AnyObject {
+    func start()
+    func stop()
+    func setActiveAsset(_ asset: WallpaperAsset?)
+}
+
+@MainActor
+final class DesktopFallbackSpaceRefreshCoordinator: DesktopFallbackSpaceRefreshCoordinating {
     typealias CaptureLiveSnapshot = @MainActor (WallpaperAsset, URL) async throws -> Void
 
     struct Options: Equatable, Sendable {

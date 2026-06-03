@@ -245,6 +245,85 @@ final class AppViewModelTests: XCTestCase {
         XCTAssertNil(defaults.string(forKey: "lastPlayedAssetId"))
     }
 
+    func testPlaySuccessStoresLastPlayedOnlyAfterPlayerSuccess() throws {
+        // Given
+        let defaults = try makeUserDefaults()
+        let player = MockWallpaperPlayer()
+        let store = LibraryStore(root: try makeTempDirectory())
+        let asset = try store.importVideoFile(makeVideoFile())
+        let model = AppViewModel(
+            store: store,
+            loginItemController: MockLoginItemController(),
+            userDefaults: defaults,
+            wallpaperPlayer: player
+        )
+        model.selectedLibraryAssetId = asset.id
+
+        // When
+        model.playSelected()
+
+        // Then
+        XCTAssertEqual(player.playedAssetIds, [asset.id])
+        XCTAssertEqual(defaults.string(forKey: "lastPlayedAssetId"), asset.id)
+    }
+
+    func testPlayFailureDoesNotStoreFailedAssetAsLastPlayed() throws {
+        // Given
+        let defaults = try makeUserDefaults()
+        let player = MockWallpaperPlayer()
+        player.playError = TestError.expected
+        let store = LibraryStore(root: try makeTempDirectory())
+        let asset = try store.importVideoFile(makeVideoFile())
+        let model = AppViewModel(
+            store: store,
+            loginItemController: MockLoginItemController(),
+            userDefaults: defaults,
+            wallpaperPlayer: player
+        )
+        model.selectedLibraryAssetId = asset.id
+
+        // When
+        model.playSelected()
+
+        // Then
+        XCTAssertNil(defaults.string(forKey: "lastPlayedAssetId"))
+        XCTAssertTrue(model.status.contains(TestError.expected.localizedDescription))
+    }
+
+    func testSwitchingFromAtoFailingBKeepsAPlaybackFallbackSpaceRefreshAndLastPlayed() throws {
+        // Given
+        let defaults = try makeUserDefaults()
+        let player = MockWallpaperPlayer()
+        let fallback = MockDesktopFallbackCoordinator()
+        let spaceRefresh = MockDesktopFallbackSpaceRefreshCoordinator()
+        let store = LibraryStore(root: try makeTempDirectory())
+        let assetA = try store.importVideoFile(makeVideoFile(named: "A.mp4"))
+        let assetB = try store.importVideoFile(makeVideoFile(named: "B.mp4"))
+        let model = AppViewModel(
+            store: store,
+            loginItemController: MockLoginItemController(),
+            userDefaults: defaults,
+            wallpaperPlayer: player,
+            desktopFallbackCoordinator: fallback,
+            desktopFallbackSpaceRefreshCoordinator: spaceRefresh
+        )
+        model.selectedLibraryAssetId = assetA.id
+        model.playSelected()
+        player.playErrorsByAssetId[assetB.id] = TestError.expected
+
+        // When
+        model.selectedLibraryAssetId = assetB.id
+        model.playSelected()
+
+        // Then
+        XCTAssertEqual(player.activeSessionSnapshot?.assetId, assetA.id)
+        XCTAssertEqual(fallback.appliedAssetIds, [assetA.id])
+        XCTAssertEqual(fallback.clearActiveAssetCallCount, 0)
+        XCTAssertEqual(spaceRefresh.activeAssetIds, [assetA.id, assetA.id])
+        XCTAssertEqual(defaults.string(forKey: "lastPlayedAssetId"), assetA.id)
+        XCTAssertTrue(model.status.contains(TestError.expected.localizedDescription))
+    }
+
     private func makeTempDirectory() throws -> URL {
         let url = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
@@ -261,6 +340,12 @@ final class AppViewModelTests: XCTestCase {
             defaults.removePersistentDomain(forName: suiteName)
         }
         return defaults
+    }
+
+    private func makeVideoFile(named name: String = "video.mp4") throws -> URL {
+        let url = try makeTempDirectory().appending(path: name)
+        try Data([1]).write(to: url)
+        return url
     }
 
     private func makeScannedProject(root: URL, id: String, title: String) throws -> WallpaperAsset {
@@ -325,6 +410,90 @@ private final class MockLockScreenAnimationController: LockScreenAnimationManagi
 
     func openScreenSaverSettings() {
         didOpenSettings = true
+    }
+}
+
+@MainActor
+private final class MockWallpaperPlayer: WallpaperPlayerManaging {
+    var playError: Error?
+    var playErrorsByAssetId: [WallpaperAsset.ID: Error] = [:]
+    var playedAssetIds: [WallpaperAsset.ID] = []
+    var activeSessionSnapshot: PlaybackSessionSnapshot?
+
+    func play(
+        asset: WallpaperAsset,
+        autoPauseWhenCovered: Bool,
+        experimentalSceneRendering: Bool,
+        webMouseInteractionEnabled: Bool,
+        displayMode: WallpaperDisplayMode
+    ) throws -> PlaybackSessionSnapshot {
+        if let assetError = playErrorsByAssetId[asset.id] {
+            throw assetError
+        }
+        if let playError {
+            throw playError
+        }
+        playedAssetIds.append(asset.id)
+        let snapshot = PlaybackSessionSnapshot(
+            assetId: asset.id,
+            projectDirectory: asset.projectDirectory,
+            phase: .playing,
+            generation: UInt64(playedAssetIds.count),
+            options: .defaults
+        )
+        activeSessionSnapshot = snapshot
+        return snapshot
+    }
+
+    func stop() {
+        activeSessionSnapshot = nil
+    }
+
+    func setDisplayMode(_ displayMode: WallpaperDisplayMode) {}
+    func setAutoPauseWhenCovered(_ enabled: Bool) {}
+    func setExperimentalSceneRendering(_ enabled: Bool) {}
+    func setWebMouseInteractionEnabled(_ enabled: Bool) {}
+}
+
+@MainActor
+private final class MockDesktopFallbackCoordinator: DesktopFallbackCoordinating {
+    var appliedAssetIds: [WallpaperAsset.ID] = []
+    var invalidatedAssetIds: [WallpaperAsset.ID] = []
+    var clearActiveAssetCallCount = 0
+
+    func clearActiveAsset() {
+        clearActiveAssetCallCount += 1
+    }
+
+    func hasCache(for asset: WallpaperAsset) -> Bool {
+        false
+    }
+
+    func applyOrGenerate(asset: WallpaperAsset) {
+        appliedAssetIds.append(asset.id)
+    }
+
+    func invalidate(asset: WallpaperAsset) {
+        invalidatedAssetIds.append(asset.id)
+    }
+
+    func generate(asset: WallpaperAsset) async throws {}
+    func regenerate(asset: WallpaperAsset) async throws {}
+}
+
+@MainActor
+private final class MockDesktopFallbackSpaceRefreshCoordinator: DesktopFallbackSpaceRefreshCoordinating {
+    var activeAssetIds: [WallpaperAsset.ID?] = []
+    var startCallCount = 0
+
+    func start() {
+        startCallCount += 1
+    }
+
+    func stop() {}
+
+    func setActiveAsset(_ asset: WallpaperAsset?) {
+        activeAssetIds.append(asset?.id)
     }
 }
 
