@@ -2,6 +2,16 @@
 
 모든 시간은 Asia/Seoul 기준입니다.
 
+## 2026-06-04
+
+### 01:11 KST
+
+- 완료: 개발 가이드에 기본 운영 기준 보강
+- 추가:
+  - 개발 환경: macOS 14+, Xcode 16+, Swift 6
+  - 아키텍처: `MacWallCore`, `MacWallApp`, `macwallctl`
+  - 문서 수정 규칙: 사용자에게 보이는 동작 변경 시 `README.ko.md`와 `README.md` 갱신 여부 확인
+
 ## 2026-06-03
 
 ### 19:40 KST

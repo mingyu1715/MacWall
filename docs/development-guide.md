@@ -2,6 +2,31 @@
 
 이 문서는 MacWall을 개발할 때 지킬 운영 기준을 정리합니다.
 
+## 개발 환경
+
+기본 개발 환경:
+
+- macOS 14+
+- Xcode 16+
+- Swift 6
+
+## 아키텍처
+
+- `MacWallCore`
+  - Scanner
+  - Parser
+  - LibraryStore
+  - Conversion
+- `MacWallApp`
+  - SwiftUI/AppKit UI
+  - Playback
+  - Menu Bar
+  - Desktop fallback
+- `macwallctl`
+  - 진단
+  - scan/import 테스트
+  - scene 분석 보조
+
 ## 문서 역할
 
 repository root는 사용자와 GitHub 공개 운영에 필요한 문서만 둡니다.
@@ -27,6 +52,15 @@ repository root는 사용자와 GitHub 공개 운영에 필요한 문서만 둡�
 3. 관련 큰 기능이 있으면 `docs/implemented/`의 구현 기록을 확인합니다.
 4. 사용자 문서에 영향을 주는 변경이면 `README.ko.md`와 `README.md` 갱신 여부를 확인합니다.
 5. 루트에 새 문서를 추가하기 전에 `docs/README.md` 또는 `docs/archive/`에 두는 편이 맞는지 확인합니다.
+
+## 문서 수정 규칙
+
+사용자에게 보이는 동작이 변경되면 아래 문서 갱신 여부를 반드시 확인합니다.
+
+- `README.ko.md`
+- `README.md`
+
+큰 기능 구현이나 정책 변경은 `docs/development-log.md`에 기록하고, 필요하면 `docs/implemented/`에 별도 완료 기록을 남깁니다.
 
 ## Development Log 작성 규칙
 
