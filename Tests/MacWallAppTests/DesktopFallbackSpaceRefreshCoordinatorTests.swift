@@ -13,7 +13,8 @@ final class DesktopFallbackSpaceRefreshCoordinatorTests: XCTestCase {
         var applied: [URL] = []
         let fallbackCoordinator = DesktopFallbackCoordinator(
             generateFallback: { _, _ in },
-            applyDesktopImage: { applied.append($0) }
+            applyDesktopImage: { applied.append($0) },
+            originalWallpaperStore: MockSpaceRefreshOriginalDesktopWallpaperStore()
         )
         let coordinator = DesktopFallbackSpaceRefreshCoordinator(
             notificationCenter: notificationCenter,
@@ -45,7 +46,8 @@ final class DesktopFallbackSpaceRefreshCoordinatorTests: XCTestCase {
         var captureCount = 0
         let fallbackCoordinator = DesktopFallbackCoordinator(
             generateFallback: { _, _ in },
-            applyDesktopImage: { _ in }
+            applyDesktopImage: { _ in },
+            originalWallpaperStore: MockSpaceRefreshOriginalDesktopWallpaperStore()
         )
         let coordinator = DesktopFallbackSpaceRefreshCoordinator(
             fallbackCoordinator: fallbackCoordinator,
@@ -70,7 +72,8 @@ final class DesktopFallbackSpaceRefreshCoordinatorTests: XCTestCase {
         var captureCount = 0
         let fallbackCoordinator = DesktopFallbackCoordinator(
             generateFallback: { _, _ in },
-            applyDesktopImage: { _ in }
+            applyDesktopImage: { _ in },
+            originalWallpaperStore: MockSpaceRefreshOriginalDesktopWallpaperStore()
         )
         let coordinator = DesktopFallbackSpaceRefreshCoordinator(
             fallbackCoordinator: fallbackCoordinator,
@@ -98,7 +101,8 @@ final class DesktopFallbackSpaceRefreshCoordinatorTests: XCTestCase {
         var applied: [URL] = []
         let fallbackCoordinator = DesktopFallbackCoordinator(
             generateFallback: { _, _ in },
-            applyDesktopImage: { applied.append($0) }
+            applyDesktopImage: { applied.append($0) },
+            originalWallpaperStore: MockSpaceRefreshOriginalDesktopWallpaperStore()
         )
         let coordinator = DesktopFallbackSpaceRefreshCoordinator(
             fallbackCoordinator: fallbackCoordinator,
@@ -155,6 +159,19 @@ final class DesktopFallbackSpaceRefreshCoordinatorTests: XCTestCase {
 private struct SpaceRefreshFixture {
     let asset: WallpaperAsset
     let cacheURL: URL
+}
+
+@MainActor
+private final class MockSpaceRefreshOriginalDesktopWallpaperStore: OriginalDesktopWallpaperManaging {
+    func captureOriginalWallpaperIfNeeded(
+        beforeApplyingFallback fallbackURL: URL
+    ) -> OriginalDesktopWallpaperCaptureToken {
+        OriginalDesktopWallpaperCaptureToken(capturedScreenIDs: [])
+    }
+
+    func recordAppAppliedFallback(_ fallbackURL: URL) {}
+    func discardUnappliedFallbackCapture(_ token: OriginalDesktopWallpaperCaptureToken) {}
+    func restoreOriginalWallpaperIfCurrentMatchesManagedFallback() {}
 }
 
 private actor SpaceRefreshAsyncGate {

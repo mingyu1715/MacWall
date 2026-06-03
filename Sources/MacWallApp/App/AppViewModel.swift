@@ -353,6 +353,7 @@ extension AppViewModel {
         wallpaperPlayer.stop()
         desktopFallbackCoordinator.clearActiveAsset()
         desktopFallbackSpaceRefreshCoordinator.setActiveAsset(nil)
+        desktopFallbackCoordinator.restoreOriginalWallpaperIfNeeded()
         userDefaults.removeObject(forKey: PreferenceKey.lastPlayedAssetId)
         status = "Playback stopped."
     }

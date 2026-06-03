@@ -23,7 +23,8 @@ final class DesktopFallbackCoordinatorTests: XCTestCase {
         var generationCount = 0
         let coordinator = DesktopFallbackCoordinator(
             generateFallback: { _, _ in generationCount += 1 },
-            applyDesktopImage: { applied.append($0) }
+            applyDesktopImage: { applied.append($0) },
+            originalWallpaperStore: MockOriginalDesktopWallpaperStore()
         )
 
         coordinator.prepareForPlayback(asset: fixture.asset)
@@ -40,7 +41,8 @@ final class DesktopFallbackCoordinatorTests: XCTestCase {
         var generationCount = 0
         let coordinator = DesktopFallbackCoordinator(
             generateFallback: { _, _ in generationCount += 1 },
-            applyDesktopImage: { applied.append($0) }
+            applyDesktopImage: { applied.append($0) },
+            originalWallpaperStore: MockOriginalDesktopWallpaperStore()
         )
 
         coordinator.prepareForPlayback(asset: fixture.asset)
@@ -52,6 +54,87 @@ final class DesktopFallbackCoordinatorTests: XCTestCase {
         XCTAssertEqual(generationCount, 0)
     }
 
+    func testExistingCacheCapturesOriginalImmediatelyBeforeApplyingFallback() async throws {
+        let fixture = try makeFixture(existingCache: Data("cached".utf8))
+        let originalWallpaperStore = MockOriginalDesktopWallpaperStore()
+        let coordinator = DesktopFallbackCoordinator(
+            generateFallback: { _, _ in },
+            applyDesktopImage: { url in
+                originalWallpaperStore.events.append("apply:\(url.lastPathComponent)")
+            },
+            originalWallpaperStore: originalWallpaperStore
+        )
+
+        coordinator.applyOrGenerate(asset: fixture.asset)
+
+        XCTAssertEqual(
+            originalWallpaperStore.events,
+            [
+                "capture:\(fixture.cacheURL.lastPathComponent)",
+                "apply:\(fixture.cacheURL.lastPathComponent)",
+                "record:\(fixture.cacheURL.lastPathComponent)"
+            ]
+        )
+    }
+
+    func testApplyFailureDiscardsOriginalCaptureWithoutRecordingFallback() async throws {
+        let fixture = try makeFixture(existingCache: Data("cached".utf8))
+        let originalWallpaperStore = MockOriginalDesktopWallpaperStore()
+        let coordinator = DesktopFallbackCoordinator(
+            generateFallback: { _, _ in },
+            applyDesktopImage: { _ in
+                originalWallpaperStore.events.append("apply-failed")
+                throw TestError.expected
+            },
+            originalWallpaperStore: originalWallpaperStore
+        )
+
+        coordinator.applyOrGenerate(asset: fixture.asset)
+
+        XCTAssertEqual(
+            originalWallpaperStore.events,
+            [
+                "capture:\(fixture.cacheURL.lastPathComponent)",
+                "apply-failed",
+                "discard"
+            ]
+        )
+    }
+
+    func testMissingCacheDoesNotCaptureOriginalUntilFallbackIsApplied() async throws {
+        let fixture = try makeFixture()
+        let gate = AsyncGate()
+        let originalWallpaperStore = MockOriginalDesktopWallpaperStore()
+        var generationStarted = false
+        let coordinator = DesktopFallbackCoordinator(
+            generateFallback: { _, output in
+                generationStarted = true
+                await gate.wait()
+                try Data("generated".utf8).write(to: output)
+            },
+            applyDesktopImage: { url in
+                originalWallpaperStore.events.append("apply:\(url.lastPathComponent)")
+            },
+            originalWallpaperStore: originalWallpaperStore
+        )
+
+        coordinator.applyOrGenerate(asset: fixture.asset)
+        await waitUntil { generationStarted }
+        XCTAssertTrue(originalWallpaperStore.events.isEmpty)
+
+        await gate.open()
+        await coordinator.waitForAutomaticGeneration()
+
+        XCTAssertEqual(
+            originalWallpaperStore.events,
+            [
+                "capture:\(fixture.cacheURL.lastPathComponent)",
+                "apply:\(fixture.cacheURL.lastPathComponent)",
+                "record:\(fixture.cacheURL.lastPathComponent)"
+            ]
+        )
+    }
+
     func testApplyOrGenerateMarksAssetActiveBeforeMissingCacheGeneration() async throws {
         let fixture = try makeFixture()
         var applied: [URL] = []
@@ -59,7 +142,8 @@ final class DesktopFallbackCoordinatorTests: XCTestCase {
             generateFallback: { _, output in
                 try Data("generated".utf8).write(to: output)
             },
-            applyDesktopImage: { applied.append($0) }
+            applyDesktopImage: { applied.append($0) },
+            originalWallpaperStore: MockOriginalDesktopWallpaperStore()
         )
 
         coordinator.applyOrGenerate(asset: fixture.asset)
@@ -76,7 +160,8 @@ final class DesktopFallbackCoordinatorTests: XCTestCase {
             generateFallback: { _, output in
                 try Data("generated".utf8).write(to: output)
             },
-            applyDesktopImage: { applied.append($0) }
+            applyDesktopImage: { applied.append($0) },
+            originalWallpaperStore: MockOriginalDesktopWallpaperStore()
         )
 
         coordinator.prepareForPlayback(asset: fixture.asset)
@@ -98,7 +183,8 @@ final class DesktopFallbackCoordinatorTests: XCTestCase {
                 await gate.wait()
                 try Data("generated".utf8).write(to: output)
             },
-            applyDesktopImage: { _ in }
+            applyDesktopImage: { _ in },
+            originalWallpaperStore: MockOriginalDesktopWallpaperStore()
         )
 
         coordinator.prepareForPlayback(asset: fixture.asset)
@@ -121,7 +207,8 @@ final class DesktopFallbackCoordinatorTests: XCTestCase {
                 await gate.wait()
                 try Data("generated".utf8).write(to: output)
             },
-            applyDesktopImage: { applied.append($0) }
+            applyDesktopImage: { applied.append($0) },
+            originalWallpaperStore: MockOriginalDesktopWallpaperStore()
         )
 
         coordinator.prepareForPlayback(asset: first.asset)
@@ -143,7 +230,8 @@ final class DesktopFallbackCoordinatorTests: XCTestCase {
                 await gate.wait()
                 try Data("generated".utf8).write(to: output)
             },
-            applyDesktopImage: { applied.append($0) }
+            applyDesktopImage: { applied.append($0) },
+            originalWallpaperStore: MockOriginalDesktopWallpaperStore()
         )
 
         coordinator.prepareForPlayback(asset: fixture.asset)
@@ -170,7 +258,8 @@ final class DesktopFallbackCoordinatorTests: XCTestCase {
                 try Data("generated".utf8).write(to: output)
                 generationFinished = true
             },
-            applyDesktopImage: { _ in }
+            applyDesktopImage: { _ in },
+            originalWallpaperStore: MockOriginalDesktopWallpaperStore()
         )
 
         coordinator.prepareForPlayback(asset: fixture.asset)
@@ -188,7 +277,8 @@ final class DesktopFallbackCoordinatorTests: XCTestCase {
         let fixture = try makeFixture(existingCache: Data("previous".utf8))
         let coordinator = DesktopFallbackCoordinator(
             generateFallback: { _, _ in throw TestError.expected },
-            applyDesktopImage: { _ in }
+            applyDesktopImage: { _ in },
+            originalWallpaperStore: MockOriginalDesktopWallpaperStore()
         )
 
         await XCTAssertThrowsErrorAsync(
@@ -212,7 +302,8 @@ final class DesktopFallbackCoordinatorTests: XCTestCase {
                     try Data("newer".utf8).write(to: output)
                 }
             },
-            applyDesktopImage: { _ in }
+            applyDesktopImage: { _ in },
+            originalWallpaperStore: MockOriginalDesktopWallpaperStore()
         )
 
         coordinator.prepareForPlayback(asset: fixture.asset)
@@ -278,6 +369,30 @@ private actor AsyncGate {
         isOpen = true
         continuation?.resume()
         continuation = nil
+    }
+}
+
+@MainActor
+private final class MockOriginalDesktopWallpaperStore: OriginalDesktopWallpaperManaging {
+    var events: [String] = []
+
+    func captureOriginalWallpaperIfNeeded(
+        beforeApplyingFallback fallbackURL: URL
+    ) -> OriginalDesktopWallpaperCaptureToken {
+        events.append("capture:\(fallbackURL.lastPathComponent)")
+        return OriginalDesktopWallpaperCaptureToken(capturedScreenIDs: ["main"])
+    }
+
+    func recordAppAppliedFallback(_ fallbackURL: URL) {
+        events.append("record:\(fallbackURL.lastPathComponent)")
+    }
+
+    func discardUnappliedFallbackCapture(_ token: OriginalDesktopWallpaperCaptureToken) {
+        events.append("discard")
+    }
+
+    func restoreOriginalWallpaperIfCurrentMatchesManagedFallback() {
+        events.append("restore")
     }
 }
 

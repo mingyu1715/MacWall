@@ -10,6 +10,7 @@ protocol DesktopFallbackCoordinating: AnyObject {
     func invalidate(asset: WallpaperAsset)
     func generate(asset: WallpaperAsset) async throws
     func regenerate(asset: WallpaperAsset) async throws
+    func restoreOriginalWallpaperIfNeeded()
 }
 
 @MainActor
@@ -25,6 +26,7 @@ final class DesktopFallbackCoordinator: DesktopFallbackCoordinating {
     private let fileManager: FileManager
     private let generateFallback: GenerateFallback
     private let applyDesktopImage: ApplyDesktopImage
+    private let originalWallpaperStore: OriginalDesktopWallpaperManaging
     private var activeProjectDirectory: String?
     private var inFlightAutomaticTasks: [String: InFlightAutomaticTask] = [:]
     private var latestGenerationTokens: [String: UUID] = [:]
@@ -32,11 +34,13 @@ final class DesktopFallbackCoordinator: DesktopFallbackCoordinating {
     init(
         fileManager: FileManager = .default,
         generateFallback: GenerateFallback? = nil,
-        applyDesktopImage: @escaping ApplyDesktopImage = DesktopFallbackCoordinator.applyDesktopImageOnAllScreens
+        applyDesktopImage: @escaping ApplyDesktopImage = DesktopFallbackCoordinator.applyDesktopImageOnAllScreens,
+        originalWallpaperStore: OriginalDesktopWallpaperManaging = OriginalDesktopWallpaperStore()
     ) {
         self.fileManager = fileManager
         self.generateFallback = generateFallback ?? Self.generateDefaultFallback
         self.applyDesktopImage = applyDesktopImage
+        self.originalWallpaperStore = originalWallpaperStore
     }
 
     static func cacheURL(for asset: WallpaperAsset) -> URL {
@@ -55,7 +59,7 @@ final class DesktopFallbackCoordinator: DesktopFallbackCoordinating {
         guard fileManager.fileExists(atPath: cache.path) else {
             return
         }
-        try? applyDesktopImage(cache)
+        try? applyManagedDesktopFallback(cache)
     }
 
     func clearActiveAsset() {
@@ -66,7 +70,7 @@ final class DesktopFallbackCoordinator: DesktopFallbackCoordinating {
         activeProjectDirectory = projectKey(for: asset)
         let cache = Self.cacheURL(for: asset)
         if fileManager.fileExists(atPath: cache.path) {
-            try? applyDesktopImage(cache)
+            try? applyManagedDesktopFallback(cache)
             return
         }
         scheduleGenerationIfNeeded(asset: asset)
@@ -107,7 +111,7 @@ final class DesktopFallbackCoordinator: DesktopFallbackCoordinating {
     func generate(asset: WallpaperAsset) async throws {
         if hasCache(for: asset) {
             if activeProjectDirectory == projectKey(for: asset) {
-                try applyDesktopImage(Self.cacheURL(for: asset))
+                try applyManagedDesktopFallback(Self.cacheURL(for: asset))
             }
             return
         }
@@ -117,6 +121,10 @@ final class DesktopFallbackCoordinator: DesktopFallbackCoordinating {
     func regenerate(asset: WallpaperAsset) async throws {
         invalidate(asset: asset)
         try await generateLatest(asset: asset)
+    }
+
+    func restoreOriginalWallpaperIfNeeded() {
+        originalWallpaperStore.restoreOriginalWallpaperIfCurrentMatchesManagedFallback()
     }
 
     func refreshFromLiveSnapshot(
@@ -173,7 +181,18 @@ final class DesktopFallbackCoordinator: DesktopFallbackCoordinating {
         let data = try Data(contentsOf: temporary)
         try data.write(to: cache, options: [.atomic])
         if activeProjectDirectory == key {
-            try applyDesktopImage(cache)
+            try applyManagedDesktopFallback(cache)
+        }
+    }
+
+    private func applyManagedDesktopFallback(_ url: URL) throws {
+        let token = originalWallpaperStore.captureOriginalWallpaperIfNeeded(beforeApplyingFallback: url)
+        do {
+            try applyDesktopImage(url)
+            originalWallpaperStore.recordAppAppliedFallback(url)
+        } catch {
+            originalWallpaperStore.discardUnappliedFallbackCapture(token)
+            throw error
         }
     }
 

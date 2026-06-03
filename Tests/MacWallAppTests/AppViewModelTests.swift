@@ -180,7 +180,10 @@ final class AppViewModelTests: XCTestCase {
         let model = AppViewModel(
             store: LibraryStore(root: try makeTempDirectory()),
             loginItemController: MockLoginItemController(),
-            userDefaults: defaults
+            userDefaults: defaults,
+            wallpaperPlayer: MockWallpaperPlayer(),
+            desktopFallbackCoordinator: MockDesktopFallbackCoordinator(),
+            desktopFallbackSpaceRefreshCoordinator: MockDesktopFallbackSpaceRefreshCoordinator()
         )
 
         // Then
@@ -245,6 +248,31 @@ final class AppViewModelTests: XCTestCase {
         XCTAssertNil(defaults.string(forKey: "lastPlayedAssetId"))
     }
 
+    func testStopPlaybackRestoresOriginalWallpaperAfterClearingManagedFallbackState() throws {
+        // Given
+        let defaults = try makeUserDefaults()
+        let player = MockWallpaperPlayer()
+        let fallback = MockDesktopFallbackCoordinator()
+        let spaceRefresh = MockDesktopFallbackSpaceRefreshCoordinator()
+        let model = AppViewModel(
+            store: LibraryStore(root: try makeTempDirectory()),
+            loginItemController: MockLoginItemController(),
+            userDefaults: defaults,
+            wallpaperPlayer: player,
+            desktopFallbackCoordinator: fallback,
+            desktopFallbackSpaceRefreshCoordinator: spaceRefresh
+        )
+
+        // When
+        model.stopPlayback()
+
+        // Then
+        XCTAssertEqual(player.stopCallCount, 1)
+        XCTAssertEqual(fallback.clearActiveAssetCallCount, 1)
+        XCTAssertEqual(spaceRefresh.activeAssetIds, [nil])
+        XCTAssertEqual(fallback.restoreOriginalWallpaperCallCount, 1)
+    }
+
     func testPlaySuccessStoresLastPlayedOnlyAfterPlayerSuccess() throws {
         // Given
         let defaults = try makeUserDefaults()
@@ -255,7 +283,9 @@ final class AppViewModelTests: XCTestCase {
             store: store,
             loginItemController: MockLoginItemController(),
             userDefaults: defaults,
-            wallpaperPlayer: player
+            wallpaperPlayer: player,
+            desktopFallbackCoordinator: MockDesktopFallbackCoordinator(),
+            desktopFallbackSpaceRefreshCoordinator: MockDesktopFallbackSpaceRefreshCoordinator()
         )
         model.selectedLibraryAssetId = asset.id
 
@@ -278,7 +308,9 @@ final class AppViewModelTests: XCTestCase {
             store: store,
             loginItemController: MockLoginItemController(),
             userDefaults: defaults,
-            wallpaperPlayer: player
+            wallpaperPlayer: player,
+            desktopFallbackCoordinator: MockDesktopFallbackCoordinator(),
+            desktopFallbackSpaceRefreshCoordinator: MockDesktopFallbackSpaceRefreshCoordinator()
         )
         model.selectedLibraryAssetId = asset.id
 
@@ -418,6 +450,7 @@ private final class MockWallpaperPlayer: WallpaperPlayerManaging {
     var playError: Error?
     var playErrorsByAssetId: [WallpaperAsset.ID: Error] = [:]
     var playedAssetIds: [WallpaperAsset.ID] = []
+    var stopCallCount = 0
     var activeSessionSnapshot: PlaybackSessionSnapshot?
 
     func play(
@@ -446,6 +479,7 @@ private final class MockWallpaperPlayer: WallpaperPlayerManaging {
     }
 
     func stop() {
+        stopCallCount += 1
         activeSessionSnapshot = nil
     }
 
@@ -460,6 +494,7 @@ private final class MockDesktopFallbackCoordinator: DesktopFallbackCoordinating 
     var appliedAssetIds: [WallpaperAsset.ID] = []
     var invalidatedAssetIds: [WallpaperAsset.ID] = []
     var clearActiveAssetCallCount = 0
+    var restoreOriginalWallpaperCallCount = 0
 
     func clearActiveAsset() {
         clearActiveAssetCallCount += 1
@@ -479,6 +514,10 @@ private final class MockDesktopFallbackCoordinator: DesktopFallbackCoordinating 
 
     func generate(asset: WallpaperAsset) async throws {}
     func regenerate(asset: WallpaperAsset) async throws {}
+
+    func restoreOriginalWallpaperIfNeeded() {
+        restoreOriginalWallpaperCallCount += 1
+    }
 }
 
 @MainActor

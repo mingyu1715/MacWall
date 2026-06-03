@@ -4,6 +4,17 @@
 
 ## 2026-06-04
 
+### 02:45 KST
+
+- 완료: Stop Playback 시 original macOS wallpaper 복원 정책 구현
+- 구현:
+  - fallback PNG를 system wallpaper로 적용하기 직전에 screen별 original wallpaper capture
+  - screen별 original URL, app-applied fallback URL, managed session 상태를 UserDefaults에 저장
+  - Stop Playback 시 current wallpaper가 app-applied fallback과 일치할 때만 original restore
+  - 사용자가 macOS 설정에서 wallpaper를 직접 바꾼 경우 Stop이 덮어쓰지 않음
+  - `Derived/desktop-fallback.png` cache 파일은 삭제하지 않음
+- 검증: `swift test` -> `130 tests, 0 failures`
+
 ### 02:09 KST
 
 - 완료: P2 Playback Stability 구현

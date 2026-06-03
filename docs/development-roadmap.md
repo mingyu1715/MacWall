@@ -75,12 +75,12 @@ MacWall은 사용자가 Windows에서 직접 복사해 온 Wallpaper Engine proj
 ├─ live desktop runtime 시작
 ├─ fallback coordination용 active asset 표시
 ├─ Derived/desktop-fallback.png 있음
-│  └─ generator 없이 macOS system wallpaper에 적용
+│  └─ 원래 macOS wallpaper를 capture한 뒤 macOS system wallpaper에 적용
 └─ cache 없음
    └─ 비동기 fallback generation 예약
       ├─ 지원되는 경우 대표 frame 캡처
       ├─ Derived/desktop-fallback.png 저장
-      └─ asset이 아직 active일 때만 macOS system wallpaper 적용
+      └─ asset이 아직 active일 때만 원래 macOS wallpaper를 capture한 뒤 적용
 ```
 
 규칙:
@@ -89,9 +89,11 @@ MacWall은 사용자가 Windows에서 직접 복사해 온 Wallpaper Engine proj
 - fallback 작업은 Play/Apply의 side effect입니다. live playback을 block하면 안 됩니다.
 - automatic generation은 cache가 없고 runtime이 대표 frame을 만들 수 있을 때만 실행합니다.
 - manual generation/regeneration은 library item menu에서 제공합니다.
-- Stop Playback은 `Derived/desktop-fallback.png`를 보존합니다.
+- original macOS wallpaper capture는 앱이 `desktop-fallback.png`를 system wallpaper로 실제 적용하기 직전에만 실행합니다.
+- Stop Playback은 current wallpaper가 앱이 적용한 fallback과 일치할 때만 original wallpaper로 복원합니다.
+- Stop Playback은 `Derived/desktop-fallback.png` cache 파일을 삭제하지 않습니다.
+- 사용자가 앱 재생 중 macOS 설정에서 wallpaper를 직접 바꿨다면 Stop Playback은 그 변경을 덮어쓰지 않습니다.
 - `preview.gif`, `preview.jpg`, `thumbnail.jpg`, `cover.png`, Workshop thumbnail은 system-wallpaper fallback source가 아닙니다.
-- 원래 macOS wallpaper로 돌아가고 싶으면 macOS System Settings에서 직접 변경합니다.
 
 Space refresh:
 

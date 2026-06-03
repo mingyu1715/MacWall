@@ -44,7 +44,7 @@ MacWall은 Windows에서 Wallpaper Engine을 구매해 사용하던 사람이, �
 - 로그인 후 자동으로 켜지게 하려면 **Open at Login**을 켭니다. **Stop Playback**을 누르지 않았다면 앱 실행 시 마지막으로 재생한 월페이퍼를 다시 복구합니다.
 - 가져온 항목이 필요 없어지면 imported library 목록에서 **Remove**를 눌러 Mac 라이브러리 복사본을 삭제합니다.
 
-Spaces 전환이나 전체화면 전환 중 기존 macOS 배경화면이 잠깐 보이는 현상을 줄이기 위해 항목별 `Derived/desktop-fallback.png`를 유지합니다. Play/Apply는 먼저 라이브 데스크톱 레이어를 시작하고, 파일이 이미 있으면 이어서 macOS system wallpaper에 적용합니다. 파일이 없으면 Video, Image, Web 항목에 한해 실제 원본이나 렌더링된 Web 출력에서 비동기로 생성합니다. Web snapshot이 실패해도 라이브 재생은 계속됩니다. Workshop 썸네일과 Scene 썸네일은 데스크톱 fallback cache 원본으로 사용하지 않습니다. 라이브러리 항목 메뉴의 **Show in Finder**, **Generate Desktop Fallback**, **Regenerate Desktop Fallback**으로 폴더를 열거나 cache를 수동으로 다시 생성할 수 있습니다. **Stop Playback**은 라이브 레이어만 중지하며 `Derived/desktop-fallback.png`는 나중에 다시 사용할 수 있도록 유지합니다.
+Spaces 전환이나 전체화면 전환 중 기존 macOS 배경화면이 잠깐 보이는 현상을 줄이기 위해 항목별 `Derived/desktop-fallback.png`를 유지합니다. Play/Apply는 먼저 라이브 데스크톱 레이어를 시작하고, 파일이 이미 있으면 이어서 macOS system wallpaper에 적용합니다. 파일이 없으면 Video, Image, Web 항목에 한해 실제 원본이나 렌더링된 Web 출력에서 비동기로 생성합니다. Web snapshot이 실패해도 라이브 재생은 계속됩니다. Workshop 썸네일과 Scene 썸네일은 데스크톱 fallback cache 원본으로 사용하지 않습니다. 라이브러리 항목 메뉴의 **Show in Finder**, **Generate Desktop Fallback**, **Regenerate Desktop Fallback**으로 폴더를 열거나 cache를 수동으로 다시 생성할 수 있습니다. **Stop Playback**은 라이브 레이어를 중지하고, 현재 macOS 배경화면이 앱이 적용한 fallback일 때만 이전 macOS 배경화면으로 복원합니다. `Derived/desktop-fallback.png` cache 파일은 나중에 다시 사용할 수 있도록 유지합니다.
 
 ## 성능 스냅샷
 
