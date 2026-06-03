@@ -6,7 +6,7 @@ Date: 2026-06-04
 
 ## Goal
 
-P2는 MacWall의 live playback을 안정화합니다. 대상은 Spaces/full-screen 전환, monitor attach/detach/resolution change, sleep/wake 복구, library item switching, auto-pause edge case입니다.
+P2는 Workshop Wallpaper Bridge의 live playback을 안정화합니다. 대상은 Spaces/full-screen 전환, monitor attach/detach/resolution change, sleep/wake 복구, library item switching, auto-pause edge case입니다.
 
 P2의 핵심 원칙은 live playback을 primary workflow로 유지하는 것입니다. Desktop fallback은 P1과 동일하게 playback의 side effect이며, fallback cache hit, fallback generation, wallpaper 적용 실패가 live playback 시작이나 전환을 막으면 안 됩니다.
 
@@ -42,9 +42,10 @@ P2는 큰 runtime rewrite가 아니라 작은 state boundary를 추가하는 방
 
 1. `PlaybackSessionState` 같은 순수 state model을 추가합니다.
 2. `WallpaperPlayer`는 state model을 사용해 play, stop, suspend, restore, screen-change transition을 일관되게 처리합니다.
-3. 새 asset 전환은 transactional하게 처리합니다. 새 asset이 검증되고 새 windows를 만들 수 있을 때만 active session을 교체합니다.
+3. 새 asset 전환은 transactional하게 처리합니다. replacement windows를 hidden/staged 상태로 먼저 생성하고, 모든 target screen에 대해 생성 성공을 확인한 뒤에만 active session을 교체합니다.
 4. monitor change와 wake restore는 짧은 debounce 후 실행합니다.
 5. `AppViewModel`에는 testable player protocol을 주입해서 play/fallback/status ordering을 검증합니다.
+6. debounce는 fake clock/scheduler를 주입해 unit test에서 실제 sleep timing에 의존하지 않습니다.
 
 이 접근은 `WallpaperPlayer` 전체를 갈아엎지 않고, P2 acceptance criteria에 필요한 안정성만 추가합니다.
 
@@ -95,12 +96,29 @@ runtime owner입니다. AppKit windows, content views, observer, timer를 관리
 P2 변경 방향:
 
 - asset validation을 window teardown보다 먼저 수행합니다.
-- 새 windows 생성에 성공한 뒤 기존 windows를 닫습니다.
+- replacement windows는 hidden/staged 상태로 먼저 생성합니다.
+- 모든 target screen에 대해 replacement window 생성 성공을 확인합니다.
+- 모든 replacement window 생성에 성공하면 replacement set을 show한 뒤 old windows를 close합니다.
+- replacement window 생성 중 하나라도 실패하면 replacement set만 cleanup하고 old live playback은 유지합니다.
+- multi-monitor partial failure가 duplicate window state나 half-swapped state를 만들면 안 됩니다.
 - play 성공 후에만 active session을 갱신합니다.
 - play 실패 시 이전 session이 있으면 이전 live playback을 유지합니다.
 - stop은 active session, observer, timer, windows를 명확히 정리합니다.
 - wake/screen-change restore는 generation token으로 stale 작업을 무시합니다.
 - screen-change restore는 짧은 debounce 후 현재 `NSScreen.screens`를 다시 읽습니다.
+
+### `PlaybackScheduler`
+
+debounce와 delayed restore를 담당하는 작은 scheduling boundary입니다.
+
+P2 변경 방향:
+
+- production scheduler는 main actor에서 지정된 delay 후 작업을 실행합니다.
+- test scheduler는 fake clock 방식으로 pending work를 저장하고, unit test가 시간을 직접 advance합니다.
+- screen-change debounce는 300ms입니다.
+- wake debounce는 500ms입니다.
+- visibility debounce는 200ms입니다.
+- debounce test는 real sleep timing, wall clock, `Task.sleep`에 의존하지 않습니다.
 
 ### `AppViewModel`
 
@@ -154,8 +172,9 @@ AppViewModel.playSelected()
 -> selected asset 확인
 -> WallpaperPlayer.play(asset, options) -> PlaybackSessionSnapshot
    -> validate asset
-   -> create replacement windows
-   -> show replacement windows
+   -> create hidden/staged replacement windows for every target screen
+   -> verify all target screens have replacement windows
+   -> show replacement set
    -> close old windows
    -> update PlaybackSessionState
 -> AppViewModel sets active fallback asset
@@ -175,6 +194,7 @@ AppViewModel.playSelected()
 -> if previous session exists, keep fallback and space-refresh active asset on previous asset
 -> if no previous session exists, clear fallback and space-refresh active asset
 -> failed asset fallback is not applied
+-> lastPlayedAssetId remains the previous active asset id when previous session exists
 -> status shows playback error
 ```
 
@@ -217,6 +237,7 @@ didWake
 
 - play failure must not call fallback generation for the failed asset.
 - replacement window creation failure should not destroy previous playback if previous playback exists.
+- multi-monitor replacement partial failure must cleanup only staged replacement windows and must not produce duplicate or half-swapped live windows.
 - monitor/wake restore failure should keep the previous state when possible and avoid clearing `lastPlayedAssetId` unless the user explicitly stops playback.
 - stop playback always clears active playback and active fallback asset, but never deletes fallback cache files.
 - stale restore tasks must be ignored by generation token.
@@ -227,10 +248,11 @@ didWake
 - First Video Play/Apply after app launch starts live playback on the first click.
 - Existing fallback cache is applied after live playback starts and never causes an early return from playback flow.
 - Switching from asset A to playable asset B creates B live playback and applies/generates B fallback.
-- Switching from asset A to failing asset B does not apply B fallback.
+- Switching from asset A to failing asset B does not apply B fallback, keeps A live playback, keeps A fallback active asset, keeps A space-refresh active asset, and keeps `lastPlayedAssetId` as A.
 - Stop Playback clears active playback and active fallback asset while preserving existing `desktop-fallback.png`.
 - monitor attach/detach/resolution change recreates wallpaper windows for current screens after debounce.
 - sleep/wake restores the active playable asset after wake.
+- monitor attach/detach/resolution change and sleep/wake verification are simulated unit/integration tests only; actual macOS GUI QA remains a follow-up verification that requires separate approval.
 - auto-pause pauses media without hiding wallpaper windows.
 - covered Video remains visible on the current frame.
 - covered Web remains visible and pauses CSS animation without forcibly pausing embedded video.
@@ -249,16 +271,29 @@ Use tests that do not require GUI app launch.
   - no `orderOut` path for auto-pause
   - display mode change does not recreate windows
   - screen-change restore uses debounce/generation token
-  - replacement creation happens before old window teardown
+  - replacement windows are created hidden/staged before old window teardown
+  - all target screens must succeed before replacement set is shown
+  - partial replacement failure cleans staged windows and preserves old windows
 - `AppViewModelTests`
   - play success stores `lastPlayedAssetId`
   - play success invokes fallback side effect after player success
-  - play failure does not invoke fallback for failed asset
+  - A -> failing B does not invoke fallback for B
+  - A -> failing B keeps A live playback
+  - A -> failing B keeps A fallback active asset
+  - A -> failing B keeps A space-refresh active asset
+  - A -> failing B keeps `lastPlayedAssetId` as A
   - stop clears active fallback asset and last played preference
+- `PlaybackSchedulerTests`
+  - screen-change debounce fires only after fake clock advances 300ms
+  - wake debounce fires only after fake clock advances 500ms
+  - visibility debounce fires only after fake clock advances 200ms
+  - replacing a pending debounce cancels the stale scheduled task
 - `DesktopVisibilityMonitorTests`
   - ignored owner policy remains stable
   - full-screen/system transient windows do not create false blocking where identifiable
 - Existing Web/Video tests remain active.
+
+Monitor attach/detach and sleep/wake tests must use injected screen providers, fake window factories, and fake schedulers. They must not launch the GUI app and must not depend on real macOS screen changes. Actual macOS GUI QA is a separate follow-up after explicit approval.
 
 After focused tests pass, run full `swift test`.
 

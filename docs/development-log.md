@@ -4,6 +4,19 @@
 
 ## 2026-06-04
 
+### 01:30 KST
+
+- 완료: P2 Playback Stability 설계 보강 및 실행 계획 작성
+- 문서:
+  - `docs/superpowers/specs/2026-06-04-p2-playback-stability-design.md`
+  - `docs/superpowers/plans/2026-06-04-p2-playback-stability.md`
+- 반영:
+  - project 표시명은 `Workshop Wallpaper Bridge`로 통일
+  - transactional hidden/staged replacement window flow 명확화
+  - A -> failing B 전환 시 A live playback/fallback/space-refresh/lastPlayedAssetId 유지
+  - debounce test는 fake scheduler 기반으로 명시
+  - monitor/sleep-wake 검증은 GUI 실행 없는 simulated unit/integration 범위로 제한
+
 ### 01:24 KST
 
 - 시작: P2 Playback Stability 설계
