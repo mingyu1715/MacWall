@@ -1,8 +1,8 @@
-# Workshop Wallpaper Bridge
+# MacWall
 
 내가 가진 Wallpaper Engine Workshop 프로젝트를 macOS에서 배경화면처럼 사용합니다.
 
-Workshop Wallpaper Bridge는 Windows에서 Wallpaper Engine을 구매해 사용하던 사람이, 본인의 로컬 Workshop 폴더를 Mac으로 복사한 뒤 쓰기 위한 앱입니다. 복사한 폴더를 스캔하고, 지원 가능한 월페이퍼를 Mac 전용 로컬 라이브러리에 가져오고, video/web/image/scene 월페이퍼를 데스크톱 레이어에서 재생합니다.
+MacWall은 Windows에서 Wallpaper Engine을 구매해 사용하던 사람이, 본인의 로컬 Workshop 폴더를 Mac으로 복사한 뒤 쓰기 위한 앱입니다. 복사한 폴더를 스캔하고, 지원 가능한 월페이퍼를 Mac 전용 로컬 라이브러리에 가져오고, video/web/image/scene 월페이퍼를 데스크톱 레이어에서 재생합니다.
 
 [English README](README.md)
 
@@ -15,8 +15,8 @@ Workshop Wallpaper Bridge는 Windows에서 Wallpaper Engine을 구매해 사용�
    ```
 
 2. `431960` 폴더를 Mac으로 복사합니다.
-3. GitHub 최신 release에서 `WorkshopWallpaperBridge-macOS-arm64.dmg`를 받습니다.
-4. DMG를 열고 **Workshop Wallpaper Bridge.app**을 **Applications**로 드래그한 뒤 앱을 엽니다.
+3. GitHub 최신 release에서 `MacWall-macOS-arm64.dmg`를 받습니다.
+4. DMG를 열고 **MacWall.app**을 **Applications**로 드래그한 뒤 앱을 엽니다.
 5. 메뉴바 아이콘을 누르고 **Open Settings**를 선택합니다.
 6. Wallpaper Engine 프로젝트는 **Browse**를 누르고 복사한 `431960` 폴더를 선택한 뒤 **Scan**을 누릅니다.
 7. 지원 가능한 프로젝트를 선택하고 **Import Selected**를 누릅니다.
@@ -30,12 +30,12 @@ Workshop Wallpaper Bridge는 Windows에서 Wallpaper Engine을 구매해 사용�
 
 앱은 메뉴바 유틸리티로 실행됩니다. Dock이나 앱 전환기에 계속 뜨지 않고, 설정창을 닫아도 데스크톱 레이어의 움직이는 배경화면은 계속 재생됩니다.
 
-잠금화면에서도 움직이게 하려면 **Animate Lock Screen**을 켜고 **Screen Saver Settings**를 누른 뒤 macOS 화면 보호기에서 **Workshop Wallpaper Bridge**를 선택합니다. macOS의 잠금화면 애니메이션은 screen saver 경로로 동작하므로 MP4, MOV, M4V 월페이퍼는 잠금화면에서도 재생됩니다. 다른 형식은 정적 이미지 fallback을 사용합니다.
+잠금화면에서도 움직이게 하려면 **Animate Lock Screen**을 켜고 **Screen Saver Settings**를 누른 뒤 macOS 화면 보호기에서 **MacWall**을 선택합니다. macOS의 잠금화면 애니메이션은 screen saver 경로로 동작하므로 MP4, MOV, M4V 월페이퍼는 잠금화면에서도 재생됩니다. 다른 형식은 정적 이미지 fallback을 사용합니다.
 
 ## 재생 방식
 
 - **Auto-pause behind apps**가 기본으로 켜져 있습니다.
-- Workshop Wallpaper Bridge 컨트롤 창을 최소화하거나 숨겨도 재생은 멈추지 않습니다.
+- MacWall 컨트롤 창을 최소화하거나 숨겨도 재생은 멈추지 않습니다.
 - 설정창을 닫아도 앱은 종료되지 않습니다. 완전히 끄려면 메뉴바 아이콘에서 **Quit**을 누릅니다.
 - 다른 앱이 데스크톱을 가리면 월페이퍼 레이어는 그대로 둡니다. 일반 동영상은 현재 프레임에서 멈추고, 웹 월페이퍼는 CSS 애니메이션만 정지하며 내부 동영상은 재개 지연을 줄이기 위해 계속 재생합니다.
 - 다시 바탕화면으로 돌아오면 자동으로 재생을 이어갑니다.
@@ -57,7 +57,7 @@ Apple M2 Mac, macOS 26.2, 로컬 MP4 월페이퍼 기준으로 측정했습니�
 
 ## 잠금화면과 정적 배경화면
 
-Workshop Wallpaper Bridge는 번들된 macOS screen saver로 잠금화면 애니메이션을 지원합니다. Apple은 커스텀 screen saver를 만들 수 있는 공개 `ScreenSaverView` framework를 제공하고, macOS Lock Screen 설정은 선택한 screen saver를 비활성 상태나 잠금 상태에서 시작할 수 있습니다.
+MacWall은 번들된 macOS screen saver로 잠금화면 애니메이션을 지원합니다. Apple은 커스텀 screen saver를 만들 수 있는 공개 `ScreenSaverView` framework를 제공하고, macOS Lock Screen 설정은 선택한 screen saver를 비활성 상태나 잠금 상태에서 시작할 수 있습니다.
 
 움직이는 잠금화면으로 지원하는 것:
 
@@ -72,10 +72,10 @@ Workshop Wallpaper Bridge는 번들된 macOS screen saver로 잠금화면 애니
 
 켜는 방법:
 
-1. **Workshop Wallpaper Bridge Settings**를 엽니다.
+1. **MacWall Settings**를 엽니다.
 2. **Animate Lock Screen**을 켭니다.
 3. **Screen Saver Settings**를 누릅니다.
-4. macOS 화면 보호기에서 **Workshop Wallpaper Bridge**를 선택합니다.
+4. macOS 화면 보호기에서 **MacWall**을 선택합니다.
 5. macOS Lock Screen 설정에서 화면 보호기 시작 시간과 암호 요구 시간을 정합니다.
 
 이 앱은 Apple Aerial wallpaper database를 패치하거나 비공개 Lock Screen wallpaper database를 수정하지 않습니다.
@@ -108,7 +108,7 @@ Workshop Wallpaper Bridge는 번들된 macOS screen saver로 잠금화면 애니
 
 ## 하지 않는 것
 
-Workshop Wallpaper Bridge는 local-only 앱입니다.
+MacWall은 local-only 앱입니다.
 
 - Steam Workshop 자료를 다운로드하지 않습니다.
 - Steam 인증을 우회하지 않습니다.
@@ -128,7 +128,7 @@ Workshop Wallpaper Bridge는 local-only 앱입니다.
 가져온 파일은 아래 위치에 복사됩니다.
 
 ```text
-~/Library/Application Support/WorkshopWallpaperBridge
+~/Library/Application Support/MacWall
 ```
 
 ## 소스에서 실행
@@ -141,9 +141,9 @@ Workshop Wallpaper Bridge는 local-only 앱입니다.
 - 선택: WebM/MKV/AVI 변환용 `ffmpeg`
 
 ```bash
-git clone https://github.com/mingyu1715/workshop-wallpaper-bridge.git
-cd workshop-wallpaper-bridge
-swift run WorkshopWallpaperBridge
+git clone https://github.com/mingyu1715/MacWall.git
+cd MacWall
+swift run MacWall
 ```
 
 `ffmpeg` 설치:
@@ -156,13 +156,13 @@ brew install ffmpeg
 
 ```bash
 bash Scripts/package-app.sh
-open "dist/Workshop Wallpaper Bridge.app"
+open "dist/MacWall.app"
 ```
 
 생성되는 파일:
 
 ```text
-dist/WorkshopWallpaperBridge-macOS-arm64.dmg
+dist/MacWall-macOS-arm64.dmg
 ```
 
 ## Developer ID 서명과 공증
@@ -176,7 +176,7 @@ dist/WorkshopWallpaperBridge-macOS-arm64.dmg
 - 저장된 notary profile. 예:
 
 ```bash
-xcrun notarytool store-credentials "wwb-notary" \
+xcrun notarytool store-credentials "macwall-notary" \
   --apple-id "APPLE_ID_EMAIL" \
   --team-id "TEAM_ID" \
   --password "APP_SPECIFIC_PASSWORD"
@@ -186,7 +186,7 @@ DMG 빌드, 서명, 공증, staple:
 
 ```bash
 SIGN_IDENTITY="Developer ID Application: NAME (TEAM_ID)" \
-NOTARY_PROFILE="wwb-notary" \
+NOTARY_PROFILE="macwall-notary" \
 REQUIRE_SIGNING=1 \
 bash Scripts/package-app.sh
 ```
@@ -195,17 +195,17 @@ bash Scripts/package-app.sh
 
 ## CLI
 
-고급 사용자와 검증을 위해 `wwbctl`도 제공합니다.
+고급 사용자와 검증을 위해 `macwallctl`도 제공합니다.
 
 ```bash
-swift run wwbctl scan "/path/to/431960" --out index.json
-swift run wwbctl import "/path/to/431960"
-swift run wwbctl import-video "/path/to/video.mp4"
-swift run wwbctl remove "<asset-id>"
-swift run wwbctl convert input.webm --out output.mp4
-swift run wwbctl scene-info "/path/to/scene.pkg"
-swift run wwbctl scene-render-info "/path/to/scene.pkg"
-swift run wwbctl doctor
+swift run macwallctl scan "/path/to/431960" --out index.json
+swift run macwallctl import "/path/to/431960"
+swift run macwallctl import-video "/path/to/video.mp4"
+swift run macwallctl remove "<asset-id>"
+swift run macwallctl convert input.webm --out output.mp4
+swift run macwallctl scene-info "/path/to/scene.pkg"
+swift run macwallctl scene-render-info "/path/to/scene.pkg"
+swift run macwallctl doctor
 ```
 
 scene이 정적으로 보이면 먼저 `scene-info`를 실행해 보세요. 큰 texture를 디코딩하지 않고 animation, particle, effect, shader 개수를 보여줍니다. `scene-render-info`는 지원 가능한 texture를 실제로 디코딩하므로 고해상도 scene에서는 시간이 더 걸릴 수 있습니다.
@@ -235,7 +235,7 @@ macOS가 확인되지 않은 개발자 경고를 띄우면 아직 공증되지 �
 
 ## Wallpaper Engine과의 관계
 
-이 프로젝트는 Valve, Steam, Wallpaper Engine과 관련이 없는 비공식 프로젝트입니다. Wallpaper Engine은 해당 소유자의 상표입니다. Workshop Wallpaper Bridge는 사용자가 합법적으로 접근할 수 있는 로컬 파일을 개인적으로 활용하기 위한 호환 도구입니다.
+이 프로젝트는 Valve, Steam, Wallpaper Engine과 관련이 없는 비공식 프로젝트입니다. Wallpaper Engine은 해당 소유자의 상표입니다. MacWall은 사용자가 합법적으로 접근할 수 있는 로컬 파일을 개인적으로 활용하기 위한 호환 도구입니다.
 
 ## 라이선스
 

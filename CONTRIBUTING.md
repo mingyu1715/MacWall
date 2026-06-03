@@ -1,6 +1,6 @@
 # 기여 가이드
 
-Workshop Wallpaper Bridge에 기여할 때의 기본 기준입니다.
+MacWall에 기여할 때의 기본 기준입니다.
 
 세부 개발 운영 기준은 [docs/development-guide.md](docs/development-guide.md)를 우선합니다.
 

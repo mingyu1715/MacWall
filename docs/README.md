@@ -1,6 +1,6 @@
 # 문서 안내
 
-이 디렉터리는 Workshop Wallpaper Bridge의 개발 문서를 관리합니다.
+이 디렉터리는 MacWall의 개발 문서를 관리합니다.
 
 ## 먼저 볼 문서
 

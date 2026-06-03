@@ -1,4 +1,4 @@
-# Workshop Wallpaper Bridge 개발 로드맵
+# MacWall 개발 로드맵
 
 수정일: 2026-06-03
 
@@ -6,7 +6,7 @@
 
 ## 1. 제품 정체성
 
-Workshop Wallpaper Bridge는 사용자가 Windows에서 직접 복사해 온 Wallpaper Engine project를 macOS에서 로컬로 실행하는 runtime입니다.
+MacWall은 사용자가 Windows에서 직접 복사해 온 Wallpaper Engine project를 macOS에서 로컬로 실행하는 runtime입니다.
 
 ```text
 사용자가 복사한 Workshop folder
@@ -235,7 +235,7 @@ Metal render graph
 | `SceneRuntime` | time, pause state, user property, input, 이후 SceneScript 구동 |
 | `SceneSnapshot` | desktop fallback cache용 대표 Scene frame 캡처 |
 
-최종 Metal runtime logic은 `WorkshopWallpaperCore`에 넣지 않습니다. core package는 desktop rendering 없이 CLI에서도 사용할 수 있어야 합니다.
+최종 Metal runtime logic은 `MacWallCore`에 넣지 않습니다. core package는 desktop rendering 없이 CLI에서도 사용할 수 있어야 합니다.
 
 ## 5. Scene 개발 단계
 
@@ -243,7 +243,7 @@ Metal render graph
 
 목표: 최종 renderer를 만들기 전에 input surface를 이해합니다.
 
-- `wwbctl scene-audit <scene.pkg>`의 stable JSON output을 설계합니다.
+- `macwallctl scene-audit <scene.pkg>`의 stable JSON output을 설계합니다.
 - PKG version, TEX container, TEX pixel format, flag, object type, material, effect, shader, font, audio, video texture, script, unresolved path를 기록합니다.
 - Scene이 `scene.pkg` 외부 shared Wallpaper Engine asset에 의존하는지 기록합니다.
 - local test fixture별 audit snapshot을 저장합니다.
@@ -377,12 +377,12 @@ local fixture는 `test/` 아래에 있습니다. 사용자가 직접 복사한 l
 
 | Path | 현재 책임 |
 | --- | --- |
-| `Sources/WorkshopWallpaperCore/Scene/ScenePackage.swift` | PKG reader와 lightweight analysis |
-| `Sources/WorkshopWallpaperCore/Scene/SceneTexture.swift` | TEX reader와 software decode path |
-| `Sources/WorkshopWallpaperCore/Scene/SceneLZ4BlockDecoder.swift` | LZ4 block decode |
-| `Sources/WorkshopWallpaperCore/Scene/SceneDXTDecoder.swift` | DXT1, DXT3, DXT5 software decode |
-| `Sources/WorkshopWallpaperCore/Scene/SceneRenderPlan.swift` | prototype image-layer extraction과 basic animation parsing |
-| `Sources/WorkshopWallpaperBridgeApp/Playback/SceneWallpaperView.swift` | prototype `CALayer` rendering |
+| `Sources/MacWallCore/Scene/ScenePackage.swift` | PKG reader와 lightweight analysis |
+| `Sources/MacWallCore/Scene/SceneTexture.swift` | TEX reader와 software decode path |
+| `Sources/MacWallCore/Scene/SceneLZ4BlockDecoder.swift` | LZ4 block decode |
+| `Sources/MacWallCore/Scene/SceneDXTDecoder.swift` | DXT1, DXT3, DXT5 software decode |
+| `Sources/MacWallCore/Scene/SceneRenderPlan.swift` | prototype image-layer extraction과 basic animation parsing |
+| `Sources/MacWallApp/Playback/SceneWallpaperView.swift` | prototype `CALayer` rendering |
 
 향후 규칙:
 

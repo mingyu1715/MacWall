@@ -3,34 +3,34 @@
 import PackageDescription
 
 let package = Package(
-    name: "WorkshopWallpaperBridge",
+    name: "MacWall",
     platforms: [.macOS(.v14)],
     products: [
-        .library(name: "WorkshopWallpaperCore", targets: ["WorkshopWallpaperCore"]),
-        .executable(name: "WorkshopWallpaperBridge", targets: ["WorkshopWallpaperBridgeExecutable"]),
-        .executable(name: "wwbctl", targets: ["wwbctl"])
+        .library(name: "MacWallCore", targets: ["MacWallCore"]),
+        .executable(name: "MacWall", targets: ["MacWallExecutable"]),
+        .executable(name: "macwallctl", targets: ["macwallctl"])
     ],
     targets: [
-        .target(name: "WorkshopWallpaperCore"),
+        .target(name: "MacWallCore"),
         .target(
-            name: "WorkshopWallpaperBridgeApp",
-            dependencies: ["WorkshopWallpaperCore"]
+            name: "MacWallApp",
+            dependencies: ["MacWallCore"]
         ),
         .executableTarget(
-            name: "WorkshopWallpaperBridgeExecutable",
-            dependencies: ["WorkshopWallpaperBridgeApp"]
+            name: "MacWallExecutable",
+            dependencies: ["MacWallApp"]
         ),
         .executableTarget(
-            name: "wwbctl",
-            dependencies: ["WorkshopWallpaperCore"]
+            name: "macwallctl",
+            dependencies: ["MacWallCore"]
         ),
         .testTarget(
-            name: "WorkshopWallpaperCoreTests",
-            dependencies: ["WorkshopWallpaperCore"]
+            name: "MacWallCoreTests",
+            dependencies: ["MacWallCore"]
         ),
         .testTarget(
-            name: "WorkshopWallpaperBridgeAppTests",
-            dependencies: ["WorkshopWallpaperBridgeApp"]
+            name: "MacWallAppTests",
+            dependencies: ["MacWallApp"]
         )
     ]
 )

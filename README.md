@@ -1,8 +1,8 @@
-# Workshop Wallpaper Bridge
+# MacWall
 
 Use your own Wallpaper Engine Workshop projects on macOS.
 
-Workshop Wallpaper Bridge is for people who already bought Wallpaper Engine on Windows and copied their local Workshop folder to a Mac. It scans that copied folder, imports supported wallpapers into a private Mac library, and plays video, web, image, and supported scene wallpapers on the desktop layer.
+MacWall is for people who already bought Wallpaper Engine on Windows and copied their local Workshop folder to a Mac. It scans that copied folder, imports supported wallpapers into a private Mac library, and plays video, web, image, and supported scene wallpapers on the desktop layer.
 
 [한국어 README](README.ko.md)
 
@@ -15,8 +15,8 @@ Workshop Wallpaper Bridge is for people who already bought Wallpaper Engine on W
    ```
 
 2. Copy the `431960` folder to your Mac.
-3. Download `WorkshopWallpaperBridge-macOS-arm64.dmg` from the latest GitHub release.
-4. Open the DMG, drag **Workshop Wallpaper Bridge.app** to **Applications**, then open it.
+3. Download `MacWall-macOS-arm64.dmg` from the latest GitHub release.
+4. Open the DMG, drag **MacWall.app** to **Applications**, then open it.
 5. Click the menu bar icon, then choose **Open Settings**.
 6. For Wallpaper Engine projects, click **Browse**, choose the copied `431960` folder, then click **Scan**.
 7. Select a supported project and click **Import Selected**.
@@ -30,12 +30,12 @@ Workshop Wallpaper Bridge is for people who already bought Wallpaper Engine on W
 
 The app runs as a menu bar utility. It does not stay in the Dock or app switcher, and the settings window can be closed while animated wallpapers continue running on the desktop layer.
 
-To animate the Lock Screen, turn on **Animate Lock Screen**, click **Screen Saver Settings**, and select **Workshop Wallpaper Bridge** as the macOS screen saver. macOS runs Lock Screen animation through the screen saver system, so MP4, MOV, and M4V wallpapers animate there. Other wallpaper types use a still fallback image.
+To animate the Lock Screen, turn on **Animate Lock Screen**, click **Screen Saver Settings**, and select **MacWall** as the macOS screen saver. macOS runs Lock Screen animation through the screen saver system, so MP4, MOV, and M4V wallpapers animate there. Other wallpaper types use a still fallback image.
 
 ## Playback Behavior
 
 - **Auto-pause behind apps** is enabled by default.
-- Minimizing or hiding the Workshop Wallpaper Bridge control window does not stop playback.
+- Minimizing or hiding the MacWall control window does not stop playback.
 - Closing the settings window does not quit the app. Use **Quit** from the menu bar icon when you want to fully stop the background utility.
 - When another app covers the desktop, the wallpaper layer stays in place. Standalone videos pause on their current frame. Web wallpapers pause CSS animations but keep embedded videos running to avoid a visible resume delay.
 - When you return to the desktop, playback resumes automatically.
@@ -57,7 +57,7 @@ Measured on an Apple M2 Mac running macOS 26.2 with a local MP4 wallpaper:
 
 ## Lock Screen And Still Wallpaper
 
-Workshop Wallpaper Bridge supports Lock Screen animation through a bundled macOS screen saver. Apple exposes a public `ScreenSaverView` framework for custom screen savers, and macOS Lock Screen settings can start the selected screen saver when the Mac is inactive or locked.
+MacWall supports Lock Screen animation through a bundled macOS screen saver. Apple exposes a public `ScreenSaverView` framework for custom screen savers, and macOS Lock Screen settings can start the selected screen saver when the Mac is inactive or locked.
 
 What the app can animate:
 
@@ -72,10 +72,10 @@ What uses a still fallback:
 
 How to enable it:
 
-1. Open **Workshop Wallpaper Bridge Settings**.
+1. Open **MacWall Settings**.
 2. Turn on **Animate Lock Screen**.
 3. Click **Screen Saver Settings**.
-4. Choose **Workshop Wallpaper Bridge** as the macOS screen saver.
+4. Choose **MacWall** as the macOS screen saver.
 5. In macOS Lock Screen settings, set when the screen saver starts and when a password is required.
 
 This app does not patch Apple's Aerial wallpaper database or use private Lock Screen wallpaper databases.
@@ -108,7 +108,7 @@ Experimental scene rendering is intentionally conservative. It can decode some p
 
 ## What This App Will Not Do
 
-Workshop Wallpaper Bridge is local-only.
+MacWall is local-only.
 
 - It does not download Steam Workshop items.
 - It does not bypass Steam authentication.
@@ -128,7 +128,7 @@ Workshop Wallpaper Bridge is local-only.
 Imported files are copied into:
 
 ```text
-~/Library/Application Support/WorkshopWallpaperBridge
+~/Library/Application Support/MacWall
 ```
 
 ## Install From Source
@@ -141,9 +141,9 @@ Requirements:
 - Optional: `ffmpeg` for WebM/MKV/AVI conversion
 
 ```bash
-git clone https://github.com/mingyu1715/workshop-wallpaper-bridge.git
-cd workshop-wallpaper-bridge
-swift run WorkshopWallpaperBridge
+git clone https://github.com/mingyu1715/MacWall.git
+cd MacWall
+swift run MacWall
 ```
 
 Install `ffmpeg`:
@@ -156,13 +156,13 @@ brew install ffmpeg
 
 ```bash
 bash Scripts/package-app.sh
-open "dist/Workshop Wallpaper Bridge.app"
+open "dist/MacWall.app"
 ```
 
 The script creates:
 
 ```text
-dist/WorkshopWallpaperBridge-macOS-arm64.dmg
+dist/MacWall-macOS-arm64.dmg
 ```
 
 ## Developer ID Signing And Notarization
@@ -176,7 +176,7 @@ Prerequisites:
 - A saved notary profile, for example:
 
 ```bash
-xcrun notarytool store-credentials "wwb-notary" \
+xcrun notarytool store-credentials "macwall-notary" \
   --apple-id "APPLE_ID_EMAIL" \
   --team-id "TEAM_ID" \
   --password "APP_SPECIFIC_PASSWORD"
@@ -186,7 +186,7 @@ Build, sign, notarize, and staple the DMG:
 
 ```bash
 SIGN_IDENTITY="Developer ID Application: NAME (TEAM_ID)" \
-NOTARY_PROFILE="wwb-notary" \
+NOTARY_PROFILE="macwall-notary" \
 REQUIRE_SIGNING=1 \
 bash Scripts/package-app.sh
 ```
@@ -195,17 +195,17 @@ The script signs the bundled executables, signs the app, creates the DMG, signs 
 
 ## CLI
 
-`wwbctl` is included for advanced users and testing.
+`macwallctl` is included for advanced users and testing.
 
 ```bash
-swift run wwbctl scan "/path/to/431960" --out index.json
-swift run wwbctl import "/path/to/431960"
-swift run wwbctl import-video "/path/to/video.mp4"
-swift run wwbctl remove "<asset-id>"
-swift run wwbctl convert input.webm --out output.mp4
-swift run wwbctl scene-info "/path/to/scene.pkg"
-swift run wwbctl scene-render-info "/path/to/scene.pkg"
-swift run wwbctl doctor
+swift run macwallctl scan "/path/to/431960" --out index.json
+swift run macwallctl import "/path/to/431960"
+swift run macwallctl import-video "/path/to/video.mp4"
+swift run macwallctl remove "<asset-id>"
+swift run macwallctl convert input.webm --out output.mp4
+swift run macwallctl scene-info "/path/to/scene.pkg"
+swift run macwallctl scene-render-info "/path/to/scene.pkg"
+swift run macwallctl doctor
 ```
 
 Use `scene-info` first when a scene looks static. It reports animation, particle, effect, and shader counts without decoding large textures. `scene-render-info` decodes supported textures and can take longer on high-resolution scene packages.
@@ -235,7 +235,7 @@ If macOS warns that the app is from an unidentified developer, that means the re
 
 ## Relationship To Wallpaper Engine
 
-This project is not affiliated with Valve, Steam, or Wallpaper Engine. Wallpaper Engine is a trademark of its respective owner. Workshop Wallpaper Bridge is a compatibility tool for personal local use with files you already have lawful access to.
+This project is not affiliated with Valve, Steam, or Wallpaper Engine. Wallpaper Engine is a trademark of its respective owner. MacWall is a compatibility tool for personal local use with files you already have lawful access to.
 
 ## License
 

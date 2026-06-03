@@ -2,15 +2,15 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-APP_NAME="Workshop Wallpaper Bridge"
+APP_NAME="MacWall"
 APP_DIR="$ROOT/dist/$APP_NAME.app"
 MACOS_DIR="$APP_DIR/Contents/MacOS"
 RESOURCES_DIR="$APP_DIR/Contents/Resources"
-SAVER_NAME="Workshop Wallpaper Bridge"
+SAVER_NAME="MacWall"
 SAVER_DIR="$RESOURCES_DIR/$SAVER_NAME.saver"
 SAVER_MACOS_DIR="$SAVER_DIR/Contents/MacOS"
-SAVER_EXECUTABLE="Workshop Wallpaper Bridge Lock Screen"
-DMG_PATH="$ROOT/dist/WorkshopWallpaperBridge-macOS-arm64.dmg"
+SAVER_EXECUTABLE="MacWall Lock Screen"
+DMG_PATH="$ROOT/dist/MacWall-macOS-arm64.dmg"
 APP_VERSION="${APP_VERSION:-1.0.0}"
 BUNDLE_VERSION="${BUNDLE_VERSION:-7}"
 SIGN_IDENTITY="${SIGN_IDENTITY:-}"
@@ -29,8 +29,8 @@ cd "$ROOT"
 swift build -c release
 rm -rf "$ROOT/dist"
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR" "$SAVER_MACOS_DIR"
-cp "$ROOT/.build/release/WorkshopWallpaperBridge" "$MACOS_DIR/Workshop Wallpaper Bridge"
-cp "$ROOT/.build/release/wwbctl" "$MACOS_DIR/wwbctl"
+cp "$ROOT/.build/release/MacWall" "$MACOS_DIR/MacWall"
+cp "$ROOT/.build/release/macwallctl" "$MACOS_DIR/macwallctl"
 cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -39,13 +39,13 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
   <key>CFBundleDevelopmentRegion</key>
   <string>en</string>
   <key>CFBundleExecutable</key>
-  <string>Workshop Wallpaper Bridge</string>
+  <string>MacWall</string>
   <key>CFBundleIdentifier</key>
-  <string>dev.3xhaust.WorkshopWallpaperBridge</string>
+  <string>io.github.mingyu1715.MacWall</string>
   <key>CFBundleInfoDictionaryVersion</key>
   <string>6.0</string>
   <key>CFBundleName</key>
-  <string>Workshop Wallpaper Bridge</string>
+  <string>MacWall</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
@@ -71,11 +71,11 @@ cat > "$SAVER_DIR/Contents/Info.plist" <<PLIST
   <key>CFBundleExecutable</key>
   <string>${SAVER_EXECUTABLE}</string>
   <key>CFBundleIdentifier</key>
-  <string>dev.3xhaust.WorkshopWallpaperBridge.LockScreenSaver</string>
+  <string>io.github.mingyu1715.MacWall.LockScreenSaver</string>
   <key>CFBundleInfoDictionaryVersion</key>
   <string>6.0</string>
   <key>CFBundleName</key>
-  <string>Workshop Wallpaper Bridge</string>
+  <string>MacWall</string>
   <key>CFBundlePackageType</key>
   <string>BNDL</string>
   <key>CFBundleShortVersionString</key>
@@ -83,7 +83,7 @@ cat > "$SAVER_DIR/Contents/Info.plist" <<PLIST
   <key>CFBundleVersion</key>
   <string>${BUNDLE_VERSION}</string>
   <key>NSPrincipalClass</key>
-  <string>WorkshopWallpaperLockScreenSaverView</string>
+  <string>MacWallLockScreenSaverView</string>
 </dict>
 </plist>
 PLIST
@@ -95,13 +95,13 @@ clang \
   -framework CoreMedia \
   -framework QuartzCore \
   -framework ScreenSaver \
-  "$ROOT/Sources/WorkshopWallpaperLockScreenSaver/WorkshopWallpaperLockScreenSaverView.m" \
+  "$ROOT/Sources/MacWallLockScreenSaver/MacWallLockScreenSaverView.m" \
   -o "$SAVER_MACOS_DIR/$SAVER_EXECUTABLE"
-chmod +x "$MACOS_DIR/Workshop Wallpaper Bridge" "$MACOS_DIR/wwbctl"
+chmod +x "$MACOS_DIR/MacWall" "$MACOS_DIR/macwallctl"
 chmod +x "$SAVER_MACOS_DIR/$SAVER_EXECUTABLE"
 if [ -n "$SIGN_IDENTITY" ]; then
-  codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$MACOS_DIR/wwbctl"
-  codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$MACOS_DIR/Workshop Wallpaper Bridge"
+  codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$MACOS_DIR/macwallctl"
+  codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$MACOS_DIR/MacWall"
   codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$SAVER_DIR"
   codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$APP_DIR"
   codesign --verify --strict --verbose=2 "$APP_DIR"

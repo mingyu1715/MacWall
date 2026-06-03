@@ -65,3 +65,19 @@
   - release/package/DMG/notarization/dist 작업은 release PR에서만 다룹니다.
   - 루트 `/test/`는 로컬 Workshop/sample asset 폴더로 보고 Git 추적에서 제외합니다.
   - Swift test source인 `Tests/`는 추적합니다.
+
+### 21:25 KST
+
+- 완료: project/repository 이름을 `MacWall`로 변경
+- 변경:
+  - remote URL: `https://github.com/mingyu1715/MacWall.git`
+  - package/product: `MacWall`
+  - app target: `MacWallApp`
+  - core target: `MacWallCore`
+  - CLI: `macwallctl`
+  - app bundle / screen saver / bundle identifier: `MacWall`, `io.github.mingyu1715.MacWall`
+- 유지:
+  - `LICENSE`의 원작 MIT notice와 attribution은 유지합니다.
+  - `docs/archive/`의 과거 기록은 historical archive로 보고 rename하지 않습니다.
+- 검증:
+  - `swift test` -> `104 tests, 0 failures`

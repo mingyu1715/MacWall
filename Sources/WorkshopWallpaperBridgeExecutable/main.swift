@@ -1,3 +1,0 @@
-import WorkshopWallpaperBridgeApp
-
-WorkshopWallpaperBridgeApplication.main()
