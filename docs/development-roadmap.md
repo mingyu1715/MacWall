@@ -1,6 +1,6 @@
 # MacWall 개발 로드맵
 
-수정일: 2026-06-03
+수정일: 2026-06-04
 
 이 문서는 현재 활성 제품 개발 방향과 Scene 개발 방향을 정리합니다. 완료된 세부 구현 계획은 `docs/implemented/`에 기록하고, 과거 계획은 `docs/archive/`에 보관합니다.
 
@@ -43,6 +43,9 @@ MacWall은 사용자가 Windows에서 직접 복사해 온 Wallpaper Engine proj
 - bundled macOS screen saver path로 animated Lock Screen playback을 실행합니다.
 - Video, Image, Web wallpaper에 대해 asset별 `Derived/desktop-fallback.png` cache를 유지합니다.
 - Space 변경 후 active Video/Web fallback cache를 live output에서 refresh합니다.
+- live playback 전환은 hidden/staged replacement window set을 먼저 만든 뒤 성공 시에만 old windows를 닫습니다.
+- screen-change, wake, visibility update는 deterministic scheduler boundary를 통해 debounce합니다.
+- item 전환 실패 시 이전 live playback, fallback active asset, space-refresh active asset, `lastPlayedAssetId`를 유지합니다.
 
 ### 임시 동작
 
@@ -138,15 +141,18 @@ Assets/
 
 ### Phase P2: Playback Stability
 
-다음 활성 작업입니다.
+상태: 구현 완료. 세부 기록은 `docs/implemented/2026-06-04-p2-playback-stability.md`에 있습니다.
 
-- Spaces swipe transition과 full-screen app transition을 검증합니다.
-- monitor attach, detach, resolution change를 검증합니다.
-- sleep / wake restoration을 검증합니다.
-- reduced-activity mode에서 wallpaper window를 숨기지 않습니다.
-- covered 상태에서 Video는 현재 frame에 pause된 상태로 유지합니다.
-- covered 상태에서 Web output은 보이게 유지하고 CSS animation만 pause합니다.
-- library item 전환 시 visible flash를 최소화합니다.
+- replacement windows는 hidden/staged 상태로 먼저 생성합니다.
+- 모든 target screen에 대한 replacement 생성이 성공해야 replacement set을 show하고 old windows를 close합니다.
+- replacement 생성 실패 또는 multi-monitor partial failure는 staged windows만 cleanup하고 기존 live playback을 유지합니다.
+- screen-change restore는 300ms debounce 후 실행합니다.
+- wake restore는 500ms debounce 후 실행합니다.
+- visibility update는 200ms debounce 후 실행합니다.
+- debounce 검증은 fake scheduler 기반 unit test로 처리하며 real sleep timing에 의존하지 않습니다.
+- A -> failing B 전환은 B fallback을 적용하지 않고 A live playback/fallback/space-refresh/`lastPlayedAssetId`를 유지합니다.
+- monitor attach/detach, resolution change, sleep/wake 검증은 GUI 실행 없는 simulated unit/integration test 범위로 처리했습니다.
+- 실제 macOS GUI QA는 별도 승인 후 후속 검증으로 남겨둡니다.
 
 ### Phase P3: Web Runtime Completion
 
@@ -436,7 +442,7 @@ Product work:
 
 ```text
 P1 Desktop Fallback Cache (완료)
--> P2 Playback Stability
+-> P2 Playback Stability (완료)
 -> P3 Web Runtime Completion
 ```
 
@@ -464,7 +470,7 @@ S0 Format Research and Fixture Catalog
 
 다음 product work를 시작하기 전에:
 
-1. P2 Playback Stability 설계/spec 문서를 작성합니다.
-2. P2 실행 가능한 구현 계획을 작성합니다.
-3. Spaces, full-screen transition, monitor change, sleep/wake, item switching acceptance criteria를 확정합니다.
-4. P2/P3 방향이 확정되기 전에는 Scene S0를 시작하지 않습니다.
+1. P3 Web Runtime Completion 설계/spec 문서를 작성합니다.
+2. P3 실행 가능한 구현 계획을 작성합니다.
+3. Web property API, local-only policy, optional remote-network policy, Web error reporting acceptance criteria를 확정합니다.
+4. P3 방향과 Scene runtime 우선순위가 확정되기 전에는 Scene S0를 시작하지 않습니다.

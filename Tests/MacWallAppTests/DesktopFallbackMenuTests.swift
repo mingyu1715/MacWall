@@ -13,7 +13,7 @@ final class DesktopFallbackMenuTests: XCTestCase {
             )
         )
         let body = String(source[methodStart.lowerBound..<methodEnd.lowerBound])
-        let play = try XCTUnwrap(body.range(of: "WallpaperPlayer.shared.play"))
+        let play = try XCTUnwrap(body.range(of: "wallpaperPlayer.play"))
         let applyOrGenerate = try XCTUnwrap(body.range(of: "desktopFallbackCoordinator.applyOrGenerate"))
 
         XCTAssertFalse(body.contains("desktopFallbackCoordinator.prepareForPlayback"))

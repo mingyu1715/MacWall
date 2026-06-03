@@ -4,6 +4,20 @@
 
 ## 2026-06-04
 
+### 02:09 KST
+
+- 완료: P2 Playback Stability 구현
+- 문서: [P2 구현 기록](implemented/2026-06-04-p2-playback-stability.md)
+- 구현:
+  - transactional hidden/staged replacement window flow
+  - A -> failing B 전환 시 A live playback/fallback/space-refresh/lastPlayedAssetId 유지
+  - screen-change 300ms, wake 500ms, visibility 200ms debounce
+  - fake scheduler 기반 simulated lifecycle coverage
+- 확인:
+  - README.ko.md / README.md 재생 문구 확인, 사용자-facing 변경 불필요
+- 검증: `swift test` -> `121 tests, 0 failures`
+- 제외: Scene S0, Scene fallback, GUI QA, packaging/release work
+
 ### 01:30 KST
 
 - 완료: P2 Playback Stability 설계 보강 및 실행 계획 작성
