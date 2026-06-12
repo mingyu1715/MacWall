@@ -1,12 +1,15 @@
-# 문서 안내
+# 문서 인덱스
 
 이 디렉터리는 MacWall의 개발 문서를 관리합니다.
+
+이 파일은 GitHub에서 `docs/` 디렉터리를 열 때 자동으로 표시되는 landing page입니다. 정책과 작업 기준은 `development-guide.md`를 우선합니다.
 
 ## 먼저 볼 문서
 
 - [개발 로드맵](development-roadmap.md): 현재 구현 상태, 다음 phase, Scene 작업 경계
 - [개발 가이드](development-guide.md): 작업 방식, 로그 작성 규칙, 검증 기준, GitHub 운영 원칙
 - [개발 로그](development-log.md): 날짜/시간별 작업 기록, 버그, 결정, 검증 결과
+- [라이선스 정책](license-policy.md): 최종 확정 전까지의 라이선스 방향과 분리 기준
 
 ## 프로젝트 최상위 문서
 
@@ -16,6 +19,7 @@ repository root에는 사용자와 외부 기여자가 바로 확인해야 하�
 - [English README](../README.md): GitHub 기본 표시용 영어 문서
 - [CONTRIBUTING](../CONTRIBUTING.md): GitHub issue / branch / PR / review 기준
 - [LICENSE](../LICENSE): 원작 MIT notice, 현재 작업자 notice, attribution
+- [AGENTS](../AGENTS.md): AI coding agent 작업 기준
 
 개발 기록, roadmap, 완료 구현 기록은 `docs/` 아래에서 함께 관리합니다.
 
@@ -24,8 +28,16 @@ repository root에는 사용자와 외부 기여자가 바로 확인해야 하�
 큰 기능이 완료되면 `implemented/` 아래에 별도 구현 기록을 남깁니다.
 
 - [P1 Desktop Fallback Cache 및 Space Refresh 구현 기록](implemented/2026-06-03-p1-desktop-fallback-cache-and-space-refresh.md)
+- [P2 Playback Stability 구현 기록](implemented/2026-06-04-p2-playback-stability.md)
 
 작은 버그 수정이나 판단은 [개발 로그](development-log.md)에만 남겨도 됩니다. 큰 기능은 구현 기록을 만들고 개발 로그에서 링크합니다.
+
+## 활성 설계와 계획
+
+진행 중이거나 다음에 실행할 Superpowers 설계/계획은 `superpowers/specs/`와 `superpowers/plans/` 아래에서 관리합니다.
+
+- [macOS 26 Native Wallpaper Mode 설계](superpowers/specs/2026-06-07-macos-26-native-wallpaper-mode.md)
+- [macOS 26 Native Wallpaper Mode spike 실행 계획](superpowers/plans/2026-06-07-macos-26-native-wallpaper-mode-spike.md)
 
 ## 보관 문서
 
