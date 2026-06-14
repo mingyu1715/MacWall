@@ -53,20 +53,36 @@ Non-goals:
 
 ## Development Run Protocol
 
-Until a dedicated dev runner exists, do not treat `open` launch/quit of the
-containing app as the test lifecycle. `WallpaperAgent` owns the wallpaper
-extension process and may keep it alive after the host app exits.
+Do not treat `open` launch/quit of the containing app as the test lifecycle.
+`WallpaperAgent` owns the wallpaper extension process and may keep it alive
+after the host app exits.
 
-Use only this manual protocol:
+Use the spike dev runner:
+
+```bash
+./dev.sh reset
+./dev.sh install
+./dev.sh status
+./dev.sh logs --last 10m
+```
+
+Protocol:
 
 ```text
-1. dev reset
-2. dev install
+1. ./dev.sh reset
+2. ./dev.sh install
 3. User selects MacWall Native Spike in System Settings
-4. Check WallpaperAgent and extension logs
+4. Check WallpaperAgent and extension logs with ./dev.sh logs
 5. User verifies the actual screen
 6. Before retesting, always reset first and then install
 ```
+
+Runner commands:
+
+- `reset`: terminates stale `MacWallNativeWallpaperExtension` processes.
+- `install`: runs CMake, Xcode build, codesign verification, and LaunchServices registration.
+- `status`: prints `WallpaperAgent`, extension process, and recent session log state.
+- `logs`: shows or streams WallpaperAgent and extension logs.
 
 Rules:
 
@@ -74,3 +90,4 @@ Rules:
 - Do not assume host app quit stops `MacWallNativeWallpaperExtension`.
 - Compare user-visible results with `WallpaperAgent` and extension logs before
   making the next implementation change.
+- System Settings selection and actual Desktop output verification remain manual.

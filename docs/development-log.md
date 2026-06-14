@@ -2,6 +2,39 @@
 
 모든 시간은 Asia/Seoul 기준입니다.
 
+## 2026-06-14
+
+### 23:55 KST
+
+- 진행: macOS 26 Native Wallpaper Spike dev runner 구축
+- 변경:
+  - `MacWallNativeWallpaperSpike/dev.sh` 추가
+  - `reset`, `install`, `status`, `logs` 명령 제공
+  - `reset`은 기본적으로 stale `MacWallNativeWallpaperExtension` process만 정리하고 `WallpaperAgent`는 명시 옵션 없이는 종료하지 않음
+  - `install`은 CMake project 생성, Xcode build, codesign verification, LaunchServices registration을 수행
+  - `status`는 build path, app path, `WallpaperAgent` / extension process, 최근 session log를 출력
+  - `logs`는 `WallpaperAgent`, MacWall extension subsystem, extension bundle id 기준으로 `log show` / `log stream` 지원
+  - `MACWALL_NATIVE_DRY_RUN=1`과 `MACWALL_NATIVE_FAKE_PS_FILE`을 추가해 실제 process 변경 없이 runner 동작을 테스트할 수 있게 함
+- 문서:
+  - `MacWallNativeWallpaperSpike/README.md`
+  - `docs/development-guide.md`
+- 검증:
+  - RED: `MacWallNativeWallpaperSpike/Tests/dev_runner_tests.sh`가 runner 미구현 상태에서 실패함을 확인
+  - GREEN: runner 구현 후 dry-run 기반 runner test 통과
+  - `bash -n MacWallNativeWallpaperSpike/dev.sh` 통과
+  - `bash -n MacWallNativeWallpaperSpike/Tests/dev_runner_tests.sh` 통과
+  - `MACWALL_NATIVE_DRY_RUN=1 MacWallNativeWallpaperSpike/dev.sh install` 통과
+  - `MacWallNativeWallpaperSpike/dev.sh install` 실제 실행 통과
+  - `MacWallNativeWallpaperSpike/dev.sh status` 실행 통과
+  - `MacWallNativeWallpaperSpike/dev.sh logs --last 1m` 실행 통과
+  - 실제 `reset`은 사용자 화면 상태에 영향을 줄 수 있으므로 dry-run fixture로만 검증
+- 제외:
+  - System Settings 조작 없음
+  - 실제 Desktop 출력 확인 없음
+  - Main App 통합 없음
+  - 기존 `NSWindow` backend / fallback 정책 수정 없음
+  - release packaging / DMG / notarization / dist 작업 없음
+
 ## 2026-06-12
 
 ### 22:32 KST
