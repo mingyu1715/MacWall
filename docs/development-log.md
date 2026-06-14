@@ -2,6 +2,133 @@
 
 모든 시간은 Asia/Seoul 기준입니다.
 
+## 2026-06-15
+
+### 01:05 KST
+
+- 진행: macOS 26 Native Wallpaper Spike 검은 화면 원인 분류 및 안정 지점 고정
+- 확인:
+  - 사용자가 재시작 후 검은 화면이 해소되었음을 확인
+  - crash report 기준 `MacWallNativeWallpaperExtension`이 `EXC_BAD_ACCESS` / `SIGSEGV`로 종료됨
+  - crash 직전 로그 흐름:
+    - `WallpaperSnapshotXPC created rawValue surface=...`
+    - `snapshot probe reply`
+    - WallpaperAgent `NSCocoaErrorDomain (4101)`
+    - extension interruption / `ReportCrash`
+  - 따라서 검은 화면은 native video bridge 자체 문제가 아니라 snapshot/export rawValue reply와 encode swizzle 경로가 extension을 죽인 뒤 WallpaperAgent runtime이 깨진 상태로 남은 것으로 분류
+  - snapshot probe를 비활성화한 새 프로세스에서는:
+    - `WallpaperSnapshotXPC encode swizzle disabled`
+    - `snapshot probe disabled`
+    - WallpaperAgent snapshot export는 `WallpaperExtensionError (2)`로 실패
+    - extension crash 없이 `nativeVideoBridge enqueued`가 계속 기록됨
+- 변경:
+  - `MacWallSnapshotProbe.isEnabled = false`를 기본값으로 추가
+  - snapshot probe 비활성화 시 `WallpaperSnapshotXPC` 객체 생성 / rawValue 주입 / encode swizzle을 실행하지 않도록 차단
+  - snapshot 요청에는 nil reply를 유지해 Desktop video acquire path를 보호
+  - runner source guard test를 snapshot probe 기본 OFF와 encode swizzle 비활성화 로그를 요구하도록 수정
+- 현재 정책:
+  - Native video wallpaper path는 유지
+  - snapshot/export는 crash-prone으로 분류하고 별도 gate에서 재조사
+  - Desktop 출력 안정화가 snapshot/export보다 우선
+- 검증:
+  - RED: runner source guard test가 `MacWallSnapshotProbe.isEnabled = false` 미구현으로 실패함을 확인
+  - GREEN: `bash MacWallNativeWallpaperSpike/Tests/dev_runner_tests.sh` 통과
+  - `bash -n MacWallNativeWallpaperSpike/dev.sh` 통과
+  - `bash -n MacWallNativeWallpaperSpike/Tests/dev_runner_tests.sh` 통과
+  - `xcodebuild -project /tmp/macwall-native-wallpaper-spike-xcode/MacWallNativeWallpaperSpike.xcodeproj -scheme MacWallNativeWallpaperSpikeApp -configuration Debug -derivedDataPath /tmp/macwall-native-wallpaper-spike-dd build` 통과
+- 제외:
+  - Main App 통합 없음
+  - 기존 `NSWindow` backend / fallback 정책 수정 없음
+  - snapshot/export 해결 완료 주장 없음
+  - release packaging / DMG / notarization / dist 작업 없음
+
+### 00:48 KST
+
+- 진행: macOS 26 Native Wallpaper Spike snapshot/export 4101 원인 좁힘 및 응답 shape 수정
+- 확인:
+  - `snapshot probe`는 호출됨
+  - `WallpaperSnapshotXPC` instance 생성과 `snapshot probe reply`까지는 성공함
+  - WallpaperAgent는 reply 이후 `NSCocoaErrorDomain (4101)`로 snapshot export를 거부함
+  - 따라서 실패 원인은 nil reply나 IOSurface 생성 실패가 아니라 `WallpaperSnapshotXPC` XPC encode/decode shape mismatch로 분류
+  - runtime class layout 기준 `WallpaperRemoteContextXPC`는 `box@8`, `WallpaperSnapshotXPC`는 `rawValue@8`
+- 변경:
+  - `WallpaperSnapshotXPC` 생성 시 `rawValue` ivar가 있으면 `object_setIvar`로 `IOSurface` object를 직접 설정
+  - `rawValue`가 없을 때만 `box` ivar / raw offset fallback 사용
+  - private class layout 로그에 ivar type encoding 포함
+  - XPC allowed classes에 `IOSurface.self` 추가
+- 검증:
+  - RED: runner source guard test가 `rawValue` ivar lookup / `object_setIvar` / `IOSurface` allowlist 미구현으로 실패함을 확인
+  - GREEN: `bash MacWallNativeWallpaperSpike/Tests/dev_runner_tests.sh` 통과
+  - `bash -n MacWallNativeWallpaperSpike/dev.sh` 통과
+  - `bash -n MacWallNativeWallpaperSpike/Tests/dev_runner_tests.sh` 통과
+  - `git diff --check -- MacWallNativeWallpaperSpike` 통과
+  - `xcodebuild -project /tmp/macwall-native-wallpaper-spike-xcode/MacWallNativeWallpaperSpike.xcodeproj -scheme MacWallNativeWallpaperSpikeApp -configuration Debug -derivedDataPath /tmp/macwall-native-wallpaper-spike-dd build` 통과
+- 남은 확인:
+  - 실제 `NSCocoaErrorDomain (4101)` 제거 여부는 System Settings에서 MacWall Native Spike를 재선택한 뒤 WallpaperAgent 로그로 확인 필요
+- 제외:
+  - System Settings 조작 없음
+  - 실제 Desktop 출력 확인 없음
+  - Fullscreen -> Desktop QA 없음
+  - Main App 통합 없음
+  - 기존 `NSWindow` backend / fallback 정책 수정 없음
+  - release packaging / DMG / notarization / dist 작업 없음
+
+### 00:42 KST
+
+- 진행: macOS 26 Native Wallpaper Spike lifecycle 로그 정리
+- 확인:
+  - 사용자 관측과 로그 기준으로 native video wallpaper 출력은 유지되고 있었음
+  - 이후 `WallpaperAgent`의 runtime removal / invalidate는 사용자가 다른 wallpaper로 전환해서 발생한 정상 cleanup 흐름으로 분류
+  - snapshot/export 실패는 이번 재현에서 나타나지 않았고 현재 blocker로 보지 않음
+- 변경:
+  - `dev.sh logs` 기본 predicate를 더 좁혀 `WallpaperAgent` 쪽은 MacWall extension bundle id가 포함된 이벤트만 표시
+  - broad `WallpaperExtensionError` / `Wallpaper Timeline` match를 기본 로그에서 제거해 Apple 기본 wallpaper extension 잡음이 섞이지 않도록 함
+  - native wallpaper context role을 `desktop`, `preview`, `unknown`으로 분리
+  - acquire / store / stop / remove 로그에 `role`, `contextID`, replacement 여부, previous context 정보를 남김
+  - desktop context에만 `NativeVideoFrameBridge`를 붙이고 preview/unknown context는 영상 bridge를 만들지 않도록 명시
+- 검증:
+  - RED: runner test가 broad `WallpaperExtensionError` / `Wallpaper Timeline` predicate 때문에 실패함을 확인
+  - GREEN: `bash MacWallNativeWallpaperSpike/Tests/dev_runner_tests.sh` 통과
+  - `bash -n MacWallNativeWallpaperSpike/dev.sh` 통과
+  - `bash -n MacWallNativeWallpaperSpike/Tests/dev_runner_tests.sh` 통과
+  - `git diff --check -- MacWallNativeWallpaperSpike` 통과
+  - `xcodebuild -project /tmp/macwall-native-wallpaper-spike-xcode/MacWallNativeWallpaperSpike.xcodeproj -scheme MacWallNativeWallpaperSpikeApp -configuration Debug -derivedDataPath /tmp/macwall-native-wallpaper-spike-dd build` 통과
+- 제외:
+  - System Settings 조작 없음
+  - 실제 Desktop 출력 확인 없음
+  - Fullscreen -> Desktop QA 없음
+  - Main App 통합 없음
+  - 기존 `NSWindow` backend / fallback 정책 수정 없음
+  - release packaging / DMG / notarization / dist 작업 없음
+
+### 00:27 KST
+
+- 진행: macOS 26 Native Wallpaper Spike snapshot/export gate 진단 보강
+- 확인:
+  - 최근 extension subsystem 로그에는 snapshot 재현 로그가 남아 있지 않고, XPC invalidation 로그만 확인됨
+  - `WallpaperExtensionKit.framework` wrapper는 존재하지만 binary symlink는 현재 시스템에서 dyld shared cache 기반으로 보이며 직접 `strings` / `nm` 분석은 불가
+  - 따라서 `WallpaperSnapshotXPC` 구조는 로컬 파일 분석보다 런타임 class introspection 로그로 확인하는 편이 맞음
+- 변경:
+  - `dev.sh logs` predicate를 좁혀 RunningBoard 같은 무관 로그가 섞이지 않도록 수정
+  - `MACWALL_NATIVE_DRY_RUN=1 ./dev.sh logs --last 1m`이 실제 `/usr/bin/log`를 실행하지 않고 command만 출력하도록 수정
+  - `WallpaperRemoteContextXPC`와 `WallpaperSnapshotXPC` private class layout을 한 번만 로그로 남기는 runtime introspection 추가
+  - `WallpaperSnapshotXPC` surface pointer write offset을 hardcoded `8` 우선이 아니라 `box` ivar offset 우선, 없을 때만 `8` fallback으로 변경
+- 검증:
+  - RED: dry-run `logs` test가 sandboxed `/usr/bin/log` 실행 때문에 실패함을 확인
+  - RED: snapshot source guard test가 `WallpaperSnapshotXPC` `box` ivar lookup 미구현으로 실패함을 확인
+  - GREEN: `bash MacWallNativeWallpaperSpike/Tests/dev_runner_tests.sh` 통과
+  - `bash -n MacWallNativeWallpaperSpike/dev.sh` 통과
+  - `bash -n MacWallNativeWallpaperSpike/Tests/dev_runner_tests.sh` 통과
+  - `git diff --check -- MacWallNativeWallpaperSpike` 통과
+  - `xcodebuild -project /tmp/macwall-native-wallpaper-spike-xcode/MacWallNativeWallpaperSpike.xcodeproj -scheme MacWallNativeWallpaperSpikeApp -configuration Debug -derivedDataPath /tmp/macwall-native-wallpaper-spike-dd build` 통과
+- 제외:
+  - System Settings 조작 없음
+  - 실제 Desktop 출력 확인 없음
+  - Fullscreen -> Desktop QA 없음
+  - Main App 통합 없음
+  - 기존 `NSWindow` backend / fallback 정책 수정 없음
+  - release packaging / DMG / notarization / dist 작업 없음
+
 ## 2026-06-14
 
 ### 23:55 KST

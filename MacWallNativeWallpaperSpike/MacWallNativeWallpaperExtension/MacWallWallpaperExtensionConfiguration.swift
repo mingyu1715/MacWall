@@ -1,5 +1,6 @@
 import ExtensionFoundation
 import Foundation
+@preconcurrency import IOSurface
 import ObjectiveC
 
 struct MacWallWallpaperExtensionConfiguration: AppExtensionConfiguration {
@@ -127,6 +128,7 @@ private func makeAllowedXPCClasses() -> Set<AnyHashable> {
     classSet.add(NSURL.self)
     classSet.add(NSError.self)
     classSet.add(NSNull.self)
+    classSet.add(IOSurface.self)
 
     return classSet as! Set<AnyHashable>
 }

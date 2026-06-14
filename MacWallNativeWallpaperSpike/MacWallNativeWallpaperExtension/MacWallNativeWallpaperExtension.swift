@@ -17,7 +17,11 @@ final class MacWallNativeWallpaperExtension: NSObject, AppExtension {
             "MacWall native wallpaper extension process started \(MacWallNativeWallpaperRuntimeIdentity.current.logDescription, privacy: .public)"
         )
         loadWallpaperExtensionKit()
-        swizzleSnapshotEncodeIfNeeded()
+        if MacWallSnapshotProbe.isEnabled {
+            swizzleSnapshotEncodeIfNeeded()
+        } else {
+            macWallNativeWallpaperLogger.info("WallpaperSnapshotXPC encode swizzle disabled")
+        }
     }
 
     deinit {

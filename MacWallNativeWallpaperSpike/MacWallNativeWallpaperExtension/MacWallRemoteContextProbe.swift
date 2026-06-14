@@ -1,4 +1,5 @@
 import CoreGraphics
+import Darwin
 import Foundation
 @preconcurrency import IOSurface
 import ObjectiveC
@@ -8,8 +9,9 @@ enum MacWallRemoteContextProbe {
     static func makeAcquireResponse(id: Any?, request: Any?) -> AnyObject? {
         let contextKey = wallpaperIDKey(from: id)
         let requestInfo = MacWallWallpaperCreationRequestInfo.parse(request)
+        let role = requestInfo.contextRole
         macWallNativeWallpaperLogger.info(
-            "remoteContext request key=\(contextKey, privacy: .public) size=\(String(describing: requestInfo.size), privacy: .public) scale=\(requestInfo.scale, privacy: .public) displayID=\(String(describing: requestInfo.displayID), privacy: .public) isPreview=\(String(describing: requestInfo.isPreview), privacy: .public) \(MacWallNativeWallpaperRuntimeIdentity.current.logDescription, privacy: .public)"
+            "remoteContext request key=\(contextKey, privacy: .public) role=\(role.rawValue, privacy: .public) size=\(String(describing: requestInfo.size), privacy: .public) scale=\(requestInfo.scale, privacy: .public) displayID=\(String(describing: requestInfo.displayID), privacy: .public) isPreview=\(String(describing: requestInfo.isPreview), privacy: .public) \(MacWallNativeWallpaperRuntimeIdentity.current.logDescription, privacy: .public)"
         )
 
         guard let caContext = createRemoteCAContext(displayID: requestInfo.displayID) else {
@@ -29,13 +31,13 @@ enum MacWallRemoteContextProbe {
             scale: requestInfo.scale,
             appearance: appearance
         )
-        let videoBridge = requestInfo.isPreview == true
-            ? nil
-            : NativeVideoFrameBridge.attachDesktopProbe(
+        let videoBridge = role == .desktop
+            ? NativeVideoFrameBridge.attachDesktopProbe(
                 to: rootLayer,
                 size: requestInfo.size,
                 scale: requestInfo.scale
             )
+            : nil
         logSurfaceProbeLayer(
             "before-attach",
             layer: rootLayer,
@@ -72,6 +74,7 @@ enum MacWallRemoteContextProbe {
             caContext: caContext,
             rootLayer: rootLayer,
             contextID: contextID,
+            role: role,
             requestInfo: requestInfo,
             appearance: appearance,
             videoBridge: videoBridge
@@ -79,11 +82,17 @@ enum MacWallRemoteContextProbe {
         MacWallRemoteWallpaperContextStore.shared.store(context)
 
         macWallNativeWallpaperLogger.info(
-            "surfaceProbe expectedVisibleColor=\(appearance.name, privacy: .public) key=\(contextKey, privacy: .public) contextID=\(contextID) note=\(appearance.visibilityNote, privacy: .public)"
+            "surfaceProbe expectedVisibleColor=\(appearance.name, privacy: .public) key=\(contextKey, privacy: .public) role=\(role.rawValue, privacy: .public) contextID=\(contextID) note=\(appearance.visibilityNote, privacy: .public)"
         )
-        macWallNativeWallpaperLogger.info("remoteContext acquire reply key=\(contextKey, privacy: .public) contextID=\(contextID)")
+        macWallNativeWallpaperLogger.info("remoteContext acquire reply key=\(contextKey, privacy: .public) role=\(role.rawValue, privacy: .public) contextID=\(contextID)")
         return response
     }
+}
+
+enum MacWallWallpaperContextRole: String, Sendable {
+    case desktop
+    case preview
+    case unknown
 }
 
 final class MacWallRemoteWallpaperContext: @unchecked Sendable {
@@ -91,6 +100,7 @@ final class MacWallRemoteWallpaperContext: @unchecked Sendable {
     let caContext: AnyObject
     let rootLayer: CALayer
     let contextID: UInt32
+    let role: MacWallWallpaperContextRole
     let requestInfo: MacWallWallpaperCreationRequestInfo
     let appearance: MacWallSurfaceProbeAppearance
     let videoBridge: NativeVideoFrameBridge?
@@ -102,6 +112,7 @@ final class MacWallRemoteWallpaperContext: @unchecked Sendable {
         caContext: AnyObject,
         rootLayer: CALayer,
         contextID: UInt32,
+        role: MacWallWallpaperContextRole,
         requestInfo: MacWallWallpaperCreationRequestInfo,
         appearance: MacWallSurfaceProbeAppearance,
         videoBridge: NativeVideoFrameBridge?
@@ -110,6 +121,7 @@ final class MacWallRemoteWallpaperContext: @unchecked Sendable {
         self.caContext = caContext
         self.rootLayer = rootLayer
         self.contextID = contextID
+        self.role = role
         self.requestInfo = requestInfo
         self.appearance = appearance
         self.videoBridge = videoBridge
@@ -125,7 +137,7 @@ final class MacWallRemoteWallpaperContext: @unchecked Sendable {
         guard !didStop else {
             stateLock.unlock()
             macWallNativeWallpaperLogger.info(
-                "remote context stop skipped key=\(self.key, privacy: .public) contextID=\(self.contextID) reason=\(reason, privacy: .public) alreadyStopped=true"
+                "remote context stop skipped key=\(self.key, privacy: .public) role=\(self.role.rawValue, privacy: .public) contextID=\(self.contextID) reason=\(reason, privacy: .public) alreadyStopped=true"
             )
             return false
         }
@@ -144,7 +156,7 @@ final class MacWallRemoteWallpaperContext: @unchecked Sendable {
         CATransaction.flush()
 
         macWallNativeWallpaperLogger.info(
-            "remote context stopped key=\(self.key, privacy: .public) contextID=\(self.contextID) reason=\(reason, privacy: .public) \(MacWallNativeWallpaperRuntimeIdentity.current.logDescription, privacy: .public)"
+            "remote context stopped key=\(self.key, privacy: .public) role=\(self.role.rawValue, privacy: .public) contextID=\(self.contextID) reason=\(reason, privacy: .public) \(MacWallNativeWallpaperRuntimeIdentity.current.logDescription, privacy: .public)"
         )
         return true
     }
@@ -166,7 +178,7 @@ final class MacWallRemoteWallpaperContextStore: @unchecked Sendable {
         lock.unlock()
         _ = previous?.stop(reason: "context-replaced")
         macWallNativeWallpaperLogger.info(
-            "stored remote context key=\(key, privacy: .public) contextID=\(context.contextID) replaced=\(previous != nil) count=\(count) \(MacWallNativeWallpaperRuntimeIdentity.current.logDescription, privacy: .public)"
+            "stored remote context key=\(key, privacy: .public) role=\(context.role.rawValue, privacy: .public) contextID=\(context.contextID) replaced=\(previous != nil) previousContextID=\(previous?.contextID ?? 0) previousRole=\(previous?.role.rawValue ?? "none", privacy: .public) count=\(count) \(MacWallNativeWallpaperRuntimeIdentity.current.logDescription, privacy: .public)"
         )
     }
 
@@ -179,7 +191,7 @@ final class MacWallRemoteWallpaperContextStore: @unchecked Sendable {
         _ = context?.stop(reason: reason)
         let removed = context != nil
         macWallNativeWallpaperLogger.info(
-            "removed remote context key=\(key, privacy: .public) removed=\(removed) reason=\(reason, privacy: .public) count=\(count)"
+            "removed remote context key=\(key, privacy: .public) role=\(context?.role.rawValue ?? "none", privacy: .public) contextID=\(context?.contextID ?? 0) removed=\(removed) reason=\(reason, privacy: .public) count=\(count)"
         )
         return removed
     }
@@ -220,6 +232,16 @@ struct MacWallWallpaperCreationRequestInfo {
     var scale: CGFloat = 2.0
     var displayID: UInt32?
     var isPreview: Bool?
+
+    var contextRole: MacWallWallpaperContextRole {
+        if isPreview == true {
+            return .preview
+        }
+        if isPreview == false {
+            return .desktop
+        }
+        return .unknown
+    }
 
     static func parse(_ request: Any?) -> MacWallWallpaperCreationRequestInfo {
         var info = MacWallWallpaperCreationRequestInfo()
@@ -426,6 +448,7 @@ private func createWallpaperRemoteContextXPC(contextID: UInt32) -> AnyObject? {
         macWallNativeWallpaperLogger.error("WallpaperRemoteContextXPC class allocation failed")
         return nil
     }
+    logPrivateClassLayoutOnce(realClass, label: "WallpaperRemoteContextXPC")
 
     let object = raw as AnyObject
     let pointer = Unmanaged.passUnretained(object).toOpaque()
@@ -442,7 +465,16 @@ private func createWallpaperRemoteContextXPC(contextID: UInt32) -> AnyObject? {
 }
 
 enum MacWallSnapshotProbe {
+    static let isEnabled = false
+
     static func makeSnapshotResponse(for id: Any?) -> AnyObject? {
+        guard isEnabled else {
+            macWallNativeWallpaperLogger.warning(
+                "snapshot probe disabled key=\(wallpaperIDKey(from: id), privacy: .public) reason=WallpaperSnapshotXPC rawValue reply crashes extension"
+            )
+            return nil
+        }
+
         let context = MacWallRemoteWallpaperContextStore.shared.context(for: id)
             ?? MacWallRemoteWallpaperContextStore.shared.firstContext()
         let requestInfo = context?.requestInfo ?? MacWallWallpaperCreationRequestInfo()
@@ -507,12 +539,103 @@ private func createWallpaperSnapshotXPC(surface: IOSurface) -> AnyObject? {
         macWallNativeWallpaperLogger.error("WallpaperSnapshotXPC class allocation failed")
         return nil
     }
+    logPrivateClassLayoutOnce(snapshotXPCClass, label: "WallpaperSnapshotXPC")
 
-    let surfaceReference = Unmanaged.passRetained(surface).toOpaque()
-    let instancePointer = Unmanaged.passUnretained(instance as AnyObject).toOpaque()
-    instancePointer.advanced(by: 8).storeBytes(of: surfaceReference, as: UnsafeRawPointer.self)
-    macWallNativeWallpaperLogger.info("WallpaperSnapshotXPC created surface=\(String(describing: surfaceReference), privacy: .public)")
-    return instance as AnyObject
+    let snapshot = instance as AnyObject
+    if let rawValueIvar = class_getInstanceVariable(snapshotXPCClass, "rawValue") {
+        object_setIvar(snapshot, rawValueIvar, surface)
+        macWallNativeWallpaperLogger.info(
+            "WallpaperSnapshotXPC created rawValue surface=\(String(describing: Unmanaged.passUnretained(surface).toOpaque()), privacy: .public) offset=\(ivar_getOffset(rawValueIvar))"
+        )
+        return snapshot
+    }
+
+    let instancePointer = Unmanaged.passUnretained(snapshot).toOpaque()
+    if let boxIvar = class_getInstanceVariable(snapshotXPCClass, "box") {
+        let surfaceReference = Unmanaged.passRetained(surface).toOpaque()
+        let offset = ivar_getOffset(boxIvar)
+        instancePointer.advanced(by: offset).storeBytes(of: surfaceReference, as: UnsafeRawPointer.self)
+        macWallNativeWallpaperLogger.info(
+            "WallpaperSnapshotXPC created box surface=\(String(describing: surfaceReference), privacy: .public) offset=\(offset)"
+        )
+    } else {
+        let surfaceReference = Unmanaged.passRetained(surface).toOpaque()
+        let offset = 8
+        instancePointer.advanced(by: offset).storeBytes(of: surfaceReference, as: UnsafeRawPointer.self)
+        macWallNativeWallpaperLogger.info(
+            "WallpaperSnapshotXPC created fallback surface=\(String(describing: surfaceReference), privacy: .public) offset=\(offset)"
+        )
+    }
+    return snapshot
+}
+
+private final class MacWallPrivateClassLayoutLogger: @unchecked Sendable {
+    static let shared = MacWallPrivateClassLayoutLogger()
+
+    private let lock = NSLock()
+    private var loggedLabels: Set<String> = []
+
+    private init() {}
+
+    func log(_ objectClass: AnyClass, label: String) {
+        lock.lock()
+        let shouldLog = loggedLabels.insert(label).inserted
+        lock.unlock()
+        guard shouldLog else {
+            return
+        }
+
+        let ivars = describeIvars(of: objectClass)
+        let methods = describeMethods(of: objectClass)
+        macWallNativeWallpaperLogger.info(
+            "privateClassLayout label=\(label, privacy: .public) class=\(NSStringFromClass(objectClass), privacy: .public) ivars=\(ivars, privacy: .public) methods=\(methods, privacy: .public)"
+        )
+    }
+
+    private func describeIvars(of objectClass: AnyClass) -> String {
+        var count: UInt32 = 0
+        guard let ivarList = class_copyIvarList(objectClass, &count) else {
+            return "[]"
+        }
+        defer {
+            free(ivarList)
+        }
+
+        var descriptions: [String] = []
+        for index in 0..<Int(count) {
+            let ivar = ivarList[index]
+            guard let name = ivar_getName(ivar) else {
+                continue
+            }
+            let typeEncoding = ivar_getTypeEncoding(ivar).map(String.init(cString:)) ?? "?"
+            descriptions.append("\(String(cString: name)):\(typeEncoding)@\(ivar_getOffset(ivar))")
+        }
+        return "[" + descriptions.joined(separator: ",") + "]"
+    }
+
+    private func describeMethods(of objectClass: AnyClass) -> String {
+        var count: UInt32 = 0
+        guard let methodList = class_copyMethodList(objectClass, &count) else {
+            return "[]"
+        }
+        defer {
+            free(methodList)
+        }
+
+        var descriptions: [String] = []
+        for index in 0..<min(Int(count), 20) {
+            let selector = method_getName(methodList[index])
+            descriptions.append(NSStringFromSelector(selector))
+        }
+        if count > 20 {
+            descriptions.append("...\(count - 20) more")
+        }
+        return "[" + descriptions.joined(separator: ",") + "]"
+    }
+}
+
+private func logPrivateClassLayoutOnce(_ objectClass: AnyClass, label: String) {
+    MacWallPrivateClassLayoutLogger.shared.log(objectClass, label: label)
 }
 
 func wallpaperIDKey(from id: Any?) -> String {

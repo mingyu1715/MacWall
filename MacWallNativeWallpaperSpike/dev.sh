@@ -209,11 +209,12 @@ cmd_logs() {
         shift
     done
 
-    local predicate="process == 'WallpaperAgent' OR subsystem == '$EXTENSION_SUBSYSTEM' OR eventMessage CONTAINS '$EXTENSION_BUNDLE_ID'"
+    local wallpaper_agent_predicate="process == 'WallpaperAgent' AND eventMessage CONTAINS '$EXTENSION_BUNDLE_ID'"
+    local predicate="subsystem == '$EXTENSION_SUBSYSTEM' OR ($wallpaper_agent_predicate)"
     if [[ "$mode" == "stream" ]]; then
-        /usr/bin/log stream --info --style compact --predicate "$predicate"
+        run_cmd /usr/bin/log stream --info --style compact --predicate "$predicate"
     else
-        /usr/bin/log show --last "$last" --info --style compact --predicate "$predicate"
+        run_cmd /usr/bin/log show --last "$last" --info --style compact --predicate "$predicate"
     fi
 }
 
