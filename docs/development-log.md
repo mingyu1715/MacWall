@@ -4,6 +4,26 @@
 
 ## 2026-06-15
 
+### 01:18 KST
+
+- 진행: macOS 26 Native Wallpaper Snapshot Export Gate 문서화 및 구현 준비
+- 변경:
+  - `docs/superpowers/specs/2026-06-15-native-wallpaper-snapshot-export-gate-design.md` 추가
+  - `docs/superpowers/plans/2026-06-15-native-wallpaper-snapshot-export-gate.md` 추가
+  - snapshot/export를 Desktop native video path와 분리된 gate로 정의
+  - 안정 baseline은 `disabled` mode로 고정
+  - `dev.sh install --snapshot-mode <mode>` 기반 candidate matrix 실행 절차 정리
+  - candidate는 `error`, `empty-object`, `raw-value-retained-iosurface`, `box-retained-iosurface`, `png-data` 순서로 한 번에 하나만 실험하도록 제한
+- 기준:
+  - 구현 시작 없음
+  - Main App 통합 없음
+  - 기존 `NSWindow` backend / fallback 정책 수정 없음
+  - System Settings 조작 / GUI 실행 없음
+  - release packaging / DMG / notarization / dist 작업 없음
+- 다음:
+  - Task 1부터 구현 시 generated snapshot probe mode를 추가
+  - Task 4까지 완료한 뒤에만 사용자 확인이 필요한 manual runtime matrix 진행
+
 ### 01:05 KST
 
 - 진행: macOS 26 Native Wallpaper Spike 검은 화면 원인 분류 및 안정 지점 고정
