@@ -1,6 +1,7 @@
 import CoreGraphics
 import Darwin
 import Foundation
+import ImageIO
 @preconcurrency import IOSurface
 import ObjectiveC
 import QuartzCore
@@ -469,7 +470,7 @@ enum MacWallSnapshotProbe {
         MacWallSnapshotProbeConfiguration.mode != .disabled
     }
 
-    static func makeSnapshotResponse(for id: Any?) -> AnyObject? {
+    static func makeSnapshotResponse(for id: Any?) -> MacWallSnapshotResponse {
         let mode = MacWallSnapshotProbeConfiguration.mode
         macWallNativeWallpaperLogger.info(
             "snapshotGate event=snapshot-candidate wallpaperID=\(wallpaperIDKey(from: id), privacy: .public) mode=\(mode.rawValue, privacy: .public)"
@@ -479,51 +480,45 @@ enum MacWallSnapshotProbe {
             macWallNativeWallpaperLogger.warning(
                 "snapshot probe disabled key=\(wallpaperIDKey(from: id), privacy: .public) reason=WallpaperSnapshotXPC rawValue reply crashes extension"
             )
-            return nil
+            return .nilReply
         case .error:
-            macWallNativeWallpaperLogger.warning(
-                "snapshot probe mode not implemented key=\(wallpaperIDKey(from: id), privacy: .public) mode=\(mode.rawValue, privacy: .public) reason=candidate-matrix-pending"
-            )
-            return nil
+            return .error(makeSnapshotErrorResponse())
         case .emptyObject:
-            macWallNativeWallpaperLogger.warning(
-                "snapshot probe mode not implemented key=\(wallpaperIDKey(from: id), privacy: .public) mode=\(mode.rawValue, privacy: .public) reason=candidate-matrix-pending"
-            )
-            return nil
+            return makeEmptySnapshotXPC().map(MacWallSnapshotResponse.object) ?? .nilReply
         case .rawValueRetainedIOSurface:
-            macWallNativeWallpaperLogger.warning(
-                "snapshot probe mode not implemented key=\(wallpaperIDKey(from: id), privacy: .public) mode=\(mode.rawValue, privacy: .public) reason=candidate-matrix-pending"
-            )
-            return nil
+            return makeRawValueRetainedIOSurfaceSnapshot(for: id).map(MacWallSnapshotResponse.object) ?? .nilReply
         case .boxRetainedIOSurface:
-            macWallNativeWallpaperLogger.warning(
-                "snapshot probe mode not implemented key=\(wallpaperIDKey(from: id), privacy: .public) mode=\(mode.rawValue, privacy: .public) reason=candidate-matrix-pending"
-            )
-            return nil
+            return makeBoxRetainedIOSurfaceSnapshot(for: id).map(MacWallSnapshotResponse.object) ?? .nilReply
         case .pngData:
-            macWallNativeWallpaperLogger.warning(
-                "snapshot probe mode not implemented key=\(wallpaperIDKey(from: id), privacy: .public) mode=\(mode.rawValue, privacy: .public) reason=candidate-matrix-pending"
-            )
-            return nil
+            return makePNGDataSnapshot(for: id).map(MacWallSnapshotResponse.object) ?? .nilReply
         }
+    }
+}
 
-        let context = MacWallRemoteWallpaperContextStore.shared.context(for: id)
-            ?? MacWallRemoteWallpaperContextStore.shared.firstContext()
-        let requestInfo = context?.requestInfo ?? MacWallWallpaperCreationRequestInfo()
-        let appearance = context?.appearance ?? surfaceProbeAppearance(isPreview: false)
-        let size = normalizedLayerSize(requestInfo.size)
-        let scale = max(requestInfo.scale, 1)
+enum MacWallSnapshotResponse {
+    case nilReply
+    case object(AnyObject)
+    case error(NSError)
+}
 
-        guard let surface = createSnapshotSurface(size: size, scale: scale, color: appearance.fillColor),
-              let snapshot = createWallpaperSnapshotXPC(surface: surface) else {
-            macWallNativeWallpaperLogger.error("snapshot probe failed contextID=\(context?.contextID ?? 0)")
-            return nil
-        }
+final class MacWallSnapshotProbeRetainedObjectStore: @unchecked Sendable {
+    static let shared = MacWallSnapshotProbeRetainedObjectStore()
 
-        macWallNativeWallpaperLogger.info(
-            "snapshot probe reply contextID=\(context?.contextID ?? 0) key=\(wallpaperIDKey(from: id), privacy: .public) size=\(format(size), privacy: .public) scale=\(scale) \(MacWallNativeWallpaperRuntimeIdentity.current.logDescription, privacy: .public)"
-        )
-        return snapshot
+    private let lock = NSLock()
+    private var retainedObjects: [String: [AnyObject]] = [:]
+
+    private init() {}
+
+    func replace(_ objects: [AnyObject], for key: String) {
+        lock.lock()
+        retainedObjects[key] = objects
+        lock.unlock()
+    }
+
+    func clear(for key: String) {
+        lock.lock()
+        retainedObjects.removeValue(forKey: key)
+        lock.unlock()
     }
 }
 
@@ -565,40 +560,133 @@ private func createSnapshotSurface(size: CGSize, scale: CGFloat, color: CGColor)
     return surface
 }
 
-private func createWallpaperSnapshotXPC(surface: IOSurface) -> AnyObject? {
+private func makeSnapshotIOSurfaceForCurrentContext(id: Any?) -> IOSurface? {
+    let context = MacWallRemoteWallpaperContextStore.shared.context(for: id)
+        ?? MacWallRemoteWallpaperContextStore.shared.firstContext()
+    let requestInfo = context?.requestInfo ?? MacWallWallpaperCreationRequestInfo()
+    let appearance = context?.appearance ?? surfaceProbeAppearance(isPreview: false)
+    let size = normalizedLayerSize(requestInfo.size)
+    let scale = max(requestInfo.scale, 1)
+
+    guard let surface = createSnapshotSurface(size: size, scale: scale, color: appearance.fillColor) else {
+        macWallNativeWallpaperLogger.error("snapshot probe failed contextID=\(context?.contextID ?? 0)")
+        return nil
+    }
+
+    macWallNativeWallpaperLogger.info(
+        "snapshot probe reply contextID=\(context?.contextID ?? 0) key=\(wallpaperIDKey(from: id), privacy: .public) size=\(format(size), privacy: .public) scale=\(scale) \(MacWallNativeWallpaperRuntimeIdentity.current.logDescription, privacy: .public)"
+    )
+    return surface
+}
+
+private func makeSnapshotErrorResponse() -> NSError {
+    NSError(
+        domain: "MacWallNativeWallpaperSnapshotProbe",
+        code: 2001,
+        userInfo: [NSLocalizedDescriptionKey: "Explicit snapshot probe error"]
+    )
+}
+
+private func makeEmptySnapshotXPC() -> AnyObject? {
     guard let snapshotXPCClass = objc_getClass("WallpaperSnapshotXPC") as? AnyClass,
           let instance = class_createInstance(snapshotXPCClass, 0) else {
         macWallNativeWallpaperLogger.error("WallpaperSnapshotXPC class allocation failed")
         return nil
     }
     logPrivateClassLayoutOnce(snapshotXPCClass, label: "WallpaperSnapshotXPC")
+    return instance as AnyObject
+}
 
+private func makeRawValueRetainedIOSurfaceSnapshot(for id: Any?) -> AnyObject? {
+    guard let surface = makeSnapshotIOSurfaceForCurrentContext(id: id),
+          let snapshotXPCClass = objc_getClass("WallpaperSnapshotXPC") as? AnyClass,
+          let rawValueIvar = class_getInstanceVariable(snapshotXPCClass, "rawValue"),
+          let instance = class_createInstance(snapshotXPCClass, 0) else {
+        macWallNativeWallpaperLogger.error("WallpaperSnapshotXPC rawValue snapshot allocation failed")
+        return nil
+    }
+    logPrivateClassLayoutOnce(snapshotXPCClass, label: "WallpaperSnapshotXPC")
+
+    let key = wallpaperIDKey(from: id)
     let snapshot = instance as AnyObject
-    if let rawValueIvar = class_getInstanceVariable(snapshotXPCClass, "rawValue") {
-        object_setIvar(snapshot, rawValueIvar, surface)
-        macWallNativeWallpaperLogger.info(
-            "WallpaperSnapshotXPC created rawValue surface=\(String(describing: Unmanaged.passUnretained(surface).toOpaque()), privacy: .public) offset=\(ivar_getOffset(rawValueIvar))"
-        )
-        return snapshot
+    let surfaceObject = surface as AnyObject
+    MacWallSnapshotProbeRetainedObjectStore.shared.replace([surfaceObject], for: key)
+    object_setIvar(snapshot, rawValueIvar, surfaceObject)
+    macWallNativeWallpaperLogger.info(
+        "WallpaperSnapshotXPC created rawValue retained surface=\(String(describing: Unmanaged.passUnretained(surfaceObject).toOpaque()), privacy: .public) offset=\(ivar_getOffset(rawValueIvar))"
+    )
+    return snapshot
+}
+
+private func makeBoxRetainedIOSurfaceSnapshot(for id: Any?) -> AnyObject? {
+    guard let surface = makeSnapshotIOSurfaceForCurrentContext(id: id),
+          let snapshotXPCClass = objc_getClass("WallpaperSnapshotXPC") as? AnyClass,
+          let instance = class_createInstance(snapshotXPCClass, 0) else {
+        macWallNativeWallpaperLogger.error("WallpaperSnapshotXPC box snapshot allocation failed")
+        return nil
+    }
+    logPrivateClassLayoutOnce(snapshotXPCClass, label: "WallpaperSnapshotXPC")
+
+    let key = wallpaperIDKey(from: id)
+    let snapshot = instance as AnyObject
+    let pointer = Unmanaged.passUnretained(snapshot).toOpaque()
+    let offset = class_getInstanceVariable(snapshotXPCClass, "box").map(ivar_getOffset) ?? 8
+    let surfaceObject = surface as AnyObject
+    MacWallSnapshotProbeRetainedObjectStore.shared.replace([surfaceObject], for: key)
+    let surfacePointer = Unmanaged.passUnretained(surfaceObject).toOpaque()
+    pointer.advanced(by: offset).storeBytes(of: surfacePointer, as: UnsafeRawPointer.self)
+    macWallNativeWallpaperLogger.info(
+        "WallpaperSnapshotXPC created box retained surface=\(String(describing: surfacePointer), privacy: .public) offset=\(offset)"
+    )
+    return snapshot
+}
+
+private func makePNGDataSnapshot(for id: Any?) -> AnyObject? {
+    guard let surface = makeSnapshotIOSurfaceForCurrentContext(id: id),
+          let data = makePNGData(from: surface) else {
+        return nil
+    }
+    MacWallSnapshotProbeRetainedObjectStore.shared.replace([data], for: wallpaperIDKey(from: id))
+    return data
+}
+
+private func makePNGData(from surface: IOSurface) -> NSData? {
+    surface.lock(options: [], seed: nil)
+    let width = surface.width
+    let height = surface.height
+    let bytesPerRow = surface.bytesPerRow
+    let bytes = Data(bytes: surface.baseAddress, count: bytesPerRow * height)
+    surface.unlock(options: [], seed: nil)
+
+    guard let provider = CGDataProvider(data: bytes as CFData),
+          let image = CGImage(
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bitsPerPixel: 32,
+            bytesPerRow: bytesPerRow,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue),
+            provider: provider,
+            decode: nil,
+            shouldInterpolate: false,
+            intent: .defaultIntent
+          ) else {
+        macWallNativeWallpaperLogger.error("snapshot PNG CGImage creation failed \(width)x\(height)")
+        return nil
     }
 
-    let instancePointer = Unmanaged.passUnretained(snapshot).toOpaque()
-    if let boxIvar = class_getInstanceVariable(snapshotXPCClass, "box") {
-        let surfaceReference = Unmanaged.passRetained(surface).toOpaque()
-        let offset = ivar_getOffset(boxIvar)
-        instancePointer.advanced(by: offset).storeBytes(of: surfaceReference, as: UnsafeRawPointer.self)
-        macWallNativeWallpaperLogger.info(
-            "WallpaperSnapshotXPC created box surface=\(String(describing: surfaceReference), privacy: .public) offset=\(offset)"
-        )
-    } else {
-        let surfaceReference = Unmanaged.passRetained(surface).toOpaque()
-        let offset = 8
-        instancePointer.advanced(by: offset).storeBytes(of: surfaceReference, as: UnsafeRawPointer.self)
-        macWallNativeWallpaperLogger.info(
-            "WallpaperSnapshotXPC created fallback surface=\(String(describing: surfaceReference), privacy: .public) offset=\(offset)"
-        )
+    let output = NSMutableData()
+    guard let destination = CGImageDestinationCreateWithData(output, "public.png" as CFString, 1, nil) else {
+        macWallNativeWallpaperLogger.error("snapshot PNG destination creation failed")
+        return nil
     }
-    return snapshot
+    CGImageDestinationAddImage(destination, image, nil)
+    guard CGImageDestinationFinalize(destination) else {
+        macWallNativeWallpaperLogger.error("snapshot PNG finalize failed")
+        return nil
+    }
+    return output
 }
 
 private final class MacWallPrivateClassLayoutLogger: @unchecked Sendable {

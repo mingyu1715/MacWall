@@ -33,6 +33,7 @@ final class MacWallWallpaperXPCHandler: NSObject, MacWallWallpaperExtensionXPCPr
         )
         logXPCObject("invalidate.id", id)
         let removed = MacWallRemoteWallpaperContextStore.shared.remove(for: id, reason: "invalidate")
+        MacWallSnapshotProbeRetainedObjectStore.shared.clear(for: wallpaperIDKey(from: id))
         macWallNativeWallpaperLogger.info("invalidate removed remote context=\(removed)")
         reply(nil)
     }
@@ -44,18 +45,23 @@ final class MacWallWallpaperXPCHandler: NSObject, MacWallWallpaperExtensionXPCPr
             "snapshotGate event=snapshot-request \(runtime.logDescription, privacy: .public) wallpaperID=\(wallpaperID, privacy: .public) mode=\(MacWallSnapshotProbeConfiguration.mode.rawValue, privacy: .public)"
         )
         logXPCObject("snapshot.id", id)
-        guard let snapshot = MacWallSnapshotProbe.makeSnapshotResponse(for: id) else {
+        switch MacWallSnapshotProbe.makeSnapshotResponse(for: id) {
+        case .nilReply:
             macWallNativeWallpaperLogger.info(
                 "snapshotGate event=snapshot-reply \(runtime.logDescription, privacy: .public) wallpaperID=\(wallpaperID, privacy: .public) mode=\(MacWallSnapshotProbeConfiguration.mode.rawValue, privacy: .public) replyType=nil result=sent"
             )
             reply(nil, nil)
-            return
+        case .object(let snapshot):
+            macWallNativeWallpaperLogger.info(
+                "snapshotGate event=snapshot-reply \(runtime.logDescription, privacy: .public) wallpaperID=\(wallpaperID, privacy: .public) mode=\(MacWallSnapshotProbeConfiguration.mode.rawValue, privacy: .public) replyType=\(String(describing: type(of: snapshot)), privacy: .public) result=sent"
+            )
+            reply(snapshot, nil)
+        case .error(let error):
+            macWallNativeWallpaperLogger.info(
+                "snapshotGate event=snapshot-reply \(runtime.logDescription, privacy: .public) wallpaperID=\(wallpaperID, privacy: .public) mode=\(MacWallSnapshotProbeConfiguration.mode.rawValue, privacy: .public) replyType=NSError result=sent errorDomain=\(error.domain, privacy: .public) errorCode=\(error.code)"
+            )
+            reply(nil, error)
         }
-
-        macWallNativeWallpaperLogger.info(
-            "snapshotGate event=snapshot-reply \(runtime.logDescription, privacy: .public) wallpaperID=\(wallpaperID, privacy: .public) mode=\(MacWallSnapshotProbeConfiguration.mode.rawValue, privacy: .public) replyType=\(String(describing: type(of: snapshot)), privacy: .public) result=sent"
-        )
-        reply(snapshot, nil)
     }
 
     func provideSettingsViewModels(withContentTypes types: Any?, reply: @escaping (Any?, NSError?) -> Void) {

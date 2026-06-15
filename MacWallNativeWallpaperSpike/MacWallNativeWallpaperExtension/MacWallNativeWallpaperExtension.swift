@@ -9,6 +9,15 @@ let macWallNativeWallpaperLogger = Logger(
     category: "Handshake"
 )
 
+private var requiresSnapshotEncodeSwizzle: Bool {
+    switch MacWallSnapshotProbeConfiguration.mode {
+    case .emptyObject, .rawValueRetainedIOSurface, .boxRetainedIOSurface:
+        return true
+    case .disabled, .error, .pngData:
+        return false
+    }
+}
+
 @main
 final class MacWallNativeWallpaperExtension: NSObject, AppExtension {
     override required init() {
@@ -17,7 +26,7 @@ final class MacWallNativeWallpaperExtension: NSObject, AppExtension {
             "MacWall native wallpaper extension process started \(MacWallNativeWallpaperRuntimeIdentity.current.logDescription, privacy: .public)"
         )
         loadWallpaperExtensionKit()
-        if MacWallSnapshotProbe.isEnabled {
+        if requiresSnapshotEncodeSwizzle {
             swizzleSnapshotEncodeIfNeeded()
         } else {
             macWallNativeWallpaperLogger.info("WallpaperSnapshotXPC encode swizzle disabled")
