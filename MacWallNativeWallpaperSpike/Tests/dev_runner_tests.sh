@@ -35,6 +35,15 @@ assert_contains "$install_output" "xcodebuild -project"
 assert_contains "$install_output" "codesign --verify --deep --strict"
 assert_contains "$install_output" "lsregister -f -R -trusted"
 
+snapshot_install_output="$(MACWALL_NATIVE_DRY_RUN=1 "$DEV_RUNNER" install --snapshot-mode error)"
+assert_contains "$snapshot_install_output" "MacWallSnapshotProbeMode.generated.swift"
+assert_contains "$snapshot_install_output" "snapshot mode: error"
+
+invalid_mode_output="$(
+    MACWALL_NATIVE_DRY_RUN=1 "$DEV_RUNNER" install --snapshot-mode invalid-mode 2>&1 || true
+)"
+assert_contains "$invalid_mode_output" "Unknown snapshot mode: invalid-mode"
+
 logs_output="$(MACWALL_NATIVE_DRY_RUN=1 "$DEV_RUNNER" logs --last 1m)"
 assert_contains "$logs_output" "/usr/bin/log show"
 assert_contains "$logs_output" "com.mingyu1715.macwall.native-wallpaper-extension"
@@ -49,7 +58,13 @@ fi
 
 remote_context_source="$(cat "$REMOTE_CONTEXT_SOURCE")"
 assert_contains "$remote_context_source" "class_getInstanceVariable(snapshotXPCClass, \"box\")"
-assert_contains "$remote_context_source" "static let isEnabled = false"
+assert_contains "$remote_context_source" "MacWallSnapshotProbeConfiguration.mode"
+assert_contains "$remote_context_source" "case .disabled"
+assert_contains "$remote_context_source" "case .error"
+assert_contains "$remote_context_source" "case .emptyObject"
+assert_contains "$remote_context_source" "case .rawValueRetainedIOSurface"
+assert_contains "$remote_context_source" "case .boxRetainedIOSurface"
+assert_contains "$remote_context_source" "case .pngData"
 assert_contains "$remote_context_source" "snapshot probe disabled"
 assert_contains "$remote_context_source" "logPrivateClassLayoutOnce(snapshotXPCClass, label: \"WallpaperSnapshotXPC\")"
 assert_contains "$remote_context_source" "enum MacWallWallpaperContextRole"

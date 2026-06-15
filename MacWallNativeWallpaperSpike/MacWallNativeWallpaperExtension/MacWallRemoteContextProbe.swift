@@ -465,12 +465,41 @@ private func createWallpaperRemoteContextXPC(contextID: UInt32) -> AnyObject? {
 }
 
 enum MacWallSnapshotProbe {
-    static let isEnabled = false
+    static var isEnabled: Bool {
+        MacWallSnapshotProbeConfiguration.mode != .disabled
+    }
 
     static func makeSnapshotResponse(for id: Any?) -> AnyObject? {
-        guard isEnabled else {
+        let mode = MacWallSnapshotProbeConfiguration.mode
+        switch mode {
+        case .disabled:
             macWallNativeWallpaperLogger.warning(
                 "snapshot probe disabled key=\(wallpaperIDKey(from: id), privacy: .public) reason=WallpaperSnapshotXPC rawValue reply crashes extension"
+            )
+            return nil
+        case .error:
+            macWallNativeWallpaperLogger.warning(
+                "snapshot probe mode not implemented key=\(wallpaperIDKey(from: id), privacy: .public) mode=\(mode.rawValue, privacy: .public) reason=candidate-matrix-pending"
+            )
+            return nil
+        case .emptyObject:
+            macWallNativeWallpaperLogger.warning(
+                "snapshot probe mode not implemented key=\(wallpaperIDKey(from: id), privacy: .public) mode=\(mode.rawValue, privacy: .public) reason=candidate-matrix-pending"
+            )
+            return nil
+        case .rawValueRetainedIOSurface:
+            macWallNativeWallpaperLogger.warning(
+                "snapshot probe mode not implemented key=\(wallpaperIDKey(from: id), privacy: .public) mode=\(mode.rawValue, privacy: .public) reason=candidate-matrix-pending"
+            )
+            return nil
+        case .boxRetainedIOSurface:
+            macWallNativeWallpaperLogger.warning(
+                "snapshot probe mode not implemented key=\(wallpaperIDKey(from: id), privacy: .public) mode=\(mode.rawValue, privacy: .public) reason=candidate-matrix-pending"
+            )
+            return nil
+        case .pngData:
+            macWallNativeWallpaperLogger.warning(
+                "snapshot probe mode not implemented key=\(wallpaperIDKey(from: id), privacy: .public) mode=\(mode.rawValue, privacy: .public) reason=candidate-matrix-pending"
             )
             return nil
         }

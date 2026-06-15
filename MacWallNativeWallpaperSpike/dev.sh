@@ -11,6 +11,8 @@ EXTENSION_PROCESS="MacWallNativeWallpaperExtension"
 WALLPAPER_AGENT_PROCESS="WallpaperAgent"
 EXTENSION_SUBSYSTEM="com.mingyu1715.macwall.native-wallpaper-extension"
 EXTENSION_BUNDLE_ID="com.mingyu1715.macwall.native-wallpaper-spike.extension"
+SNAPSHOT_MODE_DEFAULT="disabled"
+SNAPSHOT_MODE_FILE="$SCRIPT_DIR/MacWallNativeWallpaperExtension/MacWallSnapshotProbeMode.generated.swift"
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Versions/Current/Frameworks/LaunchServices.framework/Versions/Current/Support/lsregister"
 DRY_RUN="${MACWALL_NATIVE_DRY_RUN:-0}"
 
@@ -20,7 +22,8 @@ Usage: ./dev.sh <command> [options]
 
 Commands:
   reset [--wallpaper-agent]  Terminate stale MacWall native wallpaper extension processes.
-  install                    Generate, build, codesign-verify, and register the spike app.
+  install [--snapshot-mode MODE]
+                             Generate, build, codesign-verify, and register the spike app.
   status                     Print WallpaperAgent and MacWall extension process status.
   logs [--last DURATION]     Show recent WallpaperAgent and extension logs. Default: 10m.
   logs --stream              Stream WallpaperAgent and extension logs.
@@ -36,6 +39,14 @@ Environment:
 Human verification remains manual:
   - Select MacWall Native Spike in System Settings yourself.
   - Verify actual Desktop output yourself.
+
+Snapshot modes:
+  disabled
+  error
+  empty-object
+  raw-value-retained-iosurface
+  box-retained-iosurface
+  png-data
 EOF
 }
 
@@ -125,6 +136,47 @@ terminate_pids() {
     done
 }
 
+swift_case_for_snapshot_mode() {
+    case "$1" in
+        disabled) printf '.disabled\n' ;;
+        error) printf '.error\n' ;;
+        empty-object) printf '.emptyObject\n' ;;
+        raw-value-retained-iosurface) printf '.rawValueRetainedIOSurface\n' ;;
+        box-retained-iosurface) printf '.boxRetainedIOSurface\n' ;;
+        png-data) printf '.pngData\n' ;;
+        *)
+            printf 'Unknown snapshot mode: %s\n' "$1" >&2
+            exit 2
+            ;;
+    esac
+}
+
+generate_snapshot_mode_source() {
+    local mode="$1"
+    local swift_case
+    swift_case="$(swift_case_for_snapshot_mode "$mode")"
+    print_command "generate-snapshot-mode" "$SNAPSHOT_MODE_FILE" "$mode"
+    if [[ "$DRY_RUN" == "1" ]]; then
+        printf 'snapshot mode: %s\n' "$mode"
+        return 0
+    fi
+
+    {
+        printf 'enum MacWallSnapshotProbeMode: String, Sendable {\n'
+        printf '    case disabled\n'
+        printf '    case error\n'
+        printf '    case emptyObject = "empty-object"\n'
+        printf '    case rawValueRetainedIOSurface = "raw-value-retained-iosurface"\n'
+        printf '    case boxRetainedIOSurface = "box-retained-iosurface"\n'
+        printf '    case pngData = "png-data"\n'
+        printf '}\n\n'
+        printf 'enum MacWallSnapshotProbeConfiguration {\n'
+        printf '    static let mode: MacWallSnapshotProbeMode = %s\n' "$swift_case"
+        printf '}\n'
+    } >"$SNAPSHOT_MODE_FILE"
+    printf 'snapshot mode: %s\n' "$mode"
+}
+
 cmd_reset() {
     local include_wallpaper_agent=0
     while [[ "$#" -gt 0 ]]; do
@@ -157,6 +209,26 @@ cmd_reset() {
 }
 
 cmd_install() {
+    local snapshot_mode="$SNAPSHOT_MODE_DEFAULT"
+    while [[ "$#" -gt 0 ]]; do
+        case "$1" in
+            --snapshot-mode)
+                shift
+                [[ "$#" -gt 0 ]] || {
+                    printf 'install --snapshot-mode requires a mode\n' >&2
+                    exit 2
+                }
+                snapshot_mode="$1"
+                ;;
+            *)
+                printf 'Unknown install option: %s\n' "$1" >&2
+                exit 2
+                ;;
+        esac
+        shift
+    done
+
+    generate_snapshot_mode_source "$snapshot_mode"
     run_cmd cmake -S "$SCRIPT_DIR" -B "$BUILD_DIR" -G Xcode
     run_cmd xcodebuild \
         -project "$PROJECT_PATH" \
@@ -173,6 +245,12 @@ cmd_install() {
 cmd_status() {
     printf 'Build dir: %s\n' "$BUILD_DIR"
     printf 'App path: %s\n' "$APP_PATH"
+    printf 'Snapshot mode source: %s\n' "$SNAPSHOT_MODE_FILE"
+    if [[ -f "$SNAPSHOT_MODE_FILE" ]]; then
+        awk '/static let mode:/ { print "Snapshot mode: " $0 }' "$SNAPSHOT_MODE_FILE"
+    else
+        printf 'Snapshot mode: missing generated source, run ./dev.sh install\n'
+    fi
     printf '\nProcesses:\n'
     process_lines | awk -v extension="$EXTENSION_PROCESS" -v agent="$WALLPAPER_AGENT_PROCESS" '
         index($0, extension) > 0 || index($0, agent) > 0 {
