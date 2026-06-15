@@ -38,14 +38,23 @@ final class MacWallWallpaperXPCHandler: NSObject, MacWallWallpaperExtensionXPCPr
     }
 
     func snapshot(withId id: Any?, reply: @escaping (Any?, NSError?) -> Void) {
-        macWallNativeWallpaperLogger.info("snapshot probe")
+        let wallpaperID = wallpaperIDKey(from: id)
+        let runtime = MacWallNativeWallpaperRuntimeIdentity.current
+        macWallNativeWallpaperLogger.info(
+            "snapshotGate event=snapshot-request \(runtime.logDescription, privacy: .public) wallpaperID=\(wallpaperID, privacy: .public) mode=\(MacWallSnapshotProbeConfiguration.mode.rawValue, privacy: .public)"
+        )
         logXPCObject("snapshot.id", id)
         guard let snapshot = MacWallSnapshotProbe.makeSnapshotResponse(for: id) else {
-            macWallNativeWallpaperLogger.error("snapshot probe returned nil")
+            macWallNativeWallpaperLogger.info(
+                "snapshotGate event=snapshot-reply \(runtime.logDescription, privacy: .public) wallpaperID=\(wallpaperID, privacy: .public) mode=\(MacWallSnapshotProbeConfiguration.mode.rawValue, privacy: .public) replyType=nil result=sent"
+            )
             reply(nil, nil)
             return
         }
 
+        macWallNativeWallpaperLogger.info(
+            "snapshotGate event=snapshot-reply \(runtime.logDescription, privacy: .public) wallpaperID=\(wallpaperID, privacy: .public) mode=\(MacWallSnapshotProbeConfiguration.mode.rawValue, privacy: .public) replyType=\(String(describing: type(of: snapshot)), privacy: .public) result=sent"
+        )
         reply(snapshot, nil)
     }
 

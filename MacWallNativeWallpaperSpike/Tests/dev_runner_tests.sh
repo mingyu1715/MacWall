@@ -7,6 +7,7 @@ DEV_RUNNER="$SPIKE_DIR/dev.sh"
 REMOTE_CONTEXT_SOURCE="$SPIKE_DIR/MacWallNativeWallpaperExtension/MacWallRemoteContextProbe.swift"
 XPC_CONFIGURATION_SOURCE="$SPIKE_DIR/MacWallNativeWallpaperExtension/MacWallWallpaperExtensionConfiguration.swift"
 EXTENSION_SOURCE="$SPIKE_DIR/MacWallNativeWallpaperExtension/MacWallNativeWallpaperExtension.swift"
+XPC_HANDLER_SOURCE="$SPIKE_DIR/MacWallNativeWallpaperExtension/MacWallWallpaperXPCHandler.swift"
 
 fail() {
     printf 'FAIL: %s\n' "$1" >&2
@@ -66,6 +67,7 @@ assert_contains "$remote_context_source" "case .rawValueRetainedIOSurface"
 assert_contains "$remote_context_source" "case .boxRetainedIOSurface"
 assert_contains "$remote_context_source" "case .pngData"
 assert_contains "$remote_context_source" "snapshot probe disabled"
+assert_contains "$remote_context_source" "snapshotGate event=snapshot-candidate"
 assert_contains "$remote_context_source" "logPrivateClassLayoutOnce(snapshotXPCClass, label: \"WallpaperSnapshotXPC\")"
 assert_contains "$remote_context_source" "enum MacWallWallpaperContextRole"
 assert_contains "$remote_context_source" "role=\\("
@@ -74,6 +76,10 @@ assert_contains "$remote_context_source" "previousContextID="
 extension_source="$(cat "$EXTENSION_SOURCE")"
 assert_contains "$extension_source" "if MacWallSnapshotProbe.isEnabled"
 assert_contains "$extension_source" "WallpaperSnapshotXPC encode swizzle disabled"
+
+xpc_handler_source="$(cat "$XPC_HANDLER_SOURCE")"
+assert_contains "$xpc_handler_source" "snapshotGate event=snapshot-request"
+assert_contains "$xpc_handler_source" "snapshotGate event=snapshot-reply"
 
 xpc_configuration_source="$(cat "$XPC_CONFIGURATION_SOURCE")"
 assert_contains "$xpc_configuration_source" "import IOSurface"

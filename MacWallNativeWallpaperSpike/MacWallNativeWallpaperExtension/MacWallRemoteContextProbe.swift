@@ -471,6 +471,9 @@ enum MacWallSnapshotProbe {
 
     static func makeSnapshotResponse(for id: Any?) -> AnyObject? {
         let mode = MacWallSnapshotProbeConfiguration.mode
+        macWallNativeWallpaperLogger.info(
+            "snapshotGate event=snapshot-candidate wallpaperID=\(wallpaperIDKey(from: id), privacy: .public) mode=\(mode.rawValue, privacy: .public)"
+        )
         switch mode {
         case .disabled:
             macWallNativeWallpaperLogger.warning(
