@@ -91,3 +91,46 @@ Rules:
 - Compare user-visible results with `WallpaperAgent` and extension logs before
   making the next implementation change.
 - System Settings selection and actual Desktop output verification remain manual.
+
+## Snapshot Export Gate Protocol
+
+The default snapshot mode is `disabled`.
+
+Run one candidate at a time:
+
+```bash
+./dev.sh reset
+./dev.sh install --snapshot-mode disabled
+```
+
+Then manually select `MacWall Native Spike` in System Settings -> Wallpaper.
+Do not use `open`/quit as test evidence.
+
+For a candidate:
+
+```bash
+./dev.sh reset
+./dev.sh install --snapshot-mode error
+```
+
+Collect logs:
+
+```bash
+./dev.sh logs --last 2m
+```
+
+Check for:
+
+- `snapshotGate event=snapshot-request`
+- `snapshotGate event=snapshot-reply`
+- `WallpaperExtensionError (2)`
+- `NSCocoaErrorDomain (4101)`
+- `ReportCrash`
+- continued `nativeVideoBridge enqueued`
+
+If a candidate crashes the extension, return to:
+
+```bash
+./dev.sh reset
+./dev.sh install --snapshot-mode disabled
+```

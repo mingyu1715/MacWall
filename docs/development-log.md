@@ -4,6 +4,42 @@
 
 ## 2026-06-15
 
+### 16:34 KST
+
+- 진행: macOS 26 Native Wallpaper Snapshot Export Gate 구현 준비 완료
+- 변경:
+  - `dev.sh install --snapshot-mode <mode>` 추가
+  - `MacWallSnapshotProbeMode.generated.swift` generated source 생성 경로 추가
+  - generated source를 extension target에 포함
+  - snapshot lifecycle summary log를 `snapshotGate` prefix로 분리
+  - snapshot candidate matrix 추가:
+    - `disabled`
+    - `error`
+    - `empty-object`
+    - `raw-value-retained-iosurface`
+    - `box-retained-iosurface`
+    - `png-data`
+  - crash-prone `WallpaperSnapshotXPC` object encode swizzle은 필요한 candidate에서만 켜지도록 제한
+  - retained IOSurface/NSData object store를 추가해 candidate object lifetime을 명시적으로 관리
+  - `MacWallNativeWallpaperSpike/README.md`에 Snapshot Export Gate Protocol 추가
+- 검증:
+  - RED: runner test가 `MacWallSnapshotProbeMode.generated.swift` 미출력으로 실패함을 확인
+  - GREEN: `bash MacWallNativeWallpaperSpike/Tests/dev_runner_tests.sh` 통과
+  - `bash -n MacWallNativeWallpaperSpike/dev.sh` 통과
+  - `bash -n MacWallNativeWallpaperSpike/Tests/dev_runner_tests.sh` 통과
+  - `MacWallNativeWallpaperSpike/dev.sh install --snapshot-mode disabled` 통과
+  - 위 install 경로에서 `** BUILD SUCCEEDED **` 확인
+- 제외:
+  - manual runtime matrix 실행 없음
+  - System Settings 조작 없음
+  - 실제 Desktop 출력 확인 없음
+  - Main App 통합 없음
+  - 기존 `NSWindow` backend / fallback 정책 수정 없음
+  - release packaging / DMG / notarization / dist 작업 없음
+- 다음:
+  - 사용자가 System Settings에서 확인 가능한 상태가 되면 `disabled` baseline부터 manual matrix 시작
+  - 각 candidate는 반드시 `reset -> install --snapshot-mode <mode> -> 사용자 화면 확인 -> logs` 순서로만 진행
+
 ### 01:18 KST
 
 - 진행: macOS 26 Native Wallpaper Snapshot Export Gate 문서화 및 구현 준비
