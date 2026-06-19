@@ -2,7 +2,362 @@
 
 모든 시간은 Asia/Seoul 기준입니다.
 
+## 2026-06-19
+
+### 14:41 KST
+
+- 진행: macOS 26 Native Wallpaper Spike 문서 정리 및 playback timing 설계 기록
+- 문서:
+  - [macOS 26 Native Wallpaper Spike 구현 기록](implemented/2026-06-15-macos-26-native-wallpaper-spike.md)
+  - [macOS 26 Native Wallpaper Playback Timing 설계](superpowers/specs/2026-06-19-native-wallpaper-playback-timing.md)
+- 정리:
+  - 2026-06-07 native wallpaper mode 설계/실행 계획은 spike 성공 기록으로 승격하고 `docs/archive/superpowers/`로 이동
+  - 활성 native wallpaper 문서는 snapshot/export gate와 playback timing 설계만 남김
+  - roadmap의 P2.5 상태를 “spike 구현 및 수동 검증 완료, production 통합 미시작”으로 정리
+- 결정:
+  - Main App 통합은 아직 시작하지 않음
+  - snapshot/export gate는 별도 활성 작업으로 유지
+  - playback timing은 bounded prebuffer + PTS pacing + timebase/synchronizer 비교 방향으로 보류
+- 검증:
+  - `find docs/superpowers docs/archive/superpowers docs/implemented -maxdepth 3 -type f | sort`로 문서 배치 확인
+  - 활성 문서 검색으로 2026-06-07 native wallpaper spike 문서가 archive 참조만 남았는지 확인
+  - `git diff --check -- docs` 통과
+- 제외:
+  - 코드 변경 없음
+  - snapshot/export 구현 없음
+  - Main App 통합 없음
+  - Scene/Web 확장 없음
+  - GUI 실행 없음
+
+## 2026-06-18
+
+### 16:05 KST
+
+- 진행: macOS 26 Native Wallpaper video source diagnostic mode 추가
+- 배경:
+  - `--snapshot-mode disabled`에서도 사용자 관측상 약한 버벅임이 남았습니다.
+  - 로그상 `snapshot file written`, `4101`, `4099` 없이도 `nativeVideoBridge enqueued` 간격이 불규칙했고, 최대 약 339ms gap이 관측되었습니다.
+  - 따라서 snapshot/export 작업이 아니라 bundled mp4 / `AVAssetReader` / sample buffer pacing / runtime update 중 어느 쪽인지 분리할 필요가 있습니다.
+- 변경:
+  - `dev.sh install --video-source asset|generated` 옵션 추가
+  - 기본값은 기존 동작과 같은 `asset`
+  - `generated` mode는 bundled mp4와 `AVAssetReader`를 완전히 우회하고 generated sample buffer probe만 사용
+  - generated Swift source `MacWallNativeWallpaperVideoSourceMode.generated.swift` 추가
+  - `NativeVideoFrameBridge`가 `videoSourceMode=generated|asset` 로그를 남기고 source를 분기하도록 변경
+  - spike README에 Video Source Diagnostic Protocol 추가
+- 검증:
+  - RED: `bash MacWallNativeWallpaperSpike/Tests/dev_runner_tests.sh`가 `--video-source MODE` help guard 미충족으로 실패함을 확인
+  - GREEN: `bash MacWallNativeWallpaperSpike/Tests/dev_runner_tests.sh` 통과
+- 다음 수동 검증:
+  - `./dev.sh reset`
+  - `./dev.sh install --snapshot-mode disabled --video-source generated`
+  - 사용자가 System Settings에서 `MacWall Native Spike` 재선택
+  - `videoSourceMode=generated` 로그와 실제 화면 부드러움 확인
+- 제외:
+  - Pacing 수정 없음
+  - mp4 decode/PTS 수정 없음
+  - Main App 통합 없음
+  - System Settings 조작 없음
+  - GUI 앱 실행 없음
+
+### 15:51 KST
+
+- 진행: macOS 26 Native Wallpaper Snapshot Export Gate `snapshot-xpc-file-url` unsafe 격리
+- 확인:
+  - `file-url` mode는 WallpaperAgent `cacheDirectory` 아래에 PNG 파일을 생성하고 `NSURL` reply까지 전송했지만, WallpaperAgent가 `NSCocoaErrorDomain(4101)`로 거부했습니다.
+  - 이 경로에서는 extension crash 없이 native video runtime이 유지되었습니다.
+  - `snapshot-xpc-file-url` mode는 `WallpaperSnapshotXPC.rawValue = NSURL` reply 이후 `NSCocoaErrorDomain(4099)`, XPC interruption/invalidation, runtime removal을 유발할 수 있었습니다.
+  - runtime removal 이후 Desktop native surface가 사라질 수 있으며, 복구에는 safe mode 재설치와 사용자의 System Settings 재선택이 필요했습니다.
+- 판단:
+  - `file-url`은 safe-rejected candidate입니다.
+  - `snapshot-xpc-file-url`은 safe-rejected가 아니라 unsafe / connection-interrupting candidate입니다.
+  - 현재 `WallpaperSnapshotXPC.rawValue`에 `NSURL`을 넣는 shape는 WallpaperAgent가 기대하는 snapshot payload가 아닙니다.
+- 변경:
+  - `dev.sh install --snapshot-mode snapshot-xpc-file-url`은 기본 경로에서 차단합니다.
+  - 의도적으로 재현할 때만 `--allow-unsafe-snapshot-xpc`를 붙여 실행할 수 있게 했습니다.
+  - spike README, snapshot/export gate spec/plan에 `file-url` / `snapshot-xpc-file-url` matrix 결과와 복구 절차를 반영했습니다.
+- 검증:
+  - RED: `bash MacWallNativeWallpaperSpike/Tests/dev_runner_tests.sh`가 `--allow-unsafe-snapshot-xpc` help guard 미충족으로 실패함을 확인
+  - GREEN: `bash MacWallNativeWallpaperSpike/Tests/dev_runner_tests.sh` 통과
+- 제외:
+  - Native video runtime 변경 없음
+  - Main App 통합 없음
+  - 기존 NSWindow backend / fallback 정책 변경 없음
+  - System Settings 조작 없음
+  - GUI 앱 실행 없음
+
+## 2026-06-16
+
+### 01:43 KST
+
+- 진행: macOS 26 Native Wallpaper Snapshot Export Gate security scope lifetime 수정
+- 확인:
+  - 사용자 runtime 로그에서 `cacheHomeURL.startAccessingSecurityScopedResource()`는 `granted=true`를 반환했습니다.
+  - 같은 scope 안의 tiny direct write preflight는 `method=direct`로 통과했습니다.
+  - 하지만 실제 PNG write는 `NSCocoaErrorDomain Code=513`으로 실패했습니다.
+- 원인:
+  - `canWriteSnapshotHome()` 내부에서만 security scope를 열고, 함수 return 시 `stopAccessingSecurityScopedResource()`로 닫은 뒤 실제 PNG 파일을 생성/쓰기하고 있었습니다.
+  - 따라서 preflight는 scope 안에서 성공했지만 실제 snapshot PNG write는 scope 밖에서 실행되어 513이 발생했습니다.
+- 변경:
+  - `withSnapshotHomeSecurityScope(...)` helper 추가
+  - `makeSnapshotFileURL(...)`의 preflight, IOSurface->PNG 생성, file write 전체를 같은 security scope lifetime 안에서 실행하도록 변경
+  - `canWriteSnapshotHome(...)`은 scope를 직접 열고 닫지 않고, caller가 유지하는 scope 안에서 direct/coordinated preflight만 수행하도록 분리
+  - source guard에 `withSnapshotHomeSecurityScope` 추가
+- 검증:
+  - RED: `bash MacWallNativeWallpaperSpike/Tests/dev_runner_tests.sh`가 `withSnapshotHomeSecurityScope` guard 미충족으로 실패함을 확인
+  - GREEN: `bash MacWallNativeWallpaperSpike/Tests/dev_runner_tests.sh` 통과
+  - `bash -n MacWallNativeWallpaperSpike/dev.sh` 통과
+  - `bash -n MacWallNativeWallpaperSpike/Tests/dev_runner_tests.sh` 통과
+  - `MacWallNativeWallpaperSpike/dev.sh install --snapshot-mode file-url` 통과
+  - 위 install 경로에서 `** BUILD SUCCEEDED **`, `codesign --verify --deep --strict`, `lsregister` 완료 확인
+- 판단:
+  - 다음 수동 검증에서 `snapshot file written`이 나오면 cacheDirectory 직접 write 경로가 유효한 것으로 판단할 수 있습니다.
+  - 그 다음 판단 지점은 `NSURL` reply 또는 `WallpaperSnapshotXPC.rawValue = NSURL`이 WallpaperAgent snapshot payload로 인정되는지입니다.
+- 제외:
+  - snapshot response shape 변경 없음
+  - video runtime 변경 없음
+  - Main App 통합 없음
+  - System Settings 조작 없음
+
+### 01:36 KST
+
+- 진행: macOS 26 Native Wallpaper Snapshot Export Gate security-scoped / coordinated write probe 추가
+- 배경:
+  - `NSAppDataUsageDescription` 추가 후에도 사용 권한 prompt는 나타나지 않았고, `file-url` mode는 여전히 WallpaperAgent cache directory에서 `NSCocoaErrorDomain Code=513`으로 실패했습니다.
+  - 따라서 다음 검증 지점은 `cacheHomeURL`이 security-scoped URL인지, 또는 `NSFileCoordinator`를 통해 write가 가능한지 확인하는 것입니다.
+- 변경:
+  - `cacheHomeURL.startAccessingSecurityScopedResource()` 호출 및 `snapshot home security scope ... granted=<bool>` 로그 추가
+  - direct write preflight 실패 시 즉시 denied 캐시하지 않고, `NSFileCoordinator` 기반 coordinated write preflight를 추가 시도
+  - coordinated write 성공/실패를 `snapshot home coordinated write preflight ...` 로그로 분리
+  - direct/coordinated 모두 실패한 경우에만 `MacWallSnapshotHomeWriteAccessCache`에 denied 저장
+  - spike README focused grep에 security scope / coordinated write 로그 키워드 추가
+- 검증:
+  - RED: `bash MacWallNativeWallpaperSpike/Tests/dev_runner_tests.sh`가 `snapshot home security scope` guard 미충족으로 실패함을 확인
+  - GREEN: `bash MacWallNativeWallpaperSpike/Tests/dev_runner_tests.sh` 통과
+  - `bash -n MacWallNativeWallpaperSpike/dev.sh` 통과
+  - `bash -n MacWallNativeWallpaperSpike/Tests/dev_runner_tests.sh` 통과
+  - `MacWallNativeWallpaperSpike/dev.sh install --snapshot-mode file-url` 통과
+  - 위 install 경로에서 `** BUILD SUCCEEDED **`, `codesign --verify --deep --strict`, `lsregister` 완료 확인
+- 판단:
+  - 이 변경은 권한 해결 확정이 아니라, `cacheDirectory` 직접 write 경로를 유지할 수 있는지 판별하기 위한 마지막 권한 계층 probe입니다.
+  - 수동 검증에서 security scope가 false이고 coordinated write도 513이면, WallpaperAgent cache directory 직접 write 방식은 버리고 extension-owned file URL 또는 다른 private snapshot wrapper 후보로 넘어가야 합니다.
+- 제외:
+  - snapshot payload shape 변경 없음
+  - video runtime 변경 없음
+  - Main App 통합 없음
+  - System Settings 조작 없음
+
+### 01:27 KST
+
+- 진행: macOS 26 Native Wallpaper Snapshot Export Gate App Data permission probe 추가
+- 가설:
+  - `file-url` candidate의 `NSCocoaErrorDomain Code=513`은 POSIX 권한이 아니라 sandbox/TCC App Data 계층에서 WallpaperAgent container write가 막히는 문제일 가능성이 높음
+  - `NSAppDataUsageDescription`이 macOS App Data permission prompt 또는 error code 변화를 유도할 수 있는지 확인 필요
+- 변경:
+  - containing app `Info.plist`에 `NSAppDataUsageDescription` 추가
+  - wallpaper extension `Info.plist`에 `NSAppDataUsageDescription` 추가
+  - dev runner source guard가 app/appex 양쪽 usage string 존재를 확인하도록 추가
+- 검증:
+  - RED: `bash MacWallNativeWallpaperSpike/Tests/dev_runner_tests.sh`가 `NSAppDataUsageDescription` guard 미충족으로 실패함을 확인
+  - GREEN: `bash MacWallNativeWallpaperSpike/Tests/dev_runner_tests.sh` 통과
+  - `bash -n MacWallNativeWallpaperSpike/dev.sh` 통과
+  - `bash -n MacWallNativeWallpaperSpike/Tests/dev_runner_tests.sh` 통과
+  - `plutil -lint MacWallNativeWallpaperSpike/MacWallNativeWallpaperSpikeApp/Info.plist MacWallNativeWallpaperSpike/MacWallNativeWallpaperExtension/Info.plist` 통과
+  - `MacWallNativeWallpaperSpike/dev.sh install --snapshot-mode file-url` 통과
+  - built app/appex Info.plist 양쪽에서 `NSAppDataUsageDescription` 존재 확인
+  - `git diff --check -- MacWallNativeWallpaperSpike docs/development-log.md` 통과
+- 판단:
+  - 이 변경은 권한 해결 확정이 아니라 permission prompt/error 변화 확인용 probe입니다.
+  - 실제 결과는 사용자가 System Settings에서 `MacWall Native Spike`를 다시 선택한 뒤 `snapshot home write preflight failed/skipped`, `NSCocoaErrorDomain(513)`, `WallpaperExtensionError(2)` 변화를 확인해야 합니다.
+- 제외:
+  - entitlement 추가 없음
+  - Main App 통합 없음
+  - snapshot payload shape 변경 없음
+  - video runtime 변경 없음
+
+### 01:06 KST
+
+- 진행: macOS 26 Native Wallpaper Snapshot Export Gate request/response shape probe 추가
+- 변경:
+  - `acquire.request`, `update.request`, `snapshot.id`에 `shapeProbe` 진단 로그를 추가했습니다.
+  - XPC object graph에서 URL/file/cache/path/security token/bookmark/descriptor 후보를 요약해 로그로 출력합니다.
+  - private class ivar/method layout을 1회만 기록해 snapshot/export wrapper 추적 근거를 남기도록 했습니다.
+  - spike README에 focused grep 명령과 `disabled` mode 우선 검증 규칙을 추가했습니다.
+- 검증:
+  - RED: `bash MacWallNativeWallpaperSpike/Tests/dev_runner_tests.sh`가 `logXPCShapeProbe("acquire.request", request)` guard 미충족으로 실패함을 확인
+  - GREEN: `bash MacWallNativeWallpaperSpike/Tests/dev_runner_tests.sh` 통과
+  - `bash -n MacWallNativeWallpaperSpike/dev.sh` 통과
+  - `bash -n MacWallNativeWallpaperSpike/Tests/dev_runner_tests.sh` 통과
+  - `git diff --check -- MacWallNativeWallpaperSpike docs/development-log.md docs/superpowers/specs/2026-06-15-native-wallpaper-snapshot-export-gate-design.md docs/superpowers/plans/2026-06-15-native-wallpaper-snapshot-export-gate.md` 통과
+  - `MacWallNativeWallpaperSpike/dev.sh install --snapshot-mode disabled` 통과
+  - 위 install 경로에서 `** BUILD SUCCEEDED **`, `codesign --verify --deep --strict`, `lsregister` 완료 확인
+- 판단:
+  - 이 변경은 snapshot/export 성공 후보가 아니라 진단 강화를 위한 gate입니다.
+  - 다음 수동 확인은 `disabled` mode에서 `shapeProbe` 로그를 수집해 snapshot/export가 요구하는 URL/token/wrapper 단서를 먼저 확인하는 흐름이 맞습니다.
+- 제외:
+  - Main App 통합 없음
+  - `AVSampleBufferDisplayLayer` / video frame bridge 변경 없음
+  - fallback 정책 수정 없음
+  - System Settings 조작 없음
+
+### 00:34 KST
+
+- 진행: macOS 26 Native Wallpaper Snapshot Export Gate `file-url` preflight runtime 확인
+- 확인:
+  - 사용자 관측: preflight 적용 후 영상 끊김이 원래처럼 부드러워짐
+  - 로그상 첫 snapshot request는 `snapshot home write preflight failed` 후 약 8ms 안에 nil reply로 종료됨
+  - 이후 snapshot request는 즉시 nil reply로 빠지는 경로가 확인되어, 이전처럼 큰 PNG 생성/파일 write 실패까지 진행하지 않음
+  - `nativeVideoBridge enqueued` 간격이 snapshot 이후에도 큰 장기 stall 없이 유지됨
+- 판단:
+  - 끊김 원인은 `file-url` candidate가 permission denied될 파일 쓰기 경로에 들어가기 전 큰 snapshot PNG를 만들던 비용이었음
+  - preflight/cache mitigation은 runtime 부드러움 회복에 효과 있음
+  - 당시에는 `file-url` / `snapshot-xpc-file-url`을 파일 쓰기 권한 차단 상태로 분류했으나, 2026-06-18 결과에서 `file-url`은 safe-rejected, `snapshot-xpc-file-url`은 unsafe / connection-interrupting으로 재분류됨
+- 제외:
+  - snapshot/export 성공 주장 없음
+  - Main App 통합 없음
+  - video quality / timestamp / pixel format 수정 없음
+
+### 00:31 KST
+
+- 진행: macOS 26 Native Wallpaper Snapshot Export Gate `file-url` permission preflight 추가
+- 확인:
+  - `cacheDirectory` parsing 이후 `file-url` mode가 `snapshot request home source=context`까지 도달함
+  - snapshot PNG write는 WallpaperAgent cache directory에서 `NSCocoaErrorDomain Code=513` permission denied로 실패함
+  - 첫 snapshot attempt는 약 90ms, 다음 attempt는 약 490ms 동안 PNG 생성/파일 write 실패 경로를 탔고, 이후 native video enqueue 간격이 크게 벌어지는 구간이 확인됨
+  - 따라서 현재 `file-url` candidate는 snapshot reply shape 검증 전에 sandbox write permission에서 막힌 상태
+- 변경:
+  - `file-url` / `snapshot-xpc-file-url` snapshot 파일 생성 전에 tiny write preflight를 수행
+  - preflight 실패 시 IOSurface/PNG 생성 없이 nil reply로 빠짐
+  - 같은 home URL에서 write denied가 확인되면 process lifetime 동안 cached denied로 즉시 skip
+  - `snapshot home write preflight failed` / `snapshot home write preflight skipped` 로그 추가
+- 검증:
+  - RED: `bash MacWallNativeWallpaperSpike/Tests/dev_runner_tests.sh`가 `snapshot home write preflight failed` guard 미충족으로 실패함을 확인
+  - GREEN: `bash MacWallNativeWallpaperSpike/Tests/dev_runner_tests.sh` 통과
+  - `bash -n MacWallNativeWallpaperSpike/dev.sh` 통과
+  - `bash -n MacWallNativeWallpaperSpike/Tests/dev_runner_tests.sh` 통과
+  - `git diff --check -- MacWallNativeWallpaperSpike docs/development-log.md docs/superpowers/specs/2026-06-15-native-wallpaper-snapshot-export-gate-design.md docs/superpowers/plans/2026-06-15-native-wallpaper-snapshot-export-gate.md` 통과
+  - `MacWallNativeWallpaperSpike/dev.sh install --snapshot-mode file-url` 통과
+  - 위 install 경로에서 `** BUILD SUCCEEDED **`, `codesign --verify --deep --strict`, `lsregister` 완료 확인
+- 제외:
+  - System Settings 조작 없음
+  - 실제 Desktop 출력 확인 없음
+  - Main App 통합 없음
+  - video quality / timestamp / pixel format 수정 없음
+
+### 00:21 KST
+
+- 진행: macOS 26 Native Wallpaper Snapshot Export Gate `cacheDirectory` home lookup 수정
+- 확인:
+  - reset/install 이후 새 extension process가 실행됨
+  - `remoteContext request ... cacheHomeURL=nil`로 새 진단 로그가 정상 출력됨
+  - 과거 acquire introspection 로그와 비교한 결과 cache URL field 이름은 `home`이 아니라 `cacheDirectory`였음
+  - 따라서 `snapshot request home missing`의 원인은 cache URL 후보 자체 실패가 아니라 parser가 `cacheDirectory` label을 cache home으로 취급하지 않은 것
+  - native video frame enqueue는 계속 유지됨
+- 변경:
+  - `WallpaperCreationRequestXPC` parser가 `cacheDirectory` URL도 `cacheHomeURL`로 저장하도록 수정
+  - snapshot id fallback URL 탐색도 `home` / `cacheDirectory` label 모두 인식하도록 수정
+  - source guard에 `normalizedLabel.contains("cachedirectory")` 추가
+- 검증:
+  - RED: `bash MacWallNativeWallpaperSpike/Tests/dev_runner_tests.sh`가 `normalizedLabel.contains("cachedirectory")` guard 미충족으로 실패함을 확인
+  - GREEN: `bash MacWallNativeWallpaperSpike/Tests/dev_runner_tests.sh` 통과
+  - `bash -n MacWallNativeWallpaperSpike/dev.sh` 통과
+  - `bash -n MacWallNativeWallpaperSpike/Tests/dev_runner_tests.sh` 통과
+  - `git diff --check -- MacWallNativeWallpaperSpike docs/development-log.md docs/superpowers/specs/2026-06-15-native-wallpaper-snapshot-export-gate-design.md docs/superpowers/plans/2026-06-15-native-wallpaper-snapshot-export-gate.md` 통과
+  - `MacWallNativeWallpaperSpike/dev.sh install --snapshot-mode file-url` 통과
+  - 위 install 경로에서 `** BUILD SUCCEEDED **`, `codesign --verify --deep --strict`, `lsregister` 완료 확인
+- 제외:
+  - System Settings 조작 없음
+  - 실제 Desktop 출력 확인 없음
+  - Main App 통합 없음
+  - video quality / timestamp / pixel format 수정 없음
+
+### 00:08 KST
+
+- 진행: macOS 26 Native Wallpaper Snapshot Export Gate `file-url` home lookup 2차 진단 보강
+- 확인:
+  - `file-url` 재실행 로그에서도 `snapshot request home missing`이 반복됨
+  - 해당 로그는 `acquire.request` / `home:` 계열 라인이 grep에서 제외되어, acquire request parser 실패인지 로그 필터 누락인지 아직 분리 불가
+  - `NSURL` reply 후보는 여전히 실제로 전송되지 않았고, native video frame enqueue는 계속 유지됨
+- 변경:
+  - `remoteContext request` summary 로그에 `cacheHomeURL=<url|nil>` 추가
+  - `WallpaperCreationRequestXPC` reflection depth를 넓혀 nested home 값을 더 깊게 탐색
+  - exact `home` label 대신 `_home`, `homeURL` 같은 변형도 잡도록 `normalizedLabel.contains("home")` matching 적용
+  - snapshot id fallback home 탐색 depth도 동일하게 확장
+- 검증:
+  - RED: `bash MacWallNativeWallpaperSpike/Tests/dev_runner_tests.sh`가 `cacheHomeURL=\\(` guard 미충족으로 실패함을 확인
+  - GREEN: `bash MacWallNativeWallpaperSpike/Tests/dev_runner_tests.sh` 통과
+  - `bash -n MacWallNativeWallpaperSpike/dev.sh` 통과
+  - `bash -n MacWallNativeWallpaperSpike/Tests/dev_runner_tests.sh` 통과
+  - `git diff --check -- MacWallNativeWallpaperSpike docs/development-log.md docs/superpowers/specs/2026-06-15-native-wallpaper-snapshot-export-gate-design.md docs/superpowers/plans/2026-06-15-native-wallpaper-snapshot-export-gate.md` 통과
+  - `MacWallNativeWallpaperSpike/dev.sh install --snapshot-mode file-url` 통과
+  - 위 install 경로에서 `** BUILD SUCCEEDED **`, `codesign --verify --deep --strict`, `lsregister` 완료 확인
+- 제외:
+  - System Settings 조작 없음
+  - 실제 Desktop 출력 확인 없음
+  - Main App 통합 없음
+  - video quality / timestamp / pixel format 수정 없음
+
 ## 2026-06-15
+
+### 17:47 KST
+
+- 진행: macOS 26 Native Wallpaper Snapshot Export Gate `file-url` home lookup 수정
+- 확인:
+  - `file-url` runtime 로그에서 snapshot 요청은 들어왔지만 `snapshot request home missing`으로 PNG 파일 생성 전 nil reply가 반환됨
+  - WallpaperAgent 결과는 `WallpaperExtensionError(2)`였고, `NSURL` reply 후보 자체는 아직 검증되지 않음
+  - native video frame enqueue는 계속 유지됨
+- 변경:
+  - `WallpaperCreationRequestXPC` parser가 recursive reflection 중 `home` URL을 발견하면 `cacheHomeURL`에 저장
+  - `MacWallRemoteWallpaperContext`의 `requestInfo.cacheHomeURL`을 snapshot 파일 생성 시 우선 사용
+  - snapshot id에 home이 있는 경우를 대비한 fallback path는 유지
+  - `snapshot request home source=context|snapshot-id` 로그 추가
+- 검증:
+  - RED: `bash MacWallNativeWallpaperSpike/Tests/dev_runner_tests.sh`가 `cacheHomeURL` guard 미충족으로 실패함을 확인
+  - GREEN: `bash MacWallNativeWallpaperSpike/Tests/dev_runner_tests.sh` 통과
+  - `bash -n MacWallNativeWallpaperSpike/dev.sh` 통과
+  - `bash -n MacWallNativeWallpaperSpike/Tests/dev_runner_tests.sh` 통과
+  - `git diff --check -- MacWallNativeWallpaperSpike docs/development-log.md docs/superpowers/specs/2026-06-15-native-wallpaper-snapshot-export-gate-design.md docs/superpowers/plans/2026-06-15-native-wallpaper-snapshot-export-gate.md` 통과
+  - `MacWallNativeWallpaperSpike/dev.sh install --snapshot-mode file-url` 통과
+  - 위 install 경로에서 `** BUILD SUCCEEDED **`, `codesign --verify --deep --strict`, `lsregister` 완료 확인
+- 제외:
+  - System Settings 조작 없음
+  - 실제 Desktop 출력 확인 없음
+  - `file-url` runtime matrix 재실행 없음
+
+### 17:14 KST
+
+- 진행: macOS 26 Native Wallpaper Snapshot Export Gate file URL 후보 추가
+- 확인된 runtime matrix:
+  - `empty-object`: extension crash 없음, `WallpaperSnapshotXPC` reply 전송 성공, WallpaperAgent `NSCocoaErrorDomain(4101)`, native video 유지
+  - `raw-value-retained-iosurface`: extension crash 없음, retained `IOSurface` reply 전송 성공, WallpaperAgent `NSCocoaErrorDomain(4101)`, native video 유지
+  - `box-retained-iosurface`: extension crash 없음, boxed retained `IOSurface` reply 전송 성공, WallpaperAgent `NSCocoaErrorDomain(4101)`, native video 유지
+  - `png-data`: extension crash 없음, `NSConcreteMutableData` reply 전송 성공, WallpaperAgent `NSCocoaErrorDomain(4101)`, native video 유지
+- 새 단서:
+  - snapshot request introspection에서 WallpaperAgent cache `home` URL이 확인됨
+  - 직접 `NSData`/`IOSurface` reply가 모두 4101로 거부되어, snapshot/export가 cache home 아래 파일을 만들고 URL 또는 private wrapper를 반환하는 구조일 가능성이 높음
+- 변경:
+  - `dev.sh install --snapshot-mode file-url` 추가
+  - `dev.sh install --snapshot-mode snapshot-xpc-file-url` 추가
+  - `file-url` mode는 snapshot request의 `home` URL 아래에 PNG 파일을 쓰고 `NSURL`을 직접 reply
+  - `snapshot-xpc-file-url` mode는 같은 PNG 파일을 쓰고 `WallpaperSnapshotXPC.rawValue = NSURL`로 reply
+  - snapshot 파일명은 `wallpaperID`와 UUID를 포함해 stale cache reuse 가능성을 낮춤
+  - `snapshot request home`, `snapshot file written`, file URL reply 로그 추가
+  - `MacWallNativeWallpaperSpike/README.md` snapshot matrix 갱신
+- 검증:
+  - RED: `bash MacWallNativeWallpaperSpike/Tests/dev_runner_tests.sh`가 `Unknown snapshot mode: file-url`로 실패함을 확인
+  - GREEN: `bash MacWallNativeWallpaperSpike/Tests/dev_runner_tests.sh` 통과
+  - `bash -n MacWallNativeWallpaperSpike/dev.sh` 통과
+  - `bash -n MacWallNativeWallpaperSpike/Tests/dev_runner_tests.sh` 통과
+  - `git diff --check -- MacWallNativeWallpaperSpike docs/development-log.md docs/superpowers/specs/2026-06-15-native-wallpaper-snapshot-export-gate-design.md docs/superpowers/plans/2026-06-15-native-wallpaper-snapshot-export-gate.md` 통과
+  - `MacWallNativeWallpaperSpike/dev.sh install --snapshot-mode file-url` 통과
+  - 위 install 경로에서 `** BUILD SUCCEEDED **`, `codesign --verify --deep --strict`, `lsregister` 완료 확인
+- 제외:
+  - manual runtime matrix 실행 없음
+  - System Settings 조작 없음
+  - 실제 Desktop 출력 확인 없음
+  - Main App 통합 없음
+  - video quality / timestamp / pixel format 수정 없음
+  - Web / Scene native 확장 없음
 
 ### 16:34 KST
 
@@ -329,7 +684,7 @@
   - `docs/development-guide.md`
   - `AGENTS.md`
   - `MacWallNativeWallpaperSpike/README.md`
-  - `docs/superpowers/plans/2026-06-07-macos-26-native-wallpaper-mode-spike.md`
+  - `docs/archive/superpowers/plans/2026-06-07-macos-26-native-wallpaper-mode-spike.md`
 
 ### 01:14 KST
 
@@ -376,8 +731,8 @@
   - AppKit collection behavior, sticky tag, SLS level override, freeze overlay 실험은 해결책으로 부적합
   - fallback PNG를 원하지 않는 경우 남는 유력한 방향은 `WallpaperExtensionKit` / `WallpaperAgent` native wallpaper pipeline 진입
 - 문서:
-  - [macOS 26 Native Wallpaper Mode 설계](superpowers/specs/2026-06-07-macos-26-native-wallpaper-mode.md)
-  - [macOS 26 Native Wallpaper Mode spike 실행 계획](superpowers/plans/2026-06-07-macos-26-native-wallpaper-mode-spike.md)
+  - [macOS 26 Native Wallpaper Mode 설계](archive/superpowers/specs/2026-06-07-macos-26-native-wallpaper-mode.md)
+  - [macOS 26 Native Wallpaper Mode spike 실행 계획](archive/superpowers/plans/2026-06-07-macos-26-native-wallpaper-mode-spike.md)
 - 범위:
   - macOS 26 전용 experimental path
   - 기존 `NSWindow` backend 유지

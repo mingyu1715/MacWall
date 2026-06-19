@@ -35,23 +35,27 @@ repository root는 사용자와 GitHub 공개 운영에 필요한 문서만 둡�
 - `README.md`: 사용자용 영어 문서
 - `LICENSE`: 원작 MIT notice와 현재 작업자 notice
 - `CONTRIBUTING.md`: GitHub 기여와 협업 기준
+- `AGENTS.md`: AI coding agent 작업 기준
 - `.github/`: GitHub issue / PR template, label seed
 
 개발 과정에서 계속 갱신하는 문서는 `docs/` 아래에서 관리합니다.
 
-- `docs/README.md`: 문서 index
+- `docs/README.md`: 문서 index 및 GitHub `docs/` landing page
 - `docs/development-roadmap.md`: 현재 방향과 다음 phase
 - `docs/development-log.md`: 날짜/시간별 작업 기록
+- `docs/superpowers/specs/`: 활성 Superpowers 설계 문서
+- `docs/superpowers/plans/`: 활성 Superpowers 실행 계획
 - `docs/implemented/`: 큰 기능 완료 기록
 - `docs/archive/`: 과거 계획과 완료된 계획 보관
 
 ## 작업 전 확인 순서
 
-1. `docs/development-roadmap.md`에서 현재 phase와 금지 범위를 확인합니다.
-2. `docs/development-log.md`에서 최근 결정과 버그 기록을 확인합니다.
-3. 관련 큰 기능이 있으면 `docs/implemented/`의 구현 기록을 확인합니다.
-4. 사용자 문서에 영향을 주는 변경이면 `README.ko.md`와 `README.md` 갱신 여부를 확인합니다.
-5. 루트에 새 문서를 추가하기 전에 `docs/README.md` 또는 `docs/archive/`에 두는 편이 맞는지 확인합니다.
+1. `git status --short --branch`로 현재 branch와 dirty state를 확인합니다.
+2. `docs/development-roadmap.md`에서 현재 phase와 금지 범위를 확인합니다.
+3. `docs/development-log.md`에서 최근 결정과 버그 기록을 확인합니다.
+4. 관련 큰 기능이 있으면 `docs/implemented/`의 구현 기록을 확인합니다.
+5. 사용자 문서에 영향을 주는 변경이면 `README.ko.md`와 `README.md` 갱신 여부를 확인합니다.
+6. 루트에 새 문서를 추가하기 전에 `docs/README.md` 또는 `docs/archive/`에 두는 편이 맞는지 확인합니다. 단, 작업 정책은 `docs/README.md`가 아니라 이 개발 가이드를 우선합니다.
 
 ## 문서 수정 규칙
 
@@ -61,6 +65,8 @@ repository root는 사용자와 GitHub 공개 운영에 필요한 문서만 둡�
 - `README.md`
 
 큰 기능 구현이나 정책 변경은 `docs/development-log.md`에 기록하고, 필요하면 `docs/implemented/`에 별도 완료 기록을 남깁니다.
+
+아직 구현되지 않은 큰 작업은 먼저 `docs/superpowers/specs/`에 설계를 두고, 승인된 실행 순서는 `docs/superpowers/plans/`에 둡니다. 완료 후에는 필요한 내용을 `docs/implemented/`로 정리하고 활성 계획은 `docs/archive/`로 이동합니다.
 
 ## Development Log 작성 규칙
 
@@ -101,6 +107,36 @@ repository root는 사용자와 GitHub 공개 운영에 필요한 문서만 둡�
 rg --files docs README.md README.ko.md CONTRIBUTING.md LICENSE
 rg -n "<확인할-구식-문구-또는-임시-표현>" docs README.md README.ko.md CONTRIBUTING.md
 ```
+
+## Native Wallpaper Spike 실행 규칙
+
+macOS 26 native wallpaper spike는 `WallpaperAgent`가 extension process를 소유하므로, containing app을 `open`으로 실행하거나 종료하는 것을 테스트 시작/종료 기준으로 삼지 않습니다.
+
+`MacWallNativeWallpaperSpike/dev.sh` runner를 사용합니다.
+
+```text
+1. ./dev.sh reset
+2. ./dev.sh install
+3. 사용자가 시스템 설정에서 MacWall Native Spike 선택
+4. ./dev.sh logs 또는 ./dev.sh status로 로그/프로세스 확인
+5. 사용자 화면 확인
+6. 다시 테스트할 때는 반드시 reset 후 install
+```
+
+runner 명령:
+
+- `reset`: 기존 `MacWallNativeWallpaperExtension` process를 정리합니다.
+- `install`: CMake, Xcode build, codesign verify, LaunchServices register를 실행합니다.
+- `status`: `WallpaperAgent`, extension process, 최근 session 로그를 확인합니다.
+- `logs`: `WallpaperAgent`와 MacWall extension 로그를 조회하거나 stream합니다.
+
+규칙:
+
+- `open` 직접 실행/종료는 검증 프로토콜로 인정하지 않습니다.
+- host app 종료가 `WallpaperAgent` extension 종료를 의미한다고 가정하지 않습니다.
+- 재테스트 전에는 항상 `dev reset`을 먼저 수행합니다.
+- 화면 상태 확인, System Settings 조작, Fullscreen -> Desktop 검증은 사용자가 직접 수행합니다.
+- agent는 사용자 관측을 받은 뒤 `WallpaperAgent` 로그와 extension 로그를 먼저 대조하고, 바로 다음 구현으로 넘어가지 않습니다.
 
 ## GitHub 운영 기준
 
@@ -144,6 +180,14 @@ status:blocked
 ```
 
 `.github/labels.yml`은 GitHub label을 수동 생성하거나 label sync 도구를 사용할 때 기준으로 사용합니다. `gh` CLI나 label sync 도구가 없는 환경에서는 repository 생성 후 GitHub UI에서 같은 이름으로 맞춥니다.
+
+## Git 작업 기준
+
+- 작업 시작 전 branch와 dirty state를 확인합니다.
+- commit 요청이 있을 때는 관련 파일만 stage합니다.
+- unrelated/user 변경은 되돌리지 않습니다.
+- 파괴적 명령(`git reset --hard`, `git checkout -- <file>`, 강제 push)은 사용자가 명확히 요청한 경우에만 실행합니다.
+- 구현 완료 후 변경 파일과 검증 결과를 final response에 요약합니다.
 
 ## 라이선스와 원작자 notice
 

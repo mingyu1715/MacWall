@@ -1,6 +1,6 @@
 # MacWall 개발 로드맵
 
-수정일: 2026-06-04
+수정일: 2026-06-07
 
 이 문서는 현재 활성 제품 개발 방향과 Scene 개발 방향을 정리합니다. 완료된 세부 구현 계획은 `docs/implemented/`에 기록하고, 과거 계획은 `docs/archive/`에 보관합니다.
 
@@ -38,14 +38,16 @@ MacWall은 사용자가 Windows에서 직접 복사해 온 Wallpaper Engine proj
 - 다른 app이 desktop을 덮어도 wallpaper window를 유지합니다.
 - desktop이 가려졌을 때 standalone Video는 현재 frame에서 pause합니다.
 - desktop이 가려졌을 때 Web은 CSS animation을 pause하되 embedded Web video는 계속 보이게 유지합니다.
-- Scene은 Metal runtime 전까지 Workshop thumbnail을 임시 desktop layer fallback으로 보여줄 수 있습니다.
+- Scene은 Metal runtime 전까지 experimental `CALayer` prototype 뒤에서만 제한적으로 다루며, system-wallpaper fallback을 만들지 않습니다.
 - `scene.pkg` parsing, 일부 `.tex` decode, 일부 2D layer `CALayer` prototype rendering이 experimental toggle 뒤에 있습니다.
 - bundled macOS screen saver path로 animated Lock Screen playback을 실행합니다.
 - Video, Image, Web wallpaper에 대해 asset별 `Derived/desktop-fallback.png` cache를 유지합니다.
 - Space 변경 후 active Video/Web fallback cache를 live output에서 refresh합니다.
+- `Restore on Stop` 옵션이 켜진 경우 정적 이미지 original wallpaper를 앱 지원 폴더에 복사하고, Stop Playback 시 app-applied fallback과 현재 wallpaper가 일치할 때만 복원합니다.
 - live playback 전환은 hidden/staged replacement window set을 먼저 만든 뒤 성공 시에만 old windows를 닫습니다.
 - screen-change, wake, visibility update는 deterministic scheduler boundary를 통해 debounce합니다.
 - item 전환 실패 시 이전 live playback, fallback active asset, space-refresh active asset, `lastPlayedAssetId`를 유지합니다.
+- Fullscreen -> Desktop 복귀 빨간약은 custom desktop-level `NSWindow`가 살아있어도 macOS native Desktop Picture layer가 먼저 합성되는 문제로 보고, macOS 26 native wallpaper pipeline spike를 준비합니다.
 
 ### 임시 동작
 
@@ -75,12 +77,12 @@ MacWall은 사용자가 Windows에서 직접 복사해 온 Wallpaper Engine proj
 ├─ live desktop runtime 시작
 ├─ fallback coordination용 active asset 표시
 ├─ Derived/desktop-fallback.png 있음
-│  └─ 원래 macOS wallpaper를 capture한 뒤 macOS system wallpaper에 적용
+│  └─ 필요 시 original wallpaper를 capture한 뒤 macOS system wallpaper에 적용
 └─ cache 없음
    └─ 비동기 fallback generation 예약
       ├─ 지원되는 경우 대표 frame 캡처
       ├─ Derived/desktop-fallback.png 저장
-      └─ asset이 아직 active일 때만 원래 macOS wallpaper를 capture한 뒤 적용
+      └─ asset이 아직 active일 때만 필요 시 original wallpaper를 capture한 뒤 적용
 ```
 
 규칙:
@@ -89,9 +91,15 @@ MacWall은 사용자가 Windows에서 직접 복사해 온 Wallpaper Engine proj
 - fallback 작업은 Play/Apply의 side effect입니다. live playback을 block하면 안 됩니다.
 - automatic generation은 cache가 없고 runtime이 대표 frame을 만들 수 있을 때만 실행합니다.
 - manual generation/regeneration은 library item menu에서 제공합니다.
-- original macOS wallpaper capture는 앱이 `desktop-fallback.png`를 system wallpaper로 실제 적용하기 직전에만 실행합니다.
-- Stop Playback은 current wallpaper가 앱이 적용한 fallback과 일치할 때만 original wallpaper로 복원합니다.
+- original macOS wallpaper capture는 `Restore on Stop` 옵션이 켜져 있고 앱이 `desktop-fallback.png`를 system wallpaper로 실제 적용하기 직전에만 실행합니다.
+- original capture는 active Space + display 기준으로 읽은 `com.apple.wallpaper.choice.image` 정적 이미지 URL만 저장합니다.
+- original 정적 이미지 파일은 `Application Support/MacWall/DesktopWallpaperRestore/Originals`에 복사하고, Stop Playback은 복사본을 우선 사용합니다.
+- MacWall `Derived/desktop-fallback.png`는 original wallpaper로 capture하지 않습니다.
+- `Macintosh` 같은 macOS 기본/동적 wallpaper provider는 stale `NSWorkspace.desktopImageURL` 값을 original로 저장하지 않고, 옵션 활성화 또는 Play 시점에 경고합니다.
+- restore state는 `Application Support/MacWall/DesktopWallpaperRestore/restore-state-v2.json`에 저장합니다.
+- Stop Playback은 current wallpaper가 앱이 적용한 fallback과 일치할 때만 저장된 정적 original wallpaper로 복원합니다.
 - Stop Playback은 `Derived/desktop-fallback.png` cache 파일을 삭제하지 않습니다.
+- 다른 item fallback 적용이 성공하면 이전 item의 `Derived/desktop-fallback.png`는 삭제합니다.
 - 사용자가 앱 재생 중 macOS 설정에서 wallpaper를 직접 바꿨다면 Stop Playback은 그 변경을 덮어쓰지 않습니다.
 - `preview.gif`, `preview.jpg`, `thumbnail.jpg`, `cover.png`, Workshop thumbnail은 system-wallpaper fallback source가 아닙니다.
 
@@ -155,6 +163,34 @@ Assets/
 - A -> failing B 전환은 B fallback을 적용하지 않고 A live playback/fallback/space-refresh/`lastPlayedAssetId`를 유지합니다.
 - monitor attach/detach, resolution change, sleep/wake 검증은 GUI 실행 없는 simulated unit/integration test 범위로 처리했습니다.
 - 실제 macOS GUI QA는 별도 승인 후 후속 검증으로 남겨둡니다.
+
+### Phase P2.5: macOS 26 Native Wallpaper Mode Spike
+
+상태: spike 구현 및 수동 검증 완료. 세부 기록은 `docs/implemented/2026-06-15-macos-26-native-wallpaper-spike.md`에 있습니다.
+
+확인된 결과:
+
+- macOS 26에서 third-party `com.apple.wallpaper` extension discovery/load가 가능합니다.
+- `WallpaperAgent`가 `MacWallNativeWallpaperExtension` process를 실행합니다.
+- `connect`, `provideSettingsViewModels`, `acquire` handshake가 통과했습니다.
+- `CAContext.remoteContext`와 `WallpaperRemoteContextXPC`를 통해 native wallpaper surface를 확보했습니다.
+- `AVSampleBufferDisplayLayer` 기반 generated frame과 실제 mp4 playback이 Desktop wallpaper surface에 출력되었습니다.
+- Fullscreen -> Desktop 복귀 시 기존 desktop-level `NSWindow` backend의 red-pill 문제가 native path에서 해결됨을 사용자 관측으로 확인했습니다.
+
+아직 production 기능이 아닙니다.
+
+- Main App 통합은 시작하지 않습니다.
+- 기존 `NSWindow` backend는 유지합니다.
+- snapshot/export gate는 별도 활성 작업으로 남아 있습니다.
+- asset mp4 playback timing 품질 개선은 별도 설계로 남겨둡니다.
+- Web, Scene, fallback PNG 정책 변경은 제외합니다.
+- SIP 비활성화, Dock/Finder injection, 시스템 wallpaper DB 직접 수정은 금지합니다.
+
+활성 후속 문서:
+
+- `docs/superpowers/specs/2026-06-15-native-wallpaper-snapshot-export-gate-design.md`
+- `docs/superpowers/plans/2026-06-15-native-wallpaper-snapshot-export-gate.md`
+- `docs/superpowers/specs/2026-06-19-native-wallpaper-playback-timing.md`
 
 ### Phase P3: Web Runtime Completion
 
@@ -445,6 +481,8 @@ Product work:
 ```text
 P1 Desktop Fallback Cache (완료)
 -> P2 Playback Stability (완료)
+-> P2.5 macOS 26 Native Wallpaper Mode Spike (완료)
+-> Native Wallpaper follow-up gates (보류)
 -> P3 Web Runtime Completion
 ```
 
@@ -470,9 +508,10 @@ S0 Format Research and Fixture Catalog
 
 ## 11. 다음 Planning Session
 
-다음 product work를 시작하기 전에:
+다음 product work:
 
-1. P3 Web Runtime Completion 설계/spec 문서를 작성합니다.
-2. P3 실행 가능한 구현 계획을 작성합니다.
-3. Web property API, local-only policy, optional remote-network policy, Web error reporting acceptance criteria를 확정합니다.
-4. P3 방향과 Scene runtime 우선순위가 확정되기 전에는 Scene S0를 시작하지 않습니다.
+1. 다른 project 우선순위가 끝난 뒤 macOS 26 Native Wallpaper follow-up gate를 다시 선택합니다.
+2. snapshot/export를 계속할 경우 `docs/superpowers/plans/2026-06-15-native-wallpaper-snapshot-export-gate.md`를 기준으로 진행합니다.
+3. playback timing을 계속할 경우 `docs/superpowers/specs/2026-06-19-native-wallpaper-playback-timing.md`를 기준으로 executable plan을 먼저 작성합니다.
+4. Main App 통합은 snapshot/export와 playback timing 안정화 전까지 시작하지 않습니다.
+5. P3 방향과 Scene runtime 우선순위가 확정되기 전에는 Scene S0를 시작하지 않습니다.

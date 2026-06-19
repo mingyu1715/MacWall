@@ -91,9 +91,18 @@ Generate Desktop Fallback
 Regenerate Desktop Fallback
 ```
 
-Stop Playback은 live wallpaper layer를 중지하고 `Derived/desktop-fallback.png` cache file은 나중에 다시 사용할 수 있도록 보존합니다. 앱이 fallback PNG를 macOS system wallpaper로 적용한 상태라면, 현재 wallpaper가 해당 app-applied fallback과 일치할 때만 적용 전 original macOS wallpaper로 복원합니다. 사용자가 앱 재생 중 macOS 설정에서 wallpaper를 직접 바꾼 경우 Stop Playback은 그 변경을 덮어쓰지 않습니다.
+Stop Playback은 live wallpaper layer를 중지하고 현재 item의 `Derived/desktop-fallback.png` cache file은 나중에 다시 사용할 수 있도록 보존합니다.
 
-사용자가 원래 macOS wallpaper로 되돌리고 싶다면 macOS System Settings에서 직접 변경해야 합니다.
+2026-06-05 이후 Restore on Stop v2 정책:
+
+- `Restore on Stop` 옵션이 켜진 경우에만 original wallpaper capture/restore를 시도합니다.
+- original capture는 앱이 fallback PNG를 macOS system wallpaper로 실제 적용하기 직전에 실행합니다.
+- active Space + display 기준으로 확인한 정적 이미지 wallpaper만 original로 저장합니다.
+- 정적 original image file은 `Application Support/MacWall/DesktopWallpaperRestore/Originals`에 복사하고, Stop Playback은 이 복사본을 우선 사용합니다.
+- MacWall `Derived/desktop-fallback.png`는 original wallpaper로 capture하지 않습니다.
+- `Macintosh` 같은 macOS 기본/동적 wallpaper provider는 stale URL을 original로 저장하지 않고 경고합니다.
+- Stop Playback은 current wallpaper가 app-applied fallback과 일치할 때만 저장된 정적 original wallpaper로 복원합니다.
+- 사용자가 앱 재생 중 macOS 설정에서 wallpaper를 직접 바꾼 경우 Stop Playback은 그 변경을 덮어쓰지 않습니다.
 
 ## 검증 기록
 

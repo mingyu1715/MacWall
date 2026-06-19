@@ -79,8 +79,14 @@ macOS 26 Native Wallpaper Spike의 Desktop native surface와 mp4 재생 경로�
 | `raw-value-retained-iosurface` | `WallpaperSnapshotXPC.rawValue = IOSurface` with retained surface | rawValue lifetime 개선 검증 | crash 없음, 4101 제거 또는 변화 | crash면 rawValue path 폐기 |
 | `box-retained-iosurface` | `WallpaperSnapshotXPC.box = retained IOSurface pointer` | box ivar fallback 재검증 | crash 없음, 4101 제거 또는 변화 | crash면 box path 폐기 |
 | `png-data` | PNG `Data` wrapped in discovered snapshot field | bitmap payload 가능성 확인 | crash 없음, error code 변화 | request expects private wrapper |
+| `file-url` | PNG file written under request `cacheDirectory`, direct `NSURL` reply | WallpaperAgent cache-home export 구조 확인 | crash 없음, 4101 제거 또는 변화 | URL direct reply reject |
+| `snapshot-xpc-file-url` | PNG file written under request `cacheDirectory`, `WallpaperSnapshotXPC.rawValue = NSURL` | private wrapper + file URL 구조 확인 | unsafe flag가 있을 때만 실행 | `4099` / XPC invalidation / runtime removal |
 
 `raw-value-retained-iosurface`는 이미 crash-prone으로 확인된 rawValue 경로의 lifetime 개선 실험이다. 기본값으로 되돌리면 안 된다.
+
+Manual matrix 결과 `empty-object`, `raw-value-retained-iosurface`, `box-retained-iosurface`, `png-data`는 모두 extension crash 없이 native video runtime을 유지했지만 WallpaperAgent가 `NSCocoaErrorDomain(4101)`로 거부했다. `png-data`도 `NSConcreteMutableData` reply 전송까지는 성공했으므로, 다음 가설은 snapshot request의 `cacheDirectory` URL 아래에 파일을 생성하고 file URL 또는 private wrapper를 반환하는 방식이다.
+
+추가 matrix 결과 `file-url`은 PNG 파일 생성과 `NSURL` reply 전송까지 성공했지만 `NSCocoaErrorDomain(4101)`로 safe-rejected 되었다. 반면 `snapshot-xpc-file-url`은 `WallpaperSnapshotXPC.rawValue = NSURL` reply 이후 `NSCocoaErrorDomain(4099)`, XPC interruption/invalidation, runtime removal을 유발할 수 있으므로 unsafe candidate로 격리한다. 이 모드는 기본 install 경로에서 차단하고, 명시적인 unsafe 허용 플래그가 있을 때만 재현 실험에 사용한다.
 
 ## Probe Mode Configuration
 
@@ -102,6 +108,8 @@ enum MacWallSnapshotProbeMode: String, Sendable {
     case rawValueRetainedIOSurface = "raw-value-retained-iosurface"
     case boxRetainedIOSurface = "box-retained-iosurface"
     case pngData = "png-data"
+    case fileURL = "file-url"
+    case snapshotXPCFileURL = "snapshot-xpc-file-url"
 }
 
 enum MacWallSnapshotProbeConfiguration {
@@ -146,7 +154,7 @@ snapshotGate event=snapshot-agent-error session=... wallpaperID=... errorDomain=
 | extension crash | candidate가 unsafe | mode를 disabled로 되돌리고 crash report 기록 |
 | `WallpaperExtensionError(2)` | nil/unsupported reply | candidate 유지하지 않고 다음 candidate로 진행 |
 | `NSCocoaErrorDomain 4101` | XPC encode/decode shape mismatch | class layout / allowed classes / encode path 조사 |
-| update/invalidate `4099` | extension connection interrupted | 직전 crash 여부 확인 |
+| update/invalidate `4099` | extension connection interrupted | 직전 candidate가 `snapshot-xpc-file-url`이면 unsafe로 분류하고 safe baseline으로 복구 |
 | screen black after candidate | WallpaperAgent runtime fallout | reset/install 후 baseline 복구 확인 |
 | video stops without crash | lifecycle cleanup 또는 invalidation issue | snapshot과 별도 lifecycle bug로 분류 |
 

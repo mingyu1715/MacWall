@@ -64,6 +64,8 @@ empty-object
 raw-value-retained-iosurface
 box-retained-iosurface
 png-data
+file-url
+snapshot-xpc-file-url
 ```
 
 Default:
@@ -71,6 +73,11 @@ Default:
 ```text
 disabled
 ```
+
+`snapshot-xpc-file-url` is unsafe and must not run through the normal install
+path. It can interrupt WallpaperAgent XPC and remove the active native runtime
+surface. Use it only with `--allow-unsafe-snapshot-xpc` when intentionally
+reproducing that failure mode.
 
 ## Task 1: Generated Snapshot Probe Mode
 
@@ -798,6 +805,60 @@ If accepted but export fails later, inspect subsequent WallpaperAgent export log
 
 - [ ] **Step 7: Record matrix**
 
+Observed before adding file URL candidates:
+
+```text
+empty-object: safe-rejected, NSCocoaErrorDomain(4101), video preserved
+raw-value-retained-iosurface: safe-rejected, NSCocoaErrorDomain(4101), video preserved
+box-retained-iosurface: safe-rejected, NSCocoaErrorDomain(4101), video preserved
+png-data: safe-rejected, NSCocoaErrorDomain(4101), video preserved
+```
+
+The `png-data` run proved `NSConcreteMutableData` can be sent without crashing, but WallpaperAgent still rejects it as snapshot payload. Snapshot request introspection showed a WallpaperAgent cache `cacheDirectory` URL, so add file URL candidates before treating snapshot/export as blocked.
+
+Run:
+
+```bash
+./dev.sh reset
+./dev.sh install --snapshot-mode file-url
+```
+
+Expected classification:
+
+```text
+If 4101 disappears or changes, direct NSURL reply is close to expected export shape.
+If 4101 remains and video continues, classify file-url as safe-rejected.
+```
+
+Observed classification:
+
+```text
+file-url: safe-rejected, PNG file written, NSURL reply sent, NSCocoaErrorDomain(4101), video preserved
+```
+
+Then run:
+
+```bash
+./dev.sh reset
+./dev.sh install --snapshot-mode snapshot-xpc-file-url --allow-unsafe-snapshot-xpc
+```
+
+Expected classification:
+
+```text
+If 4101 disappears or changes, WallpaperSnapshotXPC wrapper likely expects file URL payload.
+If 4101 remains and video continues, classify snapshot-xpc-file-url as safe-rejected.
+If 4099 appears and the runtime is invalidated, classify snapshot-xpc-file-url as unsafe / connection-interrupting.
+```
+
+Observed classification:
+
+```text
+snapshot-xpc-file-url: unsafe, WallpaperSnapshotXPC reply sent, NSCocoaErrorDomain(4099), WallpaperAgent XPC invalidation, runtime removal, Desktop surface can disappear until reset/install/reselect
+```
+
+- [ ] **Step 8: Record matrix**
+
 Add a table to `docs/development-log.md`:
 
 ```md
@@ -809,9 +870,11 @@ Add a table to `docs/development-log.md`:
 | raw-value-retained-iosurface | no/yes | ... | ... | ... |
 | box-retained-iosurface | no/yes | ... | ... | ... |
 | png-data | no/yes | ... | ... | ... |
+| file-url | no/yes | ... | ... | ... |
+| snapshot-xpc-file-url | no/yes | ... | ... | ... |
 ```
 
-- [ ] **Step 8: Commit runtime findings**
+- [ ] **Step 9: Commit runtime findings**
 
 Run:
 
