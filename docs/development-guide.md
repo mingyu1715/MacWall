@@ -47,6 +47,7 @@ repository root는 사용자와 GitHub 공개 운영에 필요한 문서만 둡�
 - `docs/superpowers/plans/`: 활성 Superpowers 실행 계획
 - `docs/implemented/`: 큰 기능 완료 기록
 - `docs/archive/`: 과거 계획과 완료된 계획 보관
+- `docs/templates/`: 새 프로젝트에 재사용할 문서 및 Git 운영 템플릿
 
 ## 작업 전 확인 순서
 

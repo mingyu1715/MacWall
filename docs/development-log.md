@@ -2,6 +2,27 @@
 
 모든 시간은 Asia/Seoul 기준입니다.
 
+## 2026-07-17
+
+### 23:18 KST
+
+- 완료: 기술 작업 재개 전 문서 및 로컬 변경 정리
+- 문서:
+  - [새 프로젝트 문서 초기 세팅](templates/new-project-documentation-setup.md)
+  - [프로젝트 문서 및 Git 운영 템플릿](templates/project-docs-and-git-workflow-template.md)
+- 정리:
+  - repository 작업 진입점인 `AGENTS.md`를 추적 대상으로 추가
+  - 재사용 템플릿을 `docs/README.md`에서 바로 찾을 수 있도록 연결
+  - 남은 변경을 Restore on Stop, Fullscreen/WindowServer 실험, Native Wallpaper spike 후속 작업으로 분리해 로컬 commit으로 보존
+- 검증:
+  - 문서 및 source 목록 검색
+  - `git diff --check`
+  - shell script와 plist 정적 문법 검사
+- 제외:
+  - `swift test`, build, 앱/GUI 실행 없음
+  - System Settings 조작 없음
+  - package, DMG, notarization, `dist` 작업 없음
+
 ## 2026-06-19
 
 ### 14:41 KST

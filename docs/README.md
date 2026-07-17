@@ -41,6 +41,11 @@ repository root에는 사용자와 외부 기여자가 바로 확인해야 하�
 - [macOS 26 Native Wallpaper Snapshot Export Gate 실행 계획](superpowers/plans/2026-06-15-native-wallpaper-snapshot-export-gate.md)
 - [macOS 26 Native Wallpaper Playback Timing 설계](superpowers/specs/2026-06-19-native-wallpaper-playback-timing.md)
 
+## 재사용 템플릿
+
+- [새 프로젝트 문서 초기 세팅](templates/new-project-documentation-setup.md): 새 repository를 시작할 때 문서 구조와 생성 순서를 잡는 기준
+- [프로젝트 문서 및 Git 운영 템플릿](templates/project-docs-and-git-workflow-template.md): AGENTS, 개발 가이드, 기여 및 GitHub 운영 규칙 모음
+
 ## 보관 문서
 
 `archive/`는 과거 계획과 완료된 Superpowers 문서를 보관하는 곳입니다. 현재 작업 기준 문서가 아니므로, 새 작업을 시작할 때는 활성 문서인 roadmap / guide / log를 우선합니다.
