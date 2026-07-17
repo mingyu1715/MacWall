@@ -5,9 +5,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SPIKE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 DEV_RUNNER="$SPIKE_DIR/dev.sh"
 REMOTE_CONTEXT_SOURCE="$SPIKE_DIR/MacWallNativeWallpaperExtension/MacWallRemoteContextProbe.swift"
+VIDEO_BRIDGE_SOURCE="$SPIKE_DIR/MacWallNativeWallpaperExtension/NativeVideoFrameBridge.swift"
 XPC_CONFIGURATION_SOURCE="$SPIKE_DIR/MacWallNativeWallpaperExtension/MacWallWallpaperExtensionConfiguration.swift"
 EXTENSION_SOURCE="$SPIKE_DIR/MacWallNativeWallpaperExtension/MacWallNativeWallpaperExtension.swift"
 XPC_HANDLER_SOURCE="$SPIKE_DIR/MacWallNativeWallpaperExtension/MacWallWallpaperXPCHandler.swift"
+XPC_INTROSPECTION_SOURCE="$SPIKE_DIR/MacWallNativeWallpaperExtension/MacWallWallpaperXPCIntrospection.swift"
+APP_INFO_PLIST="$SPIKE_DIR/MacWallNativeWallpaperSpikeApp/Info.plist"
+EXTENSION_INFO_PLIST="$SPIKE_DIR/MacWallNativeWallpaperExtension/Info.plist"
 
 fail() {
     printf 'FAIL: %s\n' "$1" >&2
@@ -29,6 +33,8 @@ assert_contains "$help_output" "reset"
 assert_contains "$help_output" "install"
 assert_contains "$help_output" "status"
 assert_contains "$help_output" "logs"
+assert_contains "$help_output" "--allow-unsafe-snapshot-xpc"
+assert_contains "$help_output" "--video-source MODE"
 
 install_output="$(MACWALL_NATIVE_DRY_RUN=1 "$DEV_RUNNER" install)"
 assert_contains "$install_output" "cmake -S"
@@ -39,6 +45,31 @@ assert_contains "$install_output" "lsregister -f -R -trusted"
 snapshot_install_output="$(MACWALL_NATIVE_DRY_RUN=1 "$DEV_RUNNER" install --snapshot-mode error)"
 assert_contains "$snapshot_install_output" "MacWallSnapshotProbeMode.generated.swift"
 assert_contains "$snapshot_install_output" "snapshot mode: error"
+
+generated_video_install_output="$(MACWALL_NATIVE_DRY_RUN=1 "$DEV_RUNNER" install --video-source generated)"
+assert_contains "$generated_video_install_output" "MacWallNativeWallpaperVideoSourceMode.generated.swift"
+assert_contains "$generated_video_install_output" "video source: generated"
+
+asset_video_install_output="$(MACWALL_NATIVE_DRY_RUN=1 "$DEV_RUNNER" install --video-source asset)"
+assert_contains "$asset_video_install_output" "video source: asset"
+
+invalid_video_source_output="$(
+    MACWALL_NATIVE_DRY_RUN=1 "$DEV_RUNNER" install --video-source invalid-source 2>&1 || true
+)"
+assert_contains "$invalid_video_source_output" "Unknown video source: invalid-source"
+
+file_url_install_output="$(MACWALL_NATIVE_DRY_RUN=1 "$DEV_RUNNER" install --snapshot-mode file-url)"
+assert_contains "$file_url_install_output" "snapshot mode: file-url"
+
+snapshot_xpc_file_url_blocked_output="$(
+    MACWALL_NATIVE_DRY_RUN=1 "$DEV_RUNNER" install --snapshot-mode snapshot-xpc-file-url 2>&1 || true
+)"
+assert_contains "$snapshot_xpc_file_url_blocked_output" "Unsafe snapshot mode: snapshot-xpc-file-url"
+assert_contains "$snapshot_xpc_file_url_blocked_output" "--allow-unsafe-snapshot-xpc"
+
+snapshot_xpc_file_url_install_output="$(MACWALL_NATIVE_DRY_RUN=1 "$DEV_RUNNER" install --snapshot-mode snapshot-xpc-file-url --allow-unsafe-snapshot-xpc)"
+assert_contains "$snapshot_xpc_file_url_install_output" "UNSAFE snapshot mode enabled: snapshot-xpc-file-url"
+assert_contains "$snapshot_xpc_file_url_install_output" "snapshot mode: snapshot-xpc-file-url"
 
 invalid_mode_output="$(
     MACWALL_NATIVE_DRY_RUN=1 "$DEV_RUNNER" install --snapshot-mode invalid-mode 2>&1 || true
@@ -66,6 +97,8 @@ assert_contains "$remote_context_source" "case .emptyObject"
 assert_contains "$remote_context_source" "case .rawValueRetainedIOSurface"
 assert_contains "$remote_context_source" "case .boxRetainedIOSurface"
 assert_contains "$remote_context_source" "case .pngData"
+assert_contains "$remote_context_source" "case .fileURL"
+assert_contains "$remote_context_source" "case .snapshotXPCFileURL"
 assert_contains "$remote_context_source" "snapshot probe disabled"
 assert_contains "$remote_context_source" "snapshotGate event=snapshot-candidate"
 assert_contains "$remote_context_source" "makeSnapshotErrorResponse"
@@ -74,10 +107,34 @@ assert_contains "$remote_context_source" "MacWallSnapshotProbeRetainedObjectStor
 assert_contains "$remote_context_source" "makeRawValueRetainedIOSurfaceSnapshot"
 assert_contains "$remote_context_source" "makeBoxRetainedIOSurfaceSnapshot"
 assert_contains "$remote_context_source" "makePNGDataSnapshot"
+assert_contains "$remote_context_source" "makeFileURLSnapshot"
+assert_contains "$remote_context_source" "makeSnapshotXPCFileURLSnapshot"
+assert_contains "$remote_context_source" "snapshot request home"
+assert_contains "$remote_context_source" "snapshot home write preflight failed"
+assert_contains "$remote_context_source" "snapshot home write preflight skipped"
+assert_contains "$remote_context_source" "snapshot home security scope"
+assert_contains "$remote_context_source" "startAccessingSecurityScopedResource"
+assert_contains "$remote_context_source" "withSnapshotHomeSecurityScope"
+assert_contains "$remote_context_source" "snapshot home coordinated write preflight"
+assert_contains "$remote_context_source" "NSFileCoordinator"
+assert_contains "$remote_context_source" "MacWallSnapshotHomeWriteAccessCache"
+assert_contains "$remote_context_source" "cacheHomeURL"
+assert_contains "$remote_context_source" "cacheHomeURL=\\("
+assert_contains "$remote_context_source" "normalizedLabel.contains(\"home\")"
+assert_contains "$remote_context_source" "normalizedLabel.contains(\"cachedirectory\")"
+assert_contains "$remote_context_source" "guard depth < 8"
+assert_contains "$remote_context_source" "context?.requestInfo.cacheHomeURL"
+assert_contains "$remote_context_source" "snapshot request home source=\\("
 assert_contains "$remote_context_source" "logPrivateClassLayoutOnce(snapshotXPCClass, label: \"WallpaperSnapshotXPC\")"
 assert_contains "$remote_context_source" "enum MacWallWallpaperContextRole"
 assert_contains "$remote_context_source" "role=\\("
 assert_contains "$remote_context_source" "previousContextID="
+
+video_bridge_source="$(cat "$VIDEO_BRIDGE_SOURCE")"
+assert_contains "$video_bridge_source" "MacWallNativeWallpaperVideoSourceModeConfiguration.mode"
+assert_contains "$video_bridge_source" "case .generated"
+assert_contains "$video_bridge_source" "case .asset"
+assert_contains "$video_bridge_source" "videoSourceMode="
 
 extension_source="$(cat "$EXTENSION_SOURCE")"
 assert_contains "$extension_source" "requiresSnapshotEncodeSwizzle"
@@ -86,10 +143,32 @@ assert_contains "$extension_source" "WallpaperSnapshotXPC encode swizzle disable
 xpc_handler_source="$(cat "$XPC_HANDLER_SOURCE")"
 assert_contains "$xpc_handler_source" "snapshotGate event=snapshot-request"
 assert_contains "$xpc_handler_source" "snapshotGate event=snapshot-reply"
+assert_contains "$xpc_handler_source" "logXPCShapeProbe(\"acquire.request\", request)"
+assert_contains "$xpc_handler_source" "logXPCShapeProbe(\"update.request\", request)"
+assert_contains "$xpc_handler_source" "logXPCShapeProbe(\"snapshot.id\", id)"
+
+xpc_introspection_source="$(cat "$XPC_INTROSPECTION_SOURCE")"
+assert_contains "$xpc_introspection_source" "shapeProbe label="
+assert_contains "$xpc_introspection_source" "interestingLabels="
+assert_contains "$xpc_introspection_source" "urlCandidates="
+assert_contains "$xpc_introspection_source" "fileCandidates="
+assert_contains "$xpc_introspection_source" "tokenCandidates="
+assert_contains "$xpc_introspection_source" "descriptorCandidates="
+assert_contains "$xpc_introspection_source" "bookmarkCandidates="
+assert_contains "$xpc_introspection_source" "shapeProbe classLayout"
+assert_contains "$xpc_introspection_source" "interestingFieldKeywords"
 
 xpc_configuration_source="$(cat "$XPC_CONFIGURATION_SOURCE")"
 assert_contains "$xpc_configuration_source" "import IOSurface"
 assert_contains "$xpc_configuration_source" "classSet.add(IOSurface.self)"
+
+app_info_plist="$(cat "$APP_INFO_PLIST")"
+assert_contains "$app_info_plist" "NSAppDataUsageDescription"
+assert_contains "$app_info_plist" "WallpaperAgent"
+
+extension_info_plist="$(cat "$EXTENSION_INFO_PLIST")"
+assert_contains "$extension_info_plist" "NSAppDataUsageDescription"
+assert_contains "$extension_info_plist" "WallpaperAgent"
 
 fake_ps="$(mktemp)"
 trap 'rm -f "$fake_ps"' EXIT

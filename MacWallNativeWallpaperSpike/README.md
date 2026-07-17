@@ -92,9 +92,56 @@ Rules:
   making the next implementation change.
 - System Settings selection and actual Desktop output verification remain manual.
 
+## Video Source Diagnostic Protocol
+
+The default video source is `asset`, which uses the bundled mp4 through
+`AVAssetReader` and `AVSampleBufferDisplayLayer`.
+
+Use `generated` when isolating stutter or frame pacing issues. This bypasses
+the bundled mp4 and `AVAssetReader` completely, while still exercising the
+native `CAContext` and `AVSampleBufferDisplayLayer` path.
+
+```bash
+./dev.sh reset
+./dev.sh install --snapshot-mode disabled --video-source generated
+```
+
+Then manually reselect `MacWall Native Spike` in System Settings and verify the
+actual Desktop output.
+
+Collect focused logs:
+
+```bash
+./dev.sh logs --last 3m \
+  | grep -E "videoSourceMode|nativeVideoBridge enqueued|snapshotGate|WallpaperExtensionError|NSCocoaErrorDomain|interruptionHandler|invalidationHandler|runtime"
+```
+
+Interpretation:
+
+- `videoSourceMode=generated` with smooth output: bundled mp4, `AVAssetReader`,
+  asset PTS, or asset loop handling is the likely stutter source.
+- `videoSourceMode=generated` with similar stutter: the issue is likely in
+  `AVSampleBufferDisplayLayer` pacing, native surface scheduling, or
+  WallpaperAgent runtime updates.
+- Keep `--snapshot-mode disabled` during this test so snapshot/export work does
+  not affect frame pacing.
+
 ## Snapshot Export Gate Protocol
 
 The default snapshot mode is `disabled`.
+
+Current candidate matrix:
+
+| Mode | Current classification | WallpaperAgent result | Runtime result |
+| --- | --- | --- | --- |
+| `disabled` | baseline | `WallpaperExtensionError(2)` expected | video preserved |
+| `error` | explicit-error probe | custom `MacWallNativeWallpaperSnapshotProbe(2001)` | video preserved |
+| `empty-object` | safe-rejected | `NSCocoaErrorDomain(4101)` | video preserved |
+| `raw-value-retained-iosurface` | safe-rejected | `NSCocoaErrorDomain(4101)` | video preserved |
+| `box-retained-iosurface` | safe-rejected | `NSCocoaErrorDomain(4101)` | video preserved |
+| `png-data` | safe-rejected | `NSCocoaErrorDomain(4101)` | video preserved |
+| `file-url` | safe-rejected | PNG is written under request `cacheDirectory`, direct `NSURL` reply is rejected with `NSCocoaErrorDomain(4101)` | video preserved |
+| `snapshot-xpc-file-url` | unsafe / connection-interrupting | `WallpaperSnapshotXPC.rawValue = NSURL` can trigger `NSCocoaErrorDomain(4099)`, WallpaperAgent XPC invalidation, and runtime removal | Desktop surface can disappear until reset/install/reselect |
 
 Run one candidate at a time:
 
@@ -110,7 +157,25 @@ For a candidate:
 
 ```bash
 ./dev.sh reset
-./dev.sh install --snapshot-mode error
+./dev.sh install --snapshot-mode file-url
+```
+
+Do not use `snapshot-xpc-file-url` as a normal visual/video test mode. It is
+blocked by default because the current `WallpaperSnapshotXPC.rawValue = NSURL`
+shape can interrupt the WallpaperAgent XPC connection and remove the active
+runtime surface. Only run it when intentionally reproducing that failure:
+
+```bash
+./dev.sh reset
+./dev.sh install --snapshot-mode snapshot-xpc-file-url --allow-unsafe-snapshot-xpc
+```
+
+If the Desktop surface disappears after an unsafe candidate, return to a safe
+baseline and manually reselect the wallpaper:
+
+```bash
+./dev.sh reset
+./dev.sh install --snapshot-mode file-url
 ```
 
 Collect logs:
@@ -123,10 +188,28 @@ Check for:
 
 - `snapshotGate event=snapshot-request`
 - `snapshotGate event=snapshot-reply`
+- `shapeProbe label=acquire.request`
+- `shapeProbe label=update.request`
+- `shapeProbe label=snapshot.id`
+- `shapeProbe classLayout`
 - `WallpaperExtensionError (2)`
 - `NSCocoaErrorDomain (4101)`
 - `ReportCrash`
 - continued `nativeVideoBridge enqueued`
+- for file candidates: `snapshot request home`, `snapshot home write preflight failed`,
+  `snapshot home write preflight skipped`, `snapshot home security scope`,
+  `snapshot home coordinated write preflight`, `snapshot file written`
+
+Focused shape probe log check:
+
+```bash
+./dev.sh logs --last 3m \
+  | grep -E "shapeProbe|remoteContext request|cacheHomeURL|snapshotGate|snapshot request home|snapshot home security scope|snapshot home coordinated write preflight|snapshot home write preflight|WallpaperExtensionError|NSCocoaErrorDomain|nativeVideoBridge enqueued"
+```
+
+Use `disabled` first when investigating request/response shape. It avoids file
+candidate work while still logging acquire, update, and snapshot request
+structure.
 
 If a candidate crashes the extension, return to:
 

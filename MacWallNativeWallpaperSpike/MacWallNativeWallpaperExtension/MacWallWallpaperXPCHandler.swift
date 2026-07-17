@@ -7,6 +7,7 @@ final class MacWallWallpaperXPCHandler: NSObject, MacWallWallpaperExtensionXPCPr
         )
         logXPCObject("acquire.id", id)
         logXPCObject("acquire.request", request)
+        logXPCShapeProbe("acquire.request", request)
         guard let response = MacWallRemoteContextProbe.makeAcquireResponse(id: id, request: request) else {
             let error = NSError(
                 domain: "MacWallNativeWallpaperExtension",
@@ -24,6 +25,7 @@ final class MacWallWallpaperXPCHandler: NSObject, MacWallWallpaperExtensionXPCPr
         macWallNativeWallpaperLogger.info("update stub")
         logXPCObject("update.id", id)
         logXPCObject("update.request", request)
+        logXPCShapeProbe("update.request", request)
         reply(nil)
     }
 
@@ -45,6 +47,7 @@ final class MacWallWallpaperXPCHandler: NSObject, MacWallWallpaperExtensionXPCPr
             "snapshotGate event=snapshot-request \(runtime.logDescription, privacy: .public) wallpaperID=\(wallpaperID, privacy: .public) mode=\(MacWallSnapshotProbeConfiguration.mode.rawValue, privacy: .public)"
         )
         logXPCObject("snapshot.id", id)
+        logXPCShapeProbe("snapshot.id", id)
         switch MacWallSnapshotProbe.makeSnapshotResponse(for: id) {
         case .nilReply:
             macWallNativeWallpaperLogger.info(

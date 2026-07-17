@@ -47,12 +47,23 @@ final class NativeVideoFrameBridge: @unchecked Sendable {
     }
 
     static func attachDesktopProbe(to rootLayer: CALayer, size: CGSize, scale: CGFloat) -> NativeVideoFrameBridge {
-        if let videoURL = MacWallNativeWallpaperVideoSource.bundledProbeURL() {
-            return attachAssetProbe(videoURL: videoURL, to: rootLayer, size: size, scale: scale)
+        switch MacWallNativeWallpaperVideoSourceModeConfiguration.mode {
+        case .generated:
+            macWallNativeWallpaperLogger.info(
+                "nativeVideoBridge videoSourceMode=generated; bypassing bundled mp4 and AVAssetReader"
+            )
+            return attachGeneratedProbe(to: rootLayer, size: size, scale: scale)
+        case .asset:
+            if let videoURL = MacWallNativeWallpaperVideoSource.bundledProbeURL() {
+                macWallNativeWallpaperLogger.info(
+                    "nativeVideoBridge videoSourceMode=asset; using bundled mp4"
+                )
+                return attachAssetProbe(videoURL: videoURL, to: rootLayer, size: size, scale: scale)
+            }
         }
 
         macWallNativeWallpaperLogger.warning(
-            "nativeVideoBridge bundled mp4 resource missing; falling back to generated sample-buffer probe"
+            "nativeVideoBridge videoSourceMode=asset bundled mp4 resource missing; falling back to generated sample-buffer probe"
         )
         return attachGeneratedProbe(to: rootLayer, size: size, scale: scale)
     }

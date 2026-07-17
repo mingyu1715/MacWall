@@ -24,6 +24,8 @@
     <string>26.0</string>
     <key>LSUIElement</key>
     <true/>
+    <key>NSAppDataUsageDescription</key>
+    <string>MacWall needs access to WallpaperAgent cache data to export native wallpaper snapshots.</string>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
 </dict>

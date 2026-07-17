@@ -22,6 +22,7 @@ add_executable(MacWallNativeWallpaperExtension MACOSX_BUNDLE
     MacWallNativeWallpaperExtension/MacWallNativeWallpaperExtension.swift
     MacWallNativeWallpaperExtension/MacWallNativeWallpaperRuntimeIdentity.swift
     MacWallNativeWallpaperExtension/MacWallNativeWallpaperVideoSource.swift
+    MacWallNativeWallpaperExtension/MacWallNativeWallpaperVideoSourceMode.generated.swift
     MacWallNativeWallpaperExtension/MacWallRemoteContextProbe.swift
     MacWallNativeWallpaperExtension/MacWallSnapshotProbeMode.generated.swift
     MacWallNativeWallpaperExtension/NativeVideoFrameBridge.swift

@@ -27,5 +27,7 @@
     </dict>
     <key>LSMinimumSystemVersion</key>
     <string>26.0</string>
+    <key>NSAppDataUsageDescription</key>
+    <string>MacWall needs access to WallpaperAgent cache data to export native wallpaper snapshots.</string>
 </dict>
 </plist>

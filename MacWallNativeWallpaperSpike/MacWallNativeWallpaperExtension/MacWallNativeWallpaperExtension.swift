@@ -11,9 +11,9 @@ let macWallNativeWallpaperLogger = Logger(
 
 private var requiresSnapshotEncodeSwizzle: Bool {
     switch MacWallSnapshotProbeConfiguration.mode {
-    case .emptyObject, .rawValueRetainedIOSurface, .boxRetainedIOSurface:
+    case .emptyObject, .rawValueRetainedIOSurface, .boxRetainedIOSurface, .snapshotXPCFileURL:
         return true
-    case .disabled, .error, .pngData:
+    case .disabled, .error, .pngData, .fileURL:
         return false
     }
 }

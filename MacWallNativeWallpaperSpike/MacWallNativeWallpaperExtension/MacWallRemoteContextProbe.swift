@@ -12,7 +12,7 @@ enum MacWallRemoteContextProbe {
         let requestInfo = MacWallWallpaperCreationRequestInfo.parse(request)
         let role = requestInfo.contextRole
         macWallNativeWallpaperLogger.info(
-            "remoteContext request key=\(contextKey, privacy: .public) role=\(role.rawValue, privacy: .public) size=\(String(describing: requestInfo.size), privacy: .public) scale=\(requestInfo.scale, privacy: .public) displayID=\(String(describing: requestInfo.displayID), privacy: .public) isPreview=\(String(describing: requestInfo.isPreview), privacy: .public) \(MacWallNativeWallpaperRuntimeIdentity.current.logDescription, privacy: .public)"
+            "remoteContext request key=\(contextKey, privacy: .public) role=\(role.rawValue, privacy: .public) size=\(String(describing: requestInfo.size), privacy: .public) scale=\(requestInfo.scale, privacy: .public) displayID=\(String(describing: requestInfo.displayID), privacy: .public) isPreview=\(String(describing: requestInfo.isPreview), privacy: .public) cacheHomeURL=\(requestInfo.cacheHomeURL?.absoluteString ?? "nil", privacy: .public) \(MacWallNativeWallpaperRuntimeIdentity.current.logDescription, privacy: .public)"
         )
 
         guard let caContext = createRemoteCAContext(displayID: requestInfo.displayID) else {
@@ -233,6 +233,7 @@ struct MacWallWallpaperCreationRequestInfo {
     var scale: CGFloat = 2.0
     var displayID: UInt32?
     var isPreview: Bool?
+    var cacheHomeURL: URL?
 
     var contextRole: MacWallWallpaperContextRole {
         if isPreview == true {
@@ -255,7 +256,7 @@ struct MacWallWallpaperCreationRequestInfo {
     }
 
     private static func inspect(value: Any, info: inout MacWallWallpaperCreationRequestInfo, depth: Int) {
-        guard depth < 4 else {
+        guard depth < 8 else {
             return
         }
 
@@ -266,12 +267,18 @@ struct MacWallWallpaperCreationRequestInfo {
                 continue
             }
 
+            let normalizedLabel = label.lowercased()
             switch label {
             case "destination":
                 parseDestination(child.value, info: &info)
             case "isPreview":
                 info.isPreview = boolValue(child.value)
             default:
+                if (normalizedLabel.contains("home") || normalizedLabel.contains("cachedirectory")),
+                   let homeURL = urlValue(child.value) {
+                    info.cacheHomeURL = homeURL
+                    continue
+                }
                 inspect(value: child.value, info: &info, depth: depth + 1)
             }
         }
@@ -491,6 +498,10 @@ enum MacWallSnapshotProbe {
             return makeBoxRetainedIOSurfaceSnapshot(for: id).map(MacWallSnapshotResponse.object) ?? .nilReply
         case .pngData:
             return makePNGDataSnapshot(for: id).map(MacWallSnapshotResponse.object) ?? .nilReply
+        case .fileURL:
+            return makeFileURLSnapshot(for: id).map(MacWallSnapshotResponse.object) ?? .nilReply
+        case .snapshotXPCFileURL:
+            return makeSnapshotXPCFileURLSnapshot(for: id).map(MacWallSnapshotResponse.object) ?? .nilReply
         }
     }
 }
@@ -650,6 +661,195 @@ private func makePNGDataSnapshot(for id: Any?) -> AnyObject? {
     return data
 }
 
+private func makeFileURLSnapshot(for id: Any?) -> AnyObject? {
+    guard let fileURL = makeSnapshotFileURL(for: id) else {
+        return nil
+    }
+    let fileURLObject = fileURL as NSURL
+    MacWallSnapshotProbeRetainedObjectStore.shared.replace([fileURLObject], for: wallpaperIDKey(from: id))
+    macWallNativeWallpaperLogger.info(
+        "snapshotGate event=snapshot-file-url-reply key=\(wallpaperIDKey(from: id), privacy: .public) url=\(fileURL.absoluteString, privacy: .public)"
+    )
+    return fileURLObject
+}
+
+private func makeSnapshotXPCFileURLSnapshot(for id: Any?) -> AnyObject? {
+    guard let fileURL = makeSnapshotFileURL(for: id),
+          let snapshotXPCClass = objc_getClass("WallpaperSnapshotXPC") as? AnyClass,
+          let rawValueIvar = class_getInstanceVariable(snapshotXPCClass, "rawValue"),
+          let instance = class_createInstance(snapshotXPCClass, 0) else {
+        macWallNativeWallpaperLogger.error("WallpaperSnapshotXPC fileURL snapshot allocation failed")
+        return nil
+    }
+    logPrivateClassLayoutOnce(snapshotXPCClass, label: "WallpaperSnapshotXPC")
+
+    let key = wallpaperIDKey(from: id)
+    let snapshot = instance as AnyObject
+    let fileURLObject = fileURL as NSURL
+    MacWallSnapshotProbeRetainedObjectStore.shared.replace([fileURLObject], for: key)
+    object_setIvar(snapshot, rawValueIvar, fileURLObject)
+    macWallNativeWallpaperLogger.info(
+        "WallpaperSnapshotXPC created rawValue retained fileURL=\(fileURL.absoluteString, privacy: .public) offset=\(ivar_getOffset(rawValueIvar))"
+    )
+    return snapshot
+}
+
+private func makeSnapshotFileURL(for id: Any?) -> URL? {
+    let key = wallpaperIDKey(from: id)
+    let context = MacWallRemoteWallpaperContextStore.shared.context(for: id)
+        ?? MacWallRemoteWallpaperContextStore.shared.firstContext()
+    guard let homeURL = context?.requestInfo.cacheHomeURL ?? snapshotHomeURL(from: id) else {
+        macWallNativeWallpaperLogger.error("snapshot request home missing key=\(key, privacy: .public)")
+        return nil
+    }
+    macWallNativeWallpaperLogger.info(
+        "snapshot request home source=\(context?.requestInfo.cacheHomeURL == nil ? "snapshot-id" : "context", privacy: .public) key=\(key, privacy: .public) home=\(homeURL.absoluteString, privacy: .public)"
+    )
+
+    return withSnapshotHomeSecurityScope(homeURL, key: key) {
+        guard canWriteSnapshotHome(homeURL, key: key) else {
+            return nil
+        }
+
+        guard let surface = makeSnapshotIOSurfaceForCurrentContext(id: id),
+              let data = makePNGData(from: surface) else {
+            return nil
+        }
+
+        do {
+            try FileManager.default.createDirectory(at: homeURL, withIntermediateDirectories: true)
+            let fileURL = homeURL.appendingPathComponent(
+                "macwall-snapshot-\(fileSafeSnapshotKey(key))-\(UUID().uuidString).png",
+                isDirectory: false
+            )
+            try (data as Data).write(to: fileURL, options: .atomic)
+            MacWallSnapshotProbeRetainedObjectStore.shared.replace([data, fileURL as NSURL], for: key)
+            macWallNativeWallpaperLogger.info(
+                "snapshot file written key=\(key, privacy: .public) url=\(fileURL.absoluteString, privacy: .public) byteCount=\(data.length)"
+            )
+            return fileURL
+        } catch {
+            MacWallSnapshotHomeWriteAccessCache.shared.store(false, for: homeURL)
+            macWallNativeWallpaperLogger.error(
+                "snapshot file write failed key=\(key, privacy: .public) home=\(homeURL.absoluteString, privacy: .public) error=\(String(describing: error), privacy: .public)"
+            )
+            return nil
+        }
+    }
+}
+
+private func withSnapshotHomeSecurityScope<T>(_ homeURL: URL, key: String, operation: () -> T) -> T {
+    let securityScopeGranted = homeURL.startAccessingSecurityScopedResource()
+    macWallNativeWallpaperLogger.info(
+        "snapshot home security scope key=\(key, privacy: .public) home=\(homeURL.absoluteString, privacy: .public) granted=\(securityScopeGranted)"
+    )
+    defer {
+        if securityScopeGranted {
+            homeURL.stopAccessingSecurityScopedResource()
+        }
+    }
+
+    return operation()
+}
+
+private func canWriteSnapshotHome(_ homeURL: URL, key: String) -> Bool {
+    if let cached = MacWallSnapshotHomeWriteAccessCache.shared.status(for: homeURL) {
+        if !cached {
+            macWallNativeWallpaperLogger.warning(
+                "snapshot home write preflight skipped key=\(key, privacy: .public) home=\(homeURL.absoluteString, privacy: .public) reason=cached-denied"
+            )
+        }
+        return cached
+    }
+
+    let probeFileName = ".macwall-snapshot-write-preflight-\(UUID().uuidString).tmp"
+    if let directError = writeSnapshotHomeProbeFile(in: homeURL, fileName: probeFileName) {
+        macWallNativeWallpaperLogger.warning(
+            "snapshot home direct write preflight failed key=\(key, privacy: .public) home=\(homeURL.absoluteString, privacy: .public) error=\(String(describing: directError), privacy: .public)"
+        )
+        if let coordinatedError = coordinateSnapshotHomeProbeWrite(homeURL: homeURL, fileName: probeFileName, key: key) {
+            MacWallSnapshotHomeWriteAccessCache.shared.store(false, for: homeURL)
+            macWallNativeWallpaperLogger.error(
+                "snapshot home write preflight failed key=\(key, privacy: .public) home=\(homeURL.absoluteString, privacy: .public) directError=\(String(describing: directError), privacy: .public) coordinatedError=\(String(describing: coordinatedError), privacy: .public)"
+            )
+            return false
+        }
+
+        MacWallSnapshotHomeWriteAccessCache.shared.store(true, for: homeURL)
+        macWallNativeWallpaperLogger.info(
+            "snapshot home write preflight passed key=\(key, privacy: .public) home=\(homeURL.absoluteString, privacy: .public) method=coordinated"
+        )
+        return true
+    }
+
+    MacWallSnapshotHomeWriteAccessCache.shared.store(true, for: homeURL)
+    macWallNativeWallpaperLogger.info(
+        "snapshot home write preflight passed key=\(key, privacy: .public) home=\(homeURL.absoluteString, privacy: .public) method=direct"
+    )
+    return true
+}
+
+private func writeSnapshotHomeProbeFile(in homeURL: URL, fileName: String) -> Error? {
+    do {
+        try FileManager.default.createDirectory(at: homeURL, withIntermediateDirectories: true)
+        let probeURL = homeURL.appendingPathComponent(fileName, isDirectory: false)
+        try Data().write(to: probeURL, options: .atomic)
+        try? FileManager.default.removeItem(at: probeURL)
+        return nil
+    } catch {
+        return error
+    }
+}
+
+private func coordinateSnapshotHomeProbeWrite(homeURL: URL, fileName: String, key: String) -> Error? {
+    let coordinator = NSFileCoordinator(filePresenter: nil)
+    var coordinationError: NSError?
+    var writeError: Error?
+    coordinator.coordinate(writingItemAt: homeURL, options: [], error: &coordinationError) { coordinatedHomeURL in
+        writeError = writeSnapshotHomeProbeFile(in: coordinatedHomeURL, fileName: fileName)
+    }
+
+    if let coordinationError {
+        macWallNativeWallpaperLogger.warning(
+            "snapshot home coordinated write preflight failed key=\(key, privacy: .public) home=\(homeURL.absoluteString, privacy: .public) phase=coordinate error=\(String(describing: coordinationError), privacy: .public)"
+        )
+        return coordinationError
+    }
+
+    if let writeError {
+        macWallNativeWallpaperLogger.warning(
+            "snapshot home coordinated write preflight failed key=\(key, privacy: .public) home=\(homeURL.absoluteString, privacy: .public) phase=write error=\(String(describing: writeError), privacy: .public)"
+        )
+        return writeError
+    }
+
+    macWallNativeWallpaperLogger.info(
+        "snapshot home coordinated write preflight passed key=\(key, privacy: .public) home=\(homeURL.absoluteString, privacy: .public)"
+    )
+    return nil
+}
+
+private final class MacWallSnapshotHomeWriteAccessCache: @unchecked Sendable {
+    static let shared = MacWallSnapshotHomeWriteAccessCache()
+
+    private let lock = NSLock()
+    private var statuses: [String: Bool] = [:]
+
+    private init() {}
+
+    func status(for homeURL: URL) -> Bool? {
+        lock.lock()
+        defer { lock.unlock() }
+        return statuses[homeURL.absoluteString]
+    }
+
+    func store(_ status: Bool, for homeURL: URL) {
+        lock.lock()
+        statuses[homeURL.absoluteString] = status
+        lock.unlock()
+    }
+}
+
 private func makePNGData(from surface: IOSurface) -> NSData? {
     surface.lock(options: [], seed: nil)
     let width = surface.width
@@ -687,6 +887,55 @@ private func makePNGData(from surface: IOSurface) -> NSData? {
         return nil
     }
     return output
+}
+
+private func snapshotHomeURL(from id: Any?) -> URL? {
+    guard let id else {
+        return nil
+    }
+    return snapshotHomeURL(in: id, label: nil, depth: 0)
+}
+
+private func snapshotHomeURL(in value: Any, label: String?, depth: Int) -> URL? {
+    guard depth < 8, let unwrapped = unwrapOptional(value) else {
+        return nil
+    }
+
+    if let label {
+        let normalizedLabel = label.lowercased()
+        if (normalizedLabel.contains("home") || normalizedLabel.contains("cachedirectory")),
+           let url = urlValue(unwrapped) {
+            return url
+        }
+    }
+
+    let mirror = Mirror(reflecting: unwrapped)
+    for child in mirror.children {
+        if let url = snapshotHomeURL(in: child.value, label: child.label, depth: depth + 1) {
+            return url
+        }
+    }
+    return nil
+}
+
+private func urlValue(_ value: Any) -> URL? {
+    guard let unwrapped = unwrapOptional(value) else {
+        return nil
+    }
+
+    if let url = unwrapped as? URL {
+        return url
+    }
+
+    if let nsURL = unwrapped as? NSURL {
+        return nsURL as URL
+    }
+
+    return nil
+}
+
+private func fileSafeSnapshotKey(_ key: String) -> String {
+    key.replacingOccurrences(of: #"[^A-Za-z0-9-]"#, with: "_", options: .regularExpression)
 }
 
 private final class MacWallPrivateClassLayoutLogger: @unchecked Sendable {

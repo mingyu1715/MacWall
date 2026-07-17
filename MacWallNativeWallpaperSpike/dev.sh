@@ -13,6 +13,8 @@ EXTENSION_SUBSYSTEM="com.mingyu1715.macwall.native-wallpaper-extension"
 EXTENSION_BUNDLE_ID="com.mingyu1715.macwall.native-wallpaper-spike.extension"
 SNAPSHOT_MODE_DEFAULT="disabled"
 SNAPSHOT_MODE_FILE="$SCRIPT_DIR/MacWallNativeWallpaperExtension/MacWallSnapshotProbeMode.generated.swift"
+VIDEO_SOURCE_MODE_DEFAULT="asset"
+VIDEO_SOURCE_MODE_FILE="$SCRIPT_DIR/MacWallNativeWallpaperExtension/MacWallNativeWallpaperVideoSourceMode.generated.swift"
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Versions/Current/Frameworks/LaunchServices.framework/Versions/Current/Support/lsregister"
 DRY_RUN="${MACWALL_NATIVE_DRY_RUN:-0}"
 
@@ -22,7 +24,7 @@ Usage: ./dev.sh <command> [options]
 
 Commands:
   reset [--wallpaper-agent]  Terminate stale MacWall native wallpaper extension processes.
-  install [--snapshot-mode MODE]
+  install [--snapshot-mode MODE] [--video-source MODE] [--allow-unsafe-snapshot-xpc]
                              Generate, build, codesign-verify, and register the spike app.
   status                     Print WallpaperAgent and MacWall extension process status.
   logs [--last DURATION]     Show recent WallpaperAgent and extension logs. Default: 10m.
@@ -47,6 +49,12 @@ Snapshot modes:
   raw-value-retained-iosurface
   box-retained-iosurface
   png-data
+  file-url
+  snapshot-xpc-file-url       Unsafe: can interrupt WallpaperAgent XPC and remove the active runtime surface.
+
+Video sources:
+  asset                       Default. Use the bundled mp4 through AVAssetReader.
+  generated                   Use generated sample buffers only, bypassing mp4/AVAssetReader.
 EOF
 }
 
@@ -144,6 +152,8 @@ swift_case_for_snapshot_mode() {
         raw-value-retained-iosurface) printf '.rawValueRetainedIOSurface\n' ;;
         box-retained-iosurface) printf '.boxRetainedIOSurface\n' ;;
         png-data) printf '.pngData\n' ;;
+        file-url) printf '.fileURL\n' ;;
+        snapshot-xpc-file-url) printf '.snapshotXPCFileURL\n' ;;
         *)
             printf 'Unknown snapshot mode: %s\n' "$1" >&2
             exit 2
@@ -169,12 +179,67 @@ generate_snapshot_mode_source() {
         printf '    case rawValueRetainedIOSurface = "raw-value-retained-iosurface"\n'
         printf '    case boxRetainedIOSurface = "box-retained-iosurface"\n'
         printf '    case pngData = "png-data"\n'
+        printf '    case fileURL = "file-url"\n'
+        printf '    case snapshotXPCFileURL = "snapshot-xpc-file-url"\n'
         printf '}\n\n'
         printf 'enum MacWallSnapshotProbeConfiguration {\n'
         printf '    static let mode: MacWallSnapshotProbeMode = %s\n' "$swift_case"
         printf '}\n'
     } >"$SNAPSHOT_MODE_FILE"
     printf 'snapshot mode: %s\n' "$mode"
+}
+
+swift_case_for_video_source_mode() {
+    case "$1" in
+        asset) printf '.asset\n' ;;
+        generated) printf '.generated\n' ;;
+        *)
+            printf 'Unknown video source: %s\n' "$1" >&2
+            exit 2
+            ;;
+    esac
+}
+
+generate_video_source_mode_source() {
+    local mode="$1"
+    local swift_case
+    swift_case="$(swift_case_for_video_source_mode "$mode")"
+    print_command "generate-video-source-mode" "$VIDEO_SOURCE_MODE_FILE" "$mode"
+    if [[ "$DRY_RUN" == "1" ]]; then
+        printf 'video source: %s\n' "$mode"
+        return 0
+    fi
+
+    {
+        printf 'enum MacWallNativeWallpaperVideoSourceMode: String, Sendable {\n'
+        printf '    case asset\n'
+        printf '    case generated\n'
+        printf '}\n\n'
+        printf 'enum MacWallNativeWallpaperVideoSourceModeConfiguration {\n'
+        printf '    static let mode: MacWallNativeWallpaperVideoSourceMode = %s\n' "$swift_case"
+        printf '}\n'
+    } >"$VIDEO_SOURCE_MODE_FILE"
+    printf 'video source: %s\n' "$mode"
+}
+
+guard_unsafe_snapshot_mode() {
+    local mode="$1"
+    local allow_unsafe="$2"
+
+    if [[ "$mode" != "snapshot-xpc-file-url" ]]; then
+        return 0
+    fi
+
+    if [[ "$allow_unsafe" == "1" ]]; then
+        printf 'UNSAFE snapshot mode enabled: %s\n' "$mode"
+        printf 'This mode can interrupt WallpaperAgent XPC, invalidate the native runtime, and blank the Desktop surface.\n'
+        return 0
+    fi
+
+    printf 'Unsafe snapshot mode: %s\n' "$mode" >&2
+    printf 'This mode previously triggered NSCocoaErrorDomain(4099), WallpaperAgent XPC invalidation, and runtime removal.\n' >&2
+    printf 'Use --allow-unsafe-snapshot-xpc only when intentionally reproducing that failure mode.\n' >&2
+    exit 2
 }
 
 cmd_reset() {
@@ -210,6 +275,8 @@ cmd_reset() {
 
 cmd_install() {
     local snapshot_mode="$SNAPSHOT_MODE_DEFAULT"
+    local video_source_mode="$VIDEO_SOURCE_MODE_DEFAULT"
+    local allow_unsafe_snapshot_xpc=0
     while [[ "$#" -gt 0 ]]; do
         case "$1" in
             --snapshot-mode)
@@ -220,6 +287,17 @@ cmd_install() {
                 }
                 snapshot_mode="$1"
                 ;;
+            --video-source)
+                shift
+                [[ "$#" -gt 0 ]] || {
+                    printf 'install --video-source requires a mode\n' >&2
+                    exit 2
+                }
+                video_source_mode="$1"
+                ;;
+            --allow-unsafe-snapshot-xpc)
+                allow_unsafe_snapshot_xpc=1
+                ;;
             *)
                 printf 'Unknown install option: %s\n' "$1" >&2
                 exit 2
@@ -228,7 +306,9 @@ cmd_install() {
         shift
     done
 
+    guard_unsafe_snapshot_mode "$snapshot_mode" "$allow_unsafe_snapshot_xpc"
     generate_snapshot_mode_source "$snapshot_mode"
+    generate_video_source_mode_source "$video_source_mode"
     run_cmd cmake -S "$SCRIPT_DIR" -B "$BUILD_DIR" -G Xcode
     run_cmd xcodebuild \
         -project "$PROJECT_PATH" \
@@ -250,6 +330,12 @@ cmd_status() {
         awk '/static let mode:/ { print "Snapshot mode: " $0 }' "$SNAPSHOT_MODE_FILE"
     else
         printf 'Snapshot mode: missing generated source, run ./dev.sh install\n'
+    fi
+    printf 'Video source mode source: %s\n' "$VIDEO_SOURCE_MODE_FILE"
+    if [[ -f "$VIDEO_SOURCE_MODE_FILE" ]]; then
+        awk '/static let mode:/ { print "Video source: " $0 }' "$VIDEO_SOURCE_MODE_FILE"
+    else
+        printf 'Video source: missing generated source, run ./dev.sh install\n'
     fi
     printf '\nProcesses:\n'
     process_lines | awk -v extension="$EXTENSION_PROCESS" -v agent="$WALLPAPER_AGENT_PROCESS" '
