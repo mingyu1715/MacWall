@@ -1,7 +1,7 @@
 import XCTest
 
 final class DesktopFallbackMenuTests: XCTestCase {
-    func testPlaybackStartsLivePlayerBeforeFallbackSideEffects() throws {
+    func testExperimentBranchKeepsFallbackSideEffectsBehindDisabledRuntimeFlag() throws {
         let source = try SourceFixture.contents(
             of: "Sources/MacWallApp/App/AppViewModel.swift"
         )
@@ -16,15 +16,18 @@ final class DesktopFallbackMenuTests: XCTestCase {
         let play = try XCTUnwrap(body.range(of: "wallpaperPlayer.play"))
         let applyOrGenerate = try XCTUnwrap(body.range(of: "desktopFallbackCoordinator.applyOrGenerate"))
 
+        XCTAssertTrue(source.contains("static let isEnabled = false"))
+        XCTAssertTrue(body.contains("if DesktopFallbackRuntime.isEnabled"))
         XCTAssertFalse(body.contains("desktopFallbackCoordinator.prepareForPlayback"))
         XCTAssertLessThan(play.lowerBound, applyOrGenerate.lowerBound)
     }
 
-    func testPlaybackFailureAndStopClearActiveFallbackAsset() throws {
+    func testFallbackCleanupIsGuardedBehindRuntimeFlag() throws {
         let source = try SourceFixture.contents(
             of: "Sources/MacWallApp/App/AppViewModel.swift"
         )
 
+        XCTAssertTrue(source.contains("if DesktopFallbackRuntime.isEnabled"))
         XCTAssertGreaterThanOrEqual(
             source.components(separatedBy: "desktopFallbackCoordinator.clearActiveAsset()").count - 1,
             2
@@ -42,12 +45,13 @@ final class DesktopFallbackMenuTests: XCTestCase {
         )
     }
 
-    func testLibraryItemMenuExposesFinderGenerateRegenerateAndRemove() throws {
+    func testLibraryItemMenuKeepsFallbackControlsBehindExperimentFlag() throws {
         let source = try SourceFixture.contents(
             of: "Sources/MacWallApp/UI/ContentView.swift"
         )
 
         XCTAssertTrue(source.contains(#"Button("Show in Finder")"#))
+        XCTAssertTrue(source.contains("model.desktopFallbackControlsEnabled"))
         XCTAssertTrue(source.contains(#"Button("Regenerate Desktop Fallback")"#))
         XCTAssertTrue(source.contains(#"Button("Generate Desktop Fallback")"#))
         XCTAssertTrue(source.contains(#"Button("Remove")"#))

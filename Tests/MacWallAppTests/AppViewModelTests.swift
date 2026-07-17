@@ -175,6 +175,7 @@ final class AppViewModelTests: XCTestCase {
         defaults.set("fill", forKey: "displayMode")
         defaults.set(false, forKey: "autoPauseWhenCovered")
         defaults.set(true, forKey: "webMouseInteractionEnabled")
+        defaults.set(true, forKey: "restoreOriginalWallpaperOnStop")
 
         // When
         let model = AppViewModel(
@@ -190,6 +191,86 @@ final class AppViewModelTests: XCTestCase {
         XCTAssertEqual(model.displayMode, .fill)
         XCTAssertFalse(model.autoPauseWhenCovered)
         XCTAssertTrue(model.webMouseInteractionEnabled)
+        XCTAssertTrue(model.restoreOriginalWallpaperOnStop)
+    }
+
+    func testRestoreOriginalWallpaperTogglePersistsWithoutFallbackSideEffectsOnExperimentBranch() throws {
+        // Given
+        let defaults = try makeUserDefaults()
+        let fallback = MockDesktopFallbackCoordinator()
+        let warningPresenter = MockDesktopWallpaperRestoreWarningPresenter()
+        fallback.restoreSupport = .unsupported(
+            "Current macOS dynamic or built-in wallpaper cannot be restored automatically."
+        )
+        let model = AppViewModel(
+            store: LibraryStore(root: try makeTempDirectory()),
+            loginItemController: MockLoginItemController(),
+            userDefaults: defaults,
+            desktopFallbackCoordinator: fallback,
+            desktopFallbackSpaceRefreshCoordinator: MockDesktopFallbackSpaceRefreshCoordinator(),
+            desktopWallpaperRestoreWarningPresenter: warningPresenter
+        )
+
+        // When
+        model.restoreOriginalWallpaperOnStop = true
+
+        // Then
+        XCTAssertTrue(defaults.bool(forKey: "restoreOriginalWallpaperOnStop"))
+        XCTAssertTrue(fallback.restoreOnStopValues.isEmpty)
+        XCTAssertTrue(warningPresenter.messages.isEmpty)
+    }
+
+    func testRestoreOriginalWallpaperToggleDoesNotWarnForStaticImageWallpaper() throws {
+        // Given
+        let fallback = MockDesktopFallbackCoordinator()
+        let warningPresenter = MockDesktopWallpaperRestoreWarningPresenter()
+        fallback.restoreSupport = .restorable
+        let model = AppViewModel(
+            store: LibraryStore(root: try makeTempDirectory()),
+            loginItemController: MockLoginItemController(),
+            userDefaults: try makeUserDefaults(),
+            desktopFallbackCoordinator: fallback,
+            desktopFallbackSpaceRefreshCoordinator: MockDesktopFallbackSpaceRefreshCoordinator(),
+            desktopWallpaperRestoreWarningPresenter: warningPresenter
+        )
+
+        // When
+        model.restoreOriginalWallpaperOnStop = true
+
+        // Then
+        XCTAssertTrue(warningPresenter.messages.isEmpty)
+    }
+
+    func testPlayDoesNotShowFallbackRestoreWarningOnExperimentBranch() throws {
+        // Given
+        let player = MockWallpaperPlayer()
+        let fallback = MockDesktopFallbackCoordinator()
+        let warningPresenter = MockDesktopWallpaperRestoreWarningPresenter()
+        fallback.restoreSupportAfterApply = .unsupported(
+            "Current macOS dynamic or built-in wallpaper cannot be restored automatically."
+        )
+        let store = LibraryStore(root: try makeTempDirectory())
+        let asset = try store.importVideoFile(makeVideoFile())
+        let model = AppViewModel(
+            store: store,
+            loginItemController: MockLoginItemController(),
+            userDefaults: try makeUserDefaults(),
+            wallpaperPlayer: player,
+            desktopFallbackCoordinator: fallback,
+            desktopFallbackSpaceRefreshCoordinator: MockDesktopFallbackSpaceRefreshCoordinator(),
+            desktopWallpaperRestoreWarningPresenter: warningPresenter
+        )
+        model.restoreOriginalWallpaperOnStop = true
+        warningPresenter.messages.removeAll()
+        model.selectedLibraryAssetId = asset.id
+
+        // When
+        model.playSelected()
+
+        // Then
+        XCTAssertEqual(player.playedAssetIds, [asset.id])
+        XCTAssertTrue(fallback.appliedAssetIds.isEmpty)
+        XCTAssertTrue(warningPresenter.messages.isEmpty)
     }
 
     func testInitRestoresLockScreenAnimationPreferenceWithoutInstalling() throws {
@@ -248,7 +329,7 @@ final class AppViewModelTests: XCTestCase {
         XCTAssertNil(defaults.string(forKey: "lastPlayedAssetId"))
     }
 
-    func testStopPlaybackRestoresOriginalWallpaperAfterClearingManagedFallbackState() throws {
+    func testStopPlaybackSkipsFallbackRestoreOnExperimentBranch() throws {
         // Given
         let defaults = try makeUserDefaults()
         let player = MockWallpaperPlayer()
@@ -268,9 +349,9 @@ final class AppViewModelTests: XCTestCase {
 
         // Then
         XCTAssertEqual(player.stopCallCount, 1)
-        XCTAssertEqual(fallback.clearActiveAssetCallCount, 1)
-        XCTAssertEqual(spaceRefresh.activeAssetIds, [nil])
-        XCTAssertEqual(fallback.restoreOriginalWallpaperCallCount, 1)
+        XCTAssertEqual(fallback.clearActiveAssetCallCount, 0)
+        XCTAssertTrue(spaceRefresh.activeAssetIds.isEmpty)
+        XCTAssertEqual(fallback.restoreOriginalWallpaperCallCount, 0)
     }
 
     func testPlaySuccessStoresLastPlayedOnlyAfterPlayerSuccess() throws {
@@ -295,6 +376,32 @@ final class AppViewModelTests: XCTestCase {
         // Then
         XCTAssertEqual(player.playedAssetIds, [asset.id])
         XCTAssertEqual(defaults.string(forKey: "lastPlayedAssetId"), asset.id)
+    }
+
+    func testExperimentBranchPlayDoesNotApplyDesktopFallback() throws {
+        // Given
+        let player = MockWallpaperPlayer()
+        let fallback = MockDesktopFallbackCoordinator()
+        let spaceRefresh = MockDesktopFallbackSpaceRefreshCoordinator()
+        let store = LibraryStore(root: try makeTempDirectory())
+        let asset = try store.importVideoFile(makeVideoFile())
+        let model = AppViewModel(
+            store: store,
+            loginItemController: MockLoginItemController(),
+            userDefaults: try makeUserDefaults(),
+            wallpaperPlayer: player,
+            desktopFallbackCoordinator: fallback,
+            desktopFallbackSpaceRefreshCoordinator: spaceRefresh
+        )
+        model.selectedLibraryAssetId = asset.id
+
+        // When
+        model.playSelected()
+
+        // Then
+        XCTAssertEqual(player.playedAssetIds, [asset.id])
+        XCTAssertTrue(fallback.appliedAssetIds.isEmpty)
+        XCTAssertTrue(spaceRefresh.activeAssetIds.isEmpty)
     }
 
     func testPlayFailureDoesNotStoreFailedAssetAsLastPlayed() throws {
@@ -322,7 +429,7 @@ final class AppViewModelTests: XCTestCase {
         XCTAssertTrue(model.status.contains(TestError.expected.localizedDescription))
     }
 
-    func testSwitchingFromAtoFailingBKeepsAPlaybackFallbackSpaceRefreshAndLastPlayed() throws {
+    func testSwitchingFromAtoFailingBKeepsAPlaybackAndLastPlayedWithoutFallbackSideEffects() throws {
         // Given
         let defaults = try makeUserDefaults()
         let player = MockWallpaperPlayer()
@@ -349,9 +456,9 @@ final class AppViewModelTests: XCTestCase {
 
         // Then
         XCTAssertEqual(player.activeSessionSnapshot?.assetId, assetA.id)
-        XCTAssertEqual(fallback.appliedAssetIds, [assetA.id])
+        XCTAssertTrue(fallback.appliedAssetIds.isEmpty)
         XCTAssertEqual(fallback.clearActiveAssetCallCount, 0)
-        XCTAssertEqual(spaceRefresh.activeAssetIds, [assetA.id, assetA.id])
+        XCTAssertTrue(spaceRefresh.activeAssetIds.isEmpty)
         XCTAssertEqual(defaults.string(forKey: "lastPlayedAssetId"), assetA.id)
         XCTAssertTrue(model.status.contains(TestError.expected.localizedDescription))
     }
@@ -495,17 +602,31 @@ private final class MockDesktopFallbackCoordinator: DesktopFallbackCoordinating 
     var invalidatedAssetIds: [WallpaperAsset.ID] = []
     var clearActiveAssetCallCount = 0
     var restoreOriginalWallpaperCallCount = 0
+    var restoreOnStopValues: [Bool] = []
+    var restoreSupport: DesktopWallpaperRestoreSupport = .restorable
+    var restoreSupportAfterApply: DesktopWallpaperRestoreSupport = .restorable
 
     func clearActiveAsset() {
         clearActiveAssetCallCount += 1
     }
 
+    func setRestoreOriginalWallpaperOnStop(_ enabled: Bool) {
+        restoreOnStopValues.append(enabled)
+    }
+
+    func currentRestoreSupport() -> DesktopWallpaperRestoreSupport {
+        restoreSupport
+    }
+
+    func synchronizeRestoreSessionWithCurrentWallpaper() {}
+
     func hasCache(for asset: WallpaperAsset) -> Bool {
         false
     }
 
-    func applyOrGenerate(asset: WallpaperAsset) {
+    func applyOrGenerate(asset: WallpaperAsset) -> DesktopWallpaperRestoreSupport {
         appliedAssetIds.append(asset.id)
+        return restoreSupportAfterApply
     }
 
     func invalidate(asset: WallpaperAsset) {
@@ -517,6 +638,15 @@ private final class MockDesktopFallbackCoordinator: DesktopFallbackCoordinating 
 
     func restoreOriginalWallpaperIfNeeded() {
         restoreOriginalWallpaperCallCount += 1
+    }
+}
+
+@MainActor
+private final class MockDesktopWallpaperRestoreWarningPresenter: DesktopWallpaperRestoreWarningPresenting {
+    var messages: [String] = []
+
+    func showUnsupportedOriginalWallpaperWarning(message: String) {
+        messages.append(message)
     }
 }
 

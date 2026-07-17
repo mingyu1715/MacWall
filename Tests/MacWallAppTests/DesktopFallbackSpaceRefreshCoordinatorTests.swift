@@ -123,7 +123,7 @@ final class DesktopFallbackSpaceRefreshCoordinatorTests: XCTestCase {
         await gate.open()
         await coordinator.waitForRefresh()
 
-        XCTAssertEqual(try Data(contentsOf: first.cacheURL), Data("first-fresh".utf8))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: first.cacheURL.path))
         XCTAssertFalse(applied.dropFirst().contains(first.cacheURL))
     }
 
@@ -163,6 +163,12 @@ private struct SpaceRefreshFixture {
 
 @MainActor
 private final class MockSpaceRefreshOriginalDesktopWallpaperStore: OriginalDesktopWallpaperManaging {
+    var restoreOnStopEnabled = true
+
+    func currentRestoreSupport() -> DesktopWallpaperRestoreSupport {
+        .restorable
+    }
+
     func captureOriginalWallpaperIfNeeded(
         beforeApplyingFallback fallbackURL: URL
     ) -> OriginalDesktopWallpaperCaptureToken {
@@ -171,6 +177,7 @@ private final class MockSpaceRefreshOriginalDesktopWallpaperStore: OriginalDeskt
 
     func recordAppAppliedFallback(_ fallbackURL: URL) {}
     func discardUnappliedFallbackCapture(_ token: OriginalDesktopWallpaperCaptureToken) {}
+    func synchronizeRestoreSessionWithCurrentWallpaper() {}
     func restoreOriginalWallpaperIfCurrentMatchesManagedFallback() {}
 }
 

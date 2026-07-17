@@ -101,6 +101,47 @@ final class DesktopFallbackCoordinatorTests: XCTestCase {
         )
     }
 
+    func testSwitchingItemsDeletesPreviousFallbackCacheAfterNewFallbackApplies() async throws {
+        let first = try makeFixture(existingCache: Data("first".utf8))
+        let second = try makeFixture(existingCache: Data("second".utf8))
+        let coordinator = DesktopFallbackCoordinator(
+            generateFallback: { _, _ in },
+            applyDesktopImage: { _ in },
+            originalWallpaperStore: MockOriginalDesktopWallpaperStore()
+        )
+
+        coordinator.applyOrGenerate(asset: first.asset)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: first.cacheURL.path))
+
+        coordinator.applyOrGenerate(asset: second.asset)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: first.cacheURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: second.cacheURL.path))
+    }
+
+    func testSwitchingItemsKeepsPreviousFallbackCacheWhenNewFallbackApplyFails() async throws {
+        let first = try makeFixture(existingCache: Data("first".utf8))
+        let second = try makeFixture(existingCache: Data("second".utf8))
+        var applied: [URL] = []
+        let coordinator = DesktopFallbackCoordinator(
+            generateFallback: { _, _ in },
+            applyDesktopImage: { url in
+                applied.append(url)
+                if url == second.cacheURL {
+                    throw TestError.expected
+                }
+            },
+            originalWallpaperStore: MockOriginalDesktopWallpaperStore()
+        )
+
+        coordinator.applyOrGenerate(asset: first.asset)
+        coordinator.applyOrGenerate(asset: second.asset)
+
+        XCTAssertEqual(applied, [first.cacheURL, second.cacheURL])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: first.cacheURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: second.cacheURL.path))
+    }
+
     func testMissingCacheDoesNotCaptureOriginalUntilFallbackIsApplied() async throws {
         let fixture = try makeFixture()
         let gate = AsyncGate()
@@ -375,6 +416,11 @@ private actor AsyncGate {
 @MainActor
 private final class MockOriginalDesktopWallpaperStore: OriginalDesktopWallpaperManaging {
     var events: [String] = []
+    var restoreOnStopEnabled = true
+
+    func currentRestoreSupport() -> DesktopWallpaperRestoreSupport {
+        .restorable
+    }
 
     func captureOriginalWallpaperIfNeeded(
         beforeApplyingFallback fallbackURL: URL
@@ -390,6 +436,8 @@ private final class MockOriginalDesktopWallpaperStore: OriginalDesktopWallpaperM
     func discardUnappliedFallbackCapture(_ token: OriginalDesktopWallpaperCaptureToken) {
         events.append("discard")
     }
+
+    func synchronizeRestoreSessionWithCurrentWallpaper() {}
 
     func restoreOriginalWallpaperIfCurrentMatchesManagedFallback() {
         events.append("restore")

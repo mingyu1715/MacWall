@@ -28,12 +28,40 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Toggle("Open at Login", isOn: $model.launchAtLogin)
+            Toggle(
+                "Open at Login",
+                isOn: viewDeferredBinding(
+                    get: { model.launchAtLogin },
+                    set: { model.launchAtLogin = $0 }
+                )
+            )
                 .toggleStyle(.switch)
-            Toggle("Auto-pause behind apps", isOn: $model.autoPauseWhenCovered)
+            Toggle(
+                "Auto-pause behind apps",
+                isOn: viewDeferredBinding(
+                    get: { model.autoPauseWhenCovered },
+                    set: { model.autoPauseWhenCovered = $0 }
+                )
+            )
                 .toggleStyle(.switch)
-            Toggle("Animate Lock Screen", isOn: $model.lockScreenAnimationEnabled)
+            Toggle(
+                "Animate Lock Screen",
+                isOn: viewDeferredBinding(
+                    get: { model.lockScreenAnimationEnabled },
+                    set: { model.lockScreenAnimationEnabled = $0 }
+                )
+            )
                 .toggleStyle(.switch)
+            if model.desktopFallbackControlsEnabled {
+                Toggle(
+                    "Restore on Stop",
+                    isOn: viewDeferredBinding(
+                        get: { model.restoreOriginalWallpaperOnStop },
+                        set: { model.restoreOriginalWallpaperOnStop = $0 }
+                    )
+                )
+                    .toggleStyle(.switch)
+            }
             Button("Stop") {
                 model.stopPlayback()
             }
@@ -64,7 +92,7 @@ struct ContentView: View {
             assetList(
                 title: "Scanned Projects",
                 assets: model.scannedAssets,
-                selection: Binding(
+                selection: viewDeferredBinding(
                     get: { model.selectedScannedAssetIds },
                     set: { model.selectScannedAssets($0) }
                 )
@@ -90,7 +118,13 @@ struct ContentView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
-                Picker("Display", selection: $model.displayMode) {
+                Picker(
+                    "Display",
+                    selection: viewDeferredBinding(
+                        get: { model.displayMode },
+                        set: { model.displayMode = $0 }
+                    )
+                ) {
                     ForEach(WallpaperDisplayMode.allCases) { mode in
                         Text(mode.title).tag(mode)
                     }
@@ -102,15 +136,27 @@ struct ContentView: View {
                 }
             }
             HStack {
-                Toggle("Web Mouse Interaction", isOn: $model.webMouseInteractionEnabled)
+                Toggle(
+                    "Web Mouse Interaction",
+                    isOn: viewDeferredBinding(
+                        get: { model.webMouseInteractionEnabled },
+                        set: { model.webMouseInteractionEnabled = $0 }
+                    )
+                )
                     .toggleStyle(.switch)
-                Toggle("Experimental Scene Rendering", isOn: $model.experimentalSceneRendering)
+                Toggle(
+                    "Experimental Scene Rendering",
+                    isOn: viewDeferredBinding(
+                        get: { model.experimentalSceneRendering },
+                        set: { model.experimentalSceneRendering = $0 }
+                    )
+                )
                     .toggleStyle(.switch)
             }
             libraryAssetList(
                 title: "Imported Projects",
                 assets: model.libraryAssets,
-                selection: Binding(
+                selection: viewDeferredBinding(
                     get: { model.selectedLibraryAssetIds },
                     set: { model.selectLibraryAssets($0) }
                 )
@@ -203,13 +249,15 @@ struct ContentView: View {
                         Button("Show in Finder") {
                             model.showLibraryAssetInFinder(asset)
                         }
-                        if model.hasDesktopFallback(for: asset) {
-                            Button("Regenerate Desktop Fallback") {
-                                model.regenerateDesktopFallback(for: asset)
-                            }
-                        } else {
-                            Button("Generate Desktop Fallback") {
-                                model.generateDesktopFallback(for: asset)
+                        if model.desktopFallbackControlsEnabled {
+                            if model.hasDesktopFallback(for: asset) {
+                                Button("Regenerate Desktop Fallback") {
+                                    model.regenerateDesktopFallback(for: asset)
+                                }
+                            } else {
+                                Button("Generate Desktop Fallback") {
+                                    model.generateDesktopFallback(for: asset)
+                                }
                             }
                         }
                         Button("Remove") {

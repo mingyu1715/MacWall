@@ -3,6 +3,11 @@ import Foundation
 import UniformTypeIdentifiers
 import MacWallCore
 
+private enum DesktopFallbackRuntime {
+    // Experiment branch: disable desktop-fallback side effects so window behavior can be tested directly.
+    static let isEnabled = false
+}
+
 @MainActor
 final class AppViewModel: ObservableObject {
     @Published var sourcePath = ""
@@ -39,6 +44,23 @@ final class AppViewModel: ObservableObject {
             userDefaults.set(webMouseInteractionEnabled, forKey: PreferenceKey.webMouseInteractionEnabled)
         }
     }
+    @Published var restoreOriginalWallpaperOnStop = false {
+        didSet {
+            guard !isSyncingRestoreOriginalWallpaperOnStop,
+                  restoreOriginalWallpaperOnStop != oldValue else {
+                return
+            }
+            guard DesktopFallbackRuntime.isEnabled else {
+                userDefaults.set(restoreOriginalWallpaperOnStop, forKey: PreferenceKey.restoreOriginalWallpaperOnStop)
+                return
+            }
+            desktopFallbackCoordinator.setRestoreOriginalWallpaperOnStop(restoreOriginalWallpaperOnStop)
+            userDefaults.set(restoreOriginalWallpaperOnStop, forKey: PreferenceKey.restoreOriginalWallpaperOnStop)
+            if restoreOriginalWallpaperOnStop {
+                presentRestoreWarningIfNeeded(desktopFallbackCoordinator.currentRestoreSupport())
+            }
+        }
+    }
     @Published var lockScreenAnimationEnabled = false {
         didSet {
             guard !isSyncingLockScreenAnimation, lockScreenAnimationEnabled != oldValue else {
@@ -65,23 +87,27 @@ final class AppViewModel: ObservableObject {
     private let store: LibraryStore
     private let loginItemController: LoginItemManaging
     private let lockScreenAnimationController: LockScreenAnimationManaging
+    private let desktopWallpaperRestoreWarningPresenter: DesktopWallpaperRestoreWarningPresenting
     private let userDefaults: UserDefaults
     private var isSyncingLaunchAtLogin = false
     private var isSyncingLockScreenAnimation = false
+    private var isSyncingRestoreOriginalWallpaperOnStop = false
 
     init() {
         userDefaults = .standard
         loginItemController = LoginItemController()
         lockScreenAnimationController = LockScreenAnimationController()
+        desktopWallpaperRestoreWarningPresenter = DesktopWallpaperRestoreWarningPresenter()
         wallpaperPlayer = WallpaperPlayer.shared
         let fallbackCoordinator = DesktopFallbackCoordinator()
         desktopFallbackCoordinator = fallbackCoordinator
-        desktopFallbackSpaceRefreshCoordinator = DesktopFallbackSpaceRefreshCoordinator(
-            fallbackCoordinator: fallbackCoordinator
-        )
+        desktopFallbackSpaceRefreshCoordinator = DesktopFallbackRuntime.isEnabled
+            ? DesktopFallbackSpaceRefreshCoordinator(fallbackCoordinator: fallbackCoordinator)
+            : NoopDesktopFallbackSpaceRefreshCoordinator()
         do {
             store = try LibraryStore.defaultStore()
             restorePreferences()
+            configureOriginalWallpaperRestore()
             loadLibrary()
             playLastWallpaperIfAvailable()
             restoreLockScreenAnimationIfNeeded()
@@ -102,16 +128,20 @@ final class AppViewModel: ObservableObject {
         userDefaults: UserDefaults = .standard,
         wallpaperPlayer: WallpaperPlayerManaging = WallpaperPlayer.shared,
         desktopFallbackCoordinator: DesktopFallbackCoordinating? = nil,
-        desktopFallbackSpaceRefreshCoordinator: DesktopFallbackSpaceRefreshCoordinating? = nil
+        desktopFallbackSpaceRefreshCoordinator: DesktopFallbackSpaceRefreshCoordinating? = nil,
+        desktopWallpaperRestoreWarningPresenter: DesktopWallpaperRestoreWarningPresenting = DesktopWallpaperRestoreWarningPresenter()
     ) {
         self.store = store
         self.loginItemController = loginItemController
         self.lockScreenAnimationController = lockScreenAnimationController
+        self.desktopWallpaperRestoreWarningPresenter = desktopWallpaperRestoreWarningPresenter
         self.userDefaults = userDefaults
         self.wallpaperPlayer = wallpaperPlayer
         let fallbackCoordinator = desktopFallbackCoordinator ?? DesktopFallbackCoordinator()
         self.desktopFallbackCoordinator = fallbackCoordinator
-        if let desktopFallbackSpaceRefreshCoordinator {
+        if !DesktopFallbackRuntime.isEnabled {
+            self.desktopFallbackSpaceRefreshCoordinator = NoopDesktopFallbackSpaceRefreshCoordinator()
+        } else if let desktopFallbackSpaceRefreshCoordinator {
             self.desktopFallbackSpaceRefreshCoordinator = desktopFallbackSpaceRefreshCoordinator
         } else if let concreteFallbackCoordinator = fallbackCoordinator as? DesktopFallbackCoordinator {
             self.desktopFallbackSpaceRefreshCoordinator = DesktopFallbackSpaceRefreshCoordinator(
@@ -121,6 +151,7 @@ final class AppViewModel: ObservableObject {
             self.desktopFallbackSpaceRefreshCoordinator = NoopDesktopFallbackSpaceRefreshCoordinator()
         }
         restorePreferences()
+        configureOriginalWallpaperRestore()
         loadLibrary()
         playLastWallpaperIfAvailable()
         restoreLockScreenAnimationIfNeeded()
@@ -170,6 +201,10 @@ final class AppViewModel: ObservableObject {
         libraryAssets.filter { selectedLibraryAssetIds.contains($0.id) }
     }
 
+    var desktopFallbackControlsEnabled: Bool {
+        DesktopFallbackRuntime.isEnabled
+    }
+
     func selectLibraryAssets(_ ids: Set<WallpaperAsset.ID>) {
         selectedLibraryAssetIds = ids
         normalizeLibrarySelection(allowEmpty: true)
@@ -217,7 +252,8 @@ extension AppViewModel {
         var importedAssets: [WallpaperAsset] = []
         do {
             for asset in assets {
-                if let existing = libraryAssets.first(where: { $0.id == asset.id }) {
+                if DesktopFallbackRuntime.isEnabled,
+                   let existing = libraryAssets.first(where: { $0.id == asset.id }) {
                     desktopFallbackCoordinator.invalidate(asset: existing)
                 }
                 importedAssets.append(try store.importAsset(asset))
@@ -307,7 +343,9 @@ extension AppViewModel {
         }
         do {
             for asset in assets {
-                desktopFallbackCoordinator.invalidate(asset: asset)
+                if DesktopFallbackRuntime.isEnabled {
+                    desktopFallbackCoordinator.invalidate(asset: asset)
+                }
                 try store.removeAsset(id: asset.id)
             }
             loadLibrary()
@@ -351,15 +389,20 @@ extension AppViewModel {
 
     func stopPlayback() {
         wallpaperPlayer.stop()
-        desktopFallbackCoordinator.clearActiveAsset()
-        desktopFallbackSpaceRefreshCoordinator.setActiveAsset(nil)
-        desktopFallbackCoordinator.restoreOriginalWallpaperIfNeeded()
+        if DesktopFallbackRuntime.isEnabled {
+            desktopFallbackCoordinator.clearActiveAsset()
+            desktopFallbackSpaceRefreshCoordinator.setActiveAsset(nil)
+            desktopFallbackCoordinator.restoreOriginalWallpaperIfNeeded()
+        }
         userDefaults.removeObject(forKey: PreferenceKey.lastPlayedAssetId)
         status = "Playback stopped."
     }
 
     func hasDesktopFallback(for asset: WallpaperAsset) -> Bool {
-        desktopFallbackCoordinator.hasCache(for: asset)
+        guard DesktopFallbackRuntime.isEnabled else {
+            return false
+        }
+        return desktopFallbackCoordinator.hasCache(for: asset)
     }
 
     func showLibraryAssetInFinder(_ asset: WallpaperAsset) {
@@ -369,6 +412,10 @@ extension AppViewModel {
     }
 
     func generateDesktopFallback(for asset: WallpaperAsset) {
+        guard DesktopFallbackRuntime.isEnabled else {
+            status = "Desktop fallback is disabled on this experiment branch."
+            return
+        }
         isWorking = true
         status = "Generating desktop fallback for \(asset.title)..."
         Task {
@@ -383,6 +430,10 @@ extension AppViewModel {
     }
 
     func regenerateDesktopFallback(for asset: WallpaperAsset) {
+        guard DesktopFallbackRuntime.isEnabled else {
+            status = "Desktop fallback is disabled on this experiment branch."
+            return
+        }
         isWorking = true
         status = "Regenerating desktop fallback for \(asset.title)..."
         Task {
@@ -479,11 +530,31 @@ extension AppViewModel {
         if userDefaults.object(forKey: PreferenceKey.webMouseInteractionEnabled) != nil {
             webMouseInteractionEnabled = userDefaults.bool(forKey: PreferenceKey.webMouseInteractionEnabled)
         }
+        if userDefaults.object(forKey: PreferenceKey.restoreOriginalWallpaperOnStop) != nil {
+            isSyncingRestoreOriginalWallpaperOnStop = true
+            restoreOriginalWallpaperOnStop = userDefaults.bool(forKey: PreferenceKey.restoreOriginalWallpaperOnStop)
+            isSyncingRestoreOriginalWallpaperOnStop = false
+        }
         if userDefaults.object(forKey: PreferenceKey.lockScreenAnimationEnabled) != nil {
             isSyncingLockScreenAnimation = true
             lockScreenAnimationEnabled = userDefaults.bool(forKey: PreferenceKey.lockScreenAnimationEnabled)
             isSyncingLockScreenAnimation = false
         }
+    }
+
+    private func configureOriginalWallpaperRestore() {
+        guard DesktopFallbackRuntime.isEnabled else {
+            return
+        }
+        desktopFallbackCoordinator.setRestoreOriginalWallpaperOnStop(restoreOriginalWallpaperOnStop)
+        desktopFallbackCoordinator.synchronizeRestoreSessionWithCurrentWallpaper()
+    }
+
+    private func presentRestoreWarningIfNeeded(_ support: DesktopWallpaperRestoreSupport) {
+        guard let warningMessage = support.warningMessage else {
+            return
+        }
+        desktopWallpaperRestoreWarningPresenter.showUnsupportedOriginalWallpaperWarning(message: warningMessage)
     }
 
     private func playLastWallpaperIfAvailable() {
@@ -528,16 +599,23 @@ extension AppViewModel {
                 displayMode: displayMode
             )
         } catch {
-            if let previousAsset = activeLibraryAsset(matching: previousSession) {
-                desktopFallbackSpaceRefreshCoordinator.setActiveAsset(previousAsset)
-            } else {
-                desktopFallbackCoordinator.clearActiveAsset()
-                desktopFallbackSpaceRefreshCoordinator.setActiveAsset(nil)
+            if DesktopFallbackRuntime.isEnabled {
+                if let previousAsset = activeLibraryAsset(matching: previousSession) {
+                    desktopFallbackSpaceRefreshCoordinator.setActiveAsset(previousAsset)
+                } else {
+                    desktopFallbackCoordinator.clearActiveAsset()
+                    desktopFallbackSpaceRefreshCoordinator.setActiveAsset(nil)
+                }
             }
             throw error
         }
-        desktopFallbackSpaceRefreshCoordinator.setActiveAsset(asset)
-        desktopFallbackCoordinator.applyOrGenerate(asset: asset)
+        if DesktopFallbackRuntime.isEnabled {
+            desktopFallbackSpaceRefreshCoordinator.setActiveAsset(asset)
+            let restoreSupport = desktopFallbackCoordinator.applyOrGenerate(asset: asset)
+            if restoreOriginalWallpaperOnStop {
+                presentRestoreWarningIfNeeded(restoreSupport)
+            }
+        }
         if remember {
             userDefaults.set(asset.id, forKey: PreferenceKey.lastPlayedAssetId)
         }
@@ -613,6 +691,7 @@ private enum PreferenceKey {
     static let autoPauseWhenCovered = "autoPauseWhenCovered"
     static let experimentalSceneRendering = "experimentalSceneRendering"
     static let webMouseInteractionEnabled = "webMouseInteractionEnabled"
+    static let restoreOriginalWallpaperOnStop = "restoreOriginalWallpaperOnStop"
     static let lockScreenAnimationEnabled = "lockScreenAnimationEnabled"
     static let lastPlayedAssetId = "lastPlayedAssetId"
 }
