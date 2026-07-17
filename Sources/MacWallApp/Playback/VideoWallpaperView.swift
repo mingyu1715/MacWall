@@ -6,6 +6,7 @@ final class VideoWallpaperView: NSView,
     PausableWallpaperContent,
     DisplayModeUpdatableContent,
     WallpaperContentLifecycle,
+    WallpaperRenderDiagnosticReporting,
     DesktopFallbackLiveSnapshotting {
     private let player: AVQueuePlayer
     private let looper: AVPlayerLooper
@@ -63,6 +64,23 @@ final class VideoWallpaperView: NSView,
         player.removeAllItems()
     }
 
+    func diagnosticRenderState(label: String) -> String {
+        [
+            "renderer=video",
+            "renderLabel=\(label)",
+            "playerAttached=\(playerLayer.player != nil)",
+            "rate=\(player.rate)",
+            "timeControlStatus=\(Self.timeControlStatusDescription(player.timeControlStatus))",
+            "currentTime=\(Self.timeDescription(player.currentTime()))",
+            "itemStatus=\(Self.itemStatusDescription(player.currentItem?.status))",
+            "layerIsViewLayer=\(layer === playerLayer)",
+            "layerHidden=\(playerLayer.isHidden)",
+            "layerOpacity=\(playerLayer.opacity)",
+            "layerBounds=\(NSStringFromRect(NSRectFromCGRect(playerLayer.bounds)))",
+            "viewWindowAttached=\(window != nil)"
+        ].joined(separator: " ")
+    }
+
     func writeDesktopFallbackSnapshot(to output: URL) async throws {
         guard let input = (player.currentItem?.asset as? AVURLAsset)?.url else {
             throw DesktopFallbackError.liveSnapshotUnavailable
@@ -81,5 +99,41 @@ final class VideoWallpaperView: NSView,
             let image = try generator.copyCGImage(at: requestedTime, actualTime: nil)
             try DesktopFallbackPNGWriter.write(image, to: output)
         }.value
+    }
+
+    private static func timeControlStatusDescription(_ status: AVPlayer.TimeControlStatus) -> String {
+        switch status {
+        case .paused:
+            return "paused"
+        case .waitingToPlayAtSpecifiedRate:
+            return "waiting"
+        case .playing:
+            return "playing"
+        @unknown default:
+            return "unknown"
+        }
+    }
+
+    private static func itemStatusDescription(_ status: AVPlayerItem.Status?) -> String {
+        switch status {
+        case .some(.unknown):
+            return "unknown"
+        case .some(.readyToPlay):
+            return "readyToPlay"
+        case .some(.failed):
+            return "failed"
+        case .none:
+            return "nil"
+        @unknown default:
+            return "unknown"
+        }
+    }
+
+    private static func timeDescription(_ time: CMTime) -> String {
+        let seconds = CMTimeGetSeconds(time)
+        guard seconds.isFinite else {
+            return "nonfinite"
+        }
+        return String(format: "%.3f", seconds)
     }
 }

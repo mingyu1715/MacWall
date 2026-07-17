@@ -1,5 +1,18 @@
 import AppKit
+import CoreGraphics
 import MacWallCore
+
+enum WallpaperPlaybackDiagnostics {
+    static let isEnabled = true
+    static let delayedSampleMilliseconds = [100, 300, 800, 1_500]
+
+    static func log(_ message: String) {
+        guard isEnabled else {
+            return
+        }
+        NSLog("[MacWallPlaybackDiagnostics] %@", message)
+    }
+}
 
 @MainActor
 final class WallpaperPlayer: WallpaperPlayerManaging {
@@ -20,6 +33,7 @@ final class WallpaperPlayer: WallpaperPlayerManaging {
     private var workspaceObservers: [NSObjectProtocol] = []
     private var isSuspended = false
     private let visibilityMonitor = DesktopVisibilityMonitor()
+    private let freezeOverlay = DesktopTransitionFreezeOverlay()
 
     var activeSessionSnapshot: PlaybackSessionSnapshot? {
         sessionState.activeSnapshot
@@ -119,6 +133,7 @@ final class WallpaperPlayer: WallpaperPlayerManaging {
         visibilityTask = nil
         stopVisibilityTimer()
         stopLifecycleObservers()
+        freezeOverlay.clear()
         closeWindows()
     }
 
@@ -264,6 +279,10 @@ final class WallpaperPlayer: WallpaperPlayerManaging {
                 queue: .main
             ) { [weak self] _ in
                 Task { @MainActor in self?.scheduleScreenRestore() }
+            },
+            center.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main) {
+                [weak self] _ in
+                Task { @MainActor in self?.logActiveSpaceTransitionDiagnostics() }
             }
         ]
     }
@@ -304,6 +323,55 @@ final class WallpaperPlayer: WallpaperPlayerManaging {
         }
     }
 
+    private func logActiveSpaceTransitionDiagnostics() {
+        guard WallpaperPlaybackDiagnostics.isEnabled else {
+            return
+        }
+        presentDesktopTransitionFreezeOverlay(label: "active-space-change")
+        logPlaybackDiagnostics(label: "active-space-change t+0ms")
+        for delay in WallpaperPlaybackDiagnostics.delayedSampleMilliseconds {
+            Task { [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(delay) * 1_000_000)
+                await MainActor.run {
+                    self?.logPlaybackDiagnostics(label: "active-space-change t+\(delay)ms")
+                }
+            }
+        }
+    }
+
+    private func logPlaybackDiagnostics(label: String) {
+        let snapshot = sessionState.activeSnapshot
+        let wallpaperWindowNumbers = windows.map(\.windowNumber)
+        WallpaperPlaybackDiagnostics.log(
+            [
+                "sample=\(label)",
+                "playerAlive=true",
+                "activeAsset=\(activeAsset?.id ?? "nil")",
+                "sessionAsset=\(snapshot?.assetId ?? "nil")",
+                "sessionPhase=\(snapshot.map { String(describing: $0.phase) } ?? "nil")",
+                "sessionGeneration=\(snapshot.map { String($0.generation) } ?? "nil")",
+                "suspended=\(isSuspended)",
+                "windowCount=\(windows.count)",
+                "appOcclusionVisible=\(NSApp.occlusionState.contains(.visible))"
+            ].joined(separator: " ")
+        )
+        for (index, window) in windows.enumerated() {
+            window.logDiagnostics(label: label, index: index)
+        }
+        WindowServerWindowMapDiagnostics.log(
+            label: label,
+            wallpaperWindowNumbers: wallpaperWindowNumbers
+        )
+    }
+
+    private func presentDesktopTransitionFreezeOverlay(label: String) {
+        guard DesktopTransitionFreezeOverlayExperiment.isEnabled else {
+            return
+        }
+        let snapshots = windows.compactMap { $0.freezeSnapshot() }
+        freezeOverlay.present(snapshots: snapshots, label: label)
+    }
+
     private func restoreIfCurrentGeneration(_ generation: UInt64) {
         guard sessionState.isCurrentGeneration(generation), let activeAsset else {
             return
@@ -326,6 +394,8 @@ private final class WallpaperWindow {
     private let window: NSWindow
     private let content: NSView
     private let supportsWebMouseInteraction: Bool
+    private var stickyTagApplied = false
+    private var originalWindowServerLevel: Int32?
 
     init(
         asset: WallpaperAsset,
@@ -350,7 +420,10 @@ private final class WallpaperWindow {
             defer: false
         )
         window.level = WallpaperWindowLevel.desktopWallpaper
-        window.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
+        if WindowServerWindowLevelExperiment.appliesDockHostAdjacentLevelToWallpaperWindows {
+            window.level = NSWindow.Level(rawValue: Int(WindowServerWindowLevelExperiment.targetLevel))
+        }
+        window.collectionBehavior = [.canJoinAllSpaces, .canJoinAllApplications, .ignoresCycle, .fullScreenAuxiliary]
         window.ignoresMouseEvents = !supportsWebMouseInteraction || !webMouseInteractionEnabled
         window.canHide = false
         window.isReleasedWhenClosed = false
@@ -362,9 +435,36 @@ private final class WallpaperWindow {
 
     func show() {
         window.orderFrontRegardless()
+        if originalWindowServerLevel == nil {
+            originalWindowServerLevel = WindowServerWindowLevelController.shared.applyDockHostAdjacentLevel(
+                to: window.windowNumber,
+                originalLevel: Int32(WallpaperWindowLevel.desktopWallpaper.rawValue)
+            )
+            if originalWindowServerLevel != nil {
+                WindowServerWindowLevelController.shared.verifyAppliedLevelLater(
+                    windowNumber: window.windowNumber,
+                    delayMilliseconds: 100
+                )
+            }
+        }
+        if !stickyTagApplied {
+            stickyTagApplied = WindowServerWindowTagController.shared.applyStickyTag(to: window.windowNumber)
+        }
     }
 
     func close() {
+        if let originalWindowServerLevel {
+            window.level = WallpaperWindowLevel.desktopWallpaper
+            WindowServerWindowLevelController.shared.restoreOriginalLevel(
+                originalWindowServerLevel,
+                to: window.windowNumber
+            )
+            self.originalWindowServerLevel = nil
+        }
+        if stickyTagApplied {
+            WindowServerWindowTagController.shared.clearStickyTag(from: window.windowNumber)
+            stickyTagApplied = false
+        }
         (content as? WallpaperContentLifecycle)?.prepareForClose()
         window.contentView = nil
         window.close()
@@ -384,6 +484,89 @@ private final class WallpaperWindow {
 
     var desktopFallbackSnapshotter: DesktopFallbackLiveSnapshotting? {
         content as? DesktopFallbackLiveSnapshotting
+    }
+
+    var windowNumber: Int {
+        window.windowNumber
+    }
+
+    func freezeSnapshot() -> DesktopTransitionFreezeSnapshot? {
+        DesktopTransitionFreezeOverlay.snapshot(windowNumber: window.windowNumber, frame: window.frame)
+    }
+
+    func logDiagnostics(label: String, index: Int) {
+        let cgInfo = Self.cgWindowInfo(windowNumber: window.windowNumber)
+        let renderState = (content as? WallpaperRenderDiagnosticReporting)?
+            .diagnosticRenderState(label: label)
+            ?? "renderer=unknown contentType=\(type(of: content))"
+        WallpaperPlaybackDiagnostics.log(
+            [
+                "sample=\(label)",
+                "window[\(index)]",
+                "windowAlive=true",
+                "windowNumber=\(window.windowNumber)",
+                "visible=\(window.isVisible)",
+                "onActiveSpace=\(window.isOnActiveSpace)",
+                "occlusionVisible=\(window.occlusionState.contains(.visible))",
+                "level=\(window.level.rawValue)",
+                "collectionBehavior=\(window.collectionBehavior.rawValue)",
+                "frame=\(NSStringFromRect(window.frame))",
+                "screen=\(window.screen?.localizedName ?? "nil")",
+                "contentAttached=\(content.window === window)",
+                "contentHidden=\(content.isHidden)",
+                "contentLayerAttached=\(content.layer != nil)",
+                "cgFound=\(cgInfo.found)",
+                "cgLayer=\(cgInfo.layer)",
+                "cgOnscreen=\(cgInfo.isOnscreen)",
+                "cgAlpha=\(cgInfo.alpha)",
+                "cgOwner=\(cgInfo.owner)",
+                "cgBounds=\(cgInfo.bounds)",
+                renderState
+            ].joined(separator: " ")
+        )
+    }
+
+    private static func cgWindowInfo(windowNumber: Int) -> CGWindowDiagnosticInfo {
+        guard let windows = CGWindowListCopyWindowInfo(
+            [.optionIncludingWindow],
+            CGWindowID(windowNumber)
+        ) as? [[String: Any]],
+              let info = windows.first else {
+            return CGWindowDiagnosticInfo(
+                found: false,
+                layer: "nil",
+                isOnscreen: "nil",
+                alpha: "nil",
+                owner: "nil",
+                bounds: "nil"
+            )
+        }
+        return CGWindowDiagnosticInfo(
+            found: true,
+            layer: stringValue(info[kCGWindowLayer as String]),
+            isOnscreen: stringValue(info[kCGWindowIsOnscreen as String]),
+            alpha: stringValue(info[kCGWindowAlpha as String]),
+            owner: stringValue(info[kCGWindowOwnerName as String]),
+            bounds: stringValue(info[kCGWindowBounds as String])
+        )
+    }
+
+    private static func stringValue(_ value: Any?) -> String {
+        guard let value else {
+            return "nil"
+        }
+        return String(describing: value)
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "  ", with: " ")
+    }
+
+    private struct CGWindowDiagnosticInfo {
+        let found: Bool
+        let layer: String
+        let isOnscreen: String
+        let alpha: String
+        let owner: String
+        let bounds: String
     }
 
     private static func makeContentView(

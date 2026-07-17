@@ -14,3 +14,8 @@ protocol DisplayModeUpdatableContent: AnyObject {
 protocol WallpaperContentLifecycle: AnyObject {
     func prepareForClose()
 }
+
+@MainActor
+protocol WallpaperRenderDiagnosticReporting: AnyObject {
+    func diagnosticRenderState(label: String) -> String
+}

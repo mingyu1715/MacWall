@@ -5,6 +5,7 @@ import WebKit
 final class RestrictedWebWallpaperView: NSView,
     WKNavigationDelegate,
     PausableWallpaperContent,
+    WallpaperRenderDiagnosticReporting,
     DesktopFallbackLiveSnapshotting {
     private let webView: InteractiveWebView
     private let url: URL
@@ -16,6 +17,7 @@ final class RestrictedWebWallpaperView: NSView,
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .nonPersistent()
         configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
+        configuration.userContentController.addUserScript(Self.diagnosticFrameCounterScript)
         webView = InteractiveWebView(frame: frame, configuration: configuration)
         super.init(frame: frame)
         wantsLayer = true
@@ -73,6 +75,25 @@ final class RestrictedWebWallpaperView: NSView,
     })()
     """#
 
+    private static let diagnosticFrameCounterScript = WKUserScript(
+        source: #"""
+        (() => {
+            if (window.__macwallDiagnosticFrameCounterInstalled) {
+                return;
+            }
+            window.__macwallDiagnosticFrameCounterInstalled = true;
+            window.__macwallDiagnosticFrameCount = 0;
+            const tick = () => {
+                window.__macwallDiagnosticFrameCount += 1;
+                window.requestAnimationFrame(tick);
+            };
+            window.requestAnimationFrame(tick);
+        })();
+        """#,
+        injectionTime: .atDocumentEnd,
+        forMainFrameOnly: true
+    )
+
     func webView(
         _ webView: WKWebView,
         decidePolicyFor navigationAction: WKNavigationAction,
@@ -104,6 +125,29 @@ final class RestrictedWebWallpaperView: NSView,
             }
         }
         try DesktopFallbackPNGWriter.write(image, to: output)
+    }
+
+    func diagnosticRenderState(label: String) -> String {
+        webView.evaluateJavaScript("window.__macwallDiagnosticFrameCount ?? -1") { result, error in
+            NSLog(
+                "[MacWallPlaybackDiagnostics] sample=%@ renderer=webFrameCounter frameCount=%@ error=%@",
+                label,
+                String(describing: result ?? "nil"),
+                error?.localizedDescription ?? "nil"
+            )
+        }
+        return [
+            "renderer=web",
+            "renderLabel=\(label)",
+            "webViewAttached=\(webView.window != nil)",
+            "isLoading=\(webView.isLoading)",
+            "url=\(webView.url?.absoluteString ?? "nil")",
+            "title=\(webView.title ?? "nil")",
+            "viewWindowAttached=\(window != nil)",
+            "webLayerAttached=\(webView.layer != nil)",
+            "webHidden=\(webView.isHidden)",
+            "webBounds=\(NSStringFromRect(webView.bounds))"
+        ].joined(separator: " ")
     }
 }
 

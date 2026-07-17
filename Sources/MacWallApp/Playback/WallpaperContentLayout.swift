@@ -2,7 +2,7 @@ import AVFoundation
 import CoreGraphics
 import QuartzCore
 
-enum WallpaperDisplayMode: String, CaseIterable, Codable, Identifiable {
+enum WallpaperDisplayMode: String, CaseIterable, Codable, Identifiable, Sendable {
     case fit
     case fill
     case stretch
