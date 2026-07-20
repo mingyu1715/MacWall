@@ -4,6 +4,34 @@
 
 ## 2026-07-20
 
+### 20:30 KST
+
+- 완료: Native Wallpaper Playback Timing 실행 계획 Task 1~2
+- 구현:
+  - normal/reduced profile의 deterministic timing policy와 executable test 추가
+  - renderer backpressure, buffer lead, late drop, hard reset, reduced cadence 결정 고정
+  - `AVSampleBufferVideoRenderer` adapter 추가
+  - host-clock `CMTimebase`와 `AVSampleBufferRenderSynchronizer` clock 후보 추가
+  - `dev.sh install --timing-clock` / `--timing-profile` 및 generated timing 설정 추가
+- TDD:
+  - Task 1은 `NativeVideoPlaybackTimingPolicy` 부재 compile failure 확인 후 GREEN
+  - Task 2는 `--timing-clock` runner 계약 failure 확인 후 GREEN
+- 검증:
+  - `MacWallNativeWallpaperRuntimeIdentityTests` focused build 및 executable 통과
+  - `dev_runner_tests.sh` 통과
+  - 새 AVFoundation/CoreMedia source parse 및 Swift 6 typecheck 통과
+  - 전체 `swift test`: 149 tests, 0 failures
+  - `git diff --check` 통과
+- 커밋:
+  - `3021057 test(native): define playback timing policy`
+  - `97ecd30 feat(native): add selectable playback clock`
+- 다음:
+  - Task 3에서 adapter/clock을 `NativeVideoFrameBridge`에 연결하고 bounded asset pump 구현
+- 제외:
+  - Native Wallpaper runtime install 및 System Settings/화면 검증 없음
+  - snapshot/export, Main App, Scene, Web, fallback 변경 없음
+  - package, DMG, notarization, `dist` 작업 없음
+
 ### 20:14 KST
 
 - 완료: macOS 26 Native Wallpaper Playback Timing 실행 계획 작성
