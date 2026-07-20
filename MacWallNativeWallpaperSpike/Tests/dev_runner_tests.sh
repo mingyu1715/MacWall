@@ -6,6 +6,9 @@ SPIKE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 DEV_RUNNER="$SPIKE_DIR/dev.sh"
 REMOTE_CONTEXT_SOURCE="$SPIKE_DIR/MacWallNativeWallpaperExtension/MacWallRemoteContextProbe.swift"
 VIDEO_BRIDGE_SOURCE="$SPIKE_DIR/MacWallNativeWallpaperExtension/NativeVideoFrameBridge.swift"
+RENDERER_ADAPTER_SOURCE="$SPIKE_DIR/MacWallNativeWallpaperExtension/NativeVideoRendererAdapter.swift"
+PLAYBACK_CLOCK_SOURCE="$SPIKE_DIR/MacWallNativeWallpaperExtension/NativeVideoPlaybackClock.swift"
+TIMING_MODE_SOURCE="$SPIKE_DIR/MacWallNativeWallpaperExtension/MacWallNativeWallpaperTimingMode.generated.swift"
 XPC_CONFIGURATION_SOURCE="$SPIKE_DIR/MacWallNativeWallpaperExtension/MacWallWallpaperExtensionConfiguration.swift"
 EXTENSION_SOURCE="$SPIKE_DIR/MacWallNativeWallpaperExtension/MacWallNativeWallpaperExtension.swift"
 XPC_HANDLER_SOURCE="$SPIKE_DIR/MacWallNativeWallpaperExtension/MacWallWallpaperXPCHandler.swift"
@@ -35,12 +38,33 @@ assert_contains "$help_output" "status"
 assert_contains "$help_output" "logs"
 assert_contains "$help_output" "--allow-unsafe-snapshot-xpc"
 assert_contains "$help_output" "--video-source MODE"
+assert_contains "$help_output" "--timing-clock MODE"
+assert_contains "$help_output" "--timing-profile PROFILE"
 
 install_output="$(MACWALL_NATIVE_DRY_RUN=1 "$DEV_RUNNER" install)"
 assert_contains "$install_output" "cmake -S"
 assert_contains "$install_output" "xcodebuild -project"
 assert_contains "$install_output" "codesign --verify --deep --strict"
 assert_contains "$install_output" "lsregister -f -R -trusted"
+assert_contains "$install_output" "timing clock: synchronizer"
+assert_contains "$install_output" "timing profile: normal"
+
+timing_install_output="$(MACWALL_NATIVE_DRY_RUN=1 "$DEV_RUNNER" install --timing-clock control-timebase)"
+assert_contains "$timing_install_output" "MacWallNativeWallpaperTimingMode.generated.swift"
+assert_contains "$timing_install_output" "timing clock: control-timebase"
+
+reduced_timing_output="$(MACWALL_NATIVE_DRY_RUN=1 "$DEV_RUNNER" install --timing-profile reduced)"
+assert_contains "$reduced_timing_output" "timing profile: reduced"
+
+invalid_timing_output="$(
+    MACWALL_NATIVE_DRY_RUN=1 "$DEV_RUNNER" install --timing-clock invalid 2>&1 || true
+)"
+assert_contains "$invalid_timing_output" "Unknown timing clock: invalid"
+
+invalid_profile_output="$(
+    MACWALL_NATIVE_DRY_RUN=1 "$DEV_RUNNER" install --timing-profile invalid 2>&1 || true
+)"
+assert_contains "$invalid_profile_output" "Unknown timing profile: invalid"
 
 snapshot_install_output="$(MACWALL_NATIVE_DRY_RUN=1 "$DEV_RUNNER" install --snapshot-mode error)"
 assert_contains "$snapshot_install_output" "MacWallSnapshotProbeMode.generated.swift"
@@ -135,6 +159,21 @@ assert_contains "$video_bridge_source" "MacWallNativeWallpaperVideoSourceModeCon
 assert_contains "$video_bridge_source" "case .generated"
 assert_contains "$video_bridge_source" "case .asset"
 assert_contains "$video_bridge_source" "videoSourceMode="
+
+renderer_adapter_source="$(cat "$RENDERER_ADAPTER_SOURCE")"
+assert_contains "$renderer_adapter_source" "sampleBufferRenderer"
+assert_contains "$renderer_adapter_source" "requestMediaDataWhenReady"
+
+playback_clock_source="$(cat "$PLAYBACK_CLOCK_SOURCE")"
+assert_contains "$playback_clock_source" "AVSampleBufferRenderSynchronizer"
+assert_contains "$playback_clock_source" "CMTimebaseCreateWithSourceClock"
+assert_contains "$playback_clock_source" "case .synchronizer"
+assert_contains "$playback_clock_source" "case .controlTimebase"
+
+timing_mode_source="$(cat "$TIMING_MODE_SOURCE")"
+assert_contains "$timing_mode_source" "clockMode"
+assert_contains "$timing_mode_source" "case controlTimebase"
+assert_contains "$timing_mode_source" "case synchronizer"
 
 extension_source="$(cat "$EXTENSION_SOURCE")"
 assert_contains "$extension_source" "requiresSnapshotEncodeSwizzle"

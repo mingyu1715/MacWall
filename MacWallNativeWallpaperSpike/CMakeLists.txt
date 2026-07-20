@@ -21,12 +21,15 @@ endif()
 add_executable(MacWallNativeWallpaperExtension MACOSX_BUNDLE
     MacWallNativeWallpaperExtension/MacWallNativeWallpaperExtension.swift
     MacWallNativeWallpaperExtension/MacWallNativeWallpaperRuntimeIdentity.swift
+    MacWallNativeWallpaperExtension/MacWallNativeWallpaperTimingMode.generated.swift
     MacWallNativeWallpaperExtension/MacWallNativeWallpaperVideoSource.swift
     MacWallNativeWallpaperExtension/MacWallNativeWallpaperVideoSourceMode.generated.swift
     MacWallNativeWallpaperExtension/MacWallRemoteContextProbe.swift
     MacWallNativeWallpaperExtension/MacWallSnapshotProbeMode.generated.swift
     MacWallNativeWallpaperExtension/NativeVideoFrameBridge.swift
+    MacWallNativeWallpaperExtension/NativeVideoPlaybackClock.swift
     MacWallNativeWallpaperExtension/NativeVideoPlaybackTiming.swift
+    MacWallNativeWallpaperExtension/NativeVideoRendererAdapter.swift
     MacWallNativeWallpaperExtension/MacWallWallpaperExtensionConfiguration.swift
     MacWallNativeWallpaperExtension/MacWallWallpaperSettingsViewModelStub.swift
     MacWallNativeWallpaperExtension/MacWallWallpaperXPCHandler.swift

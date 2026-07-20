@@ -15,6 +15,9 @@ SNAPSHOT_MODE_DEFAULT="disabled"
 SNAPSHOT_MODE_FILE="$SCRIPT_DIR/MacWallNativeWallpaperExtension/MacWallSnapshotProbeMode.generated.swift"
 VIDEO_SOURCE_MODE_DEFAULT="asset"
 VIDEO_SOURCE_MODE_FILE="$SCRIPT_DIR/MacWallNativeWallpaperExtension/MacWallNativeWallpaperVideoSourceMode.generated.swift"
+TIMING_CLOCK_DEFAULT="synchronizer"
+TIMING_PROFILE_DEFAULT="normal"
+TIMING_MODE_FILE="$SCRIPT_DIR/MacWallNativeWallpaperExtension/MacWallNativeWallpaperTimingMode.generated.swift"
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Versions/Current/Frameworks/LaunchServices.framework/Versions/Current/Support/lsregister"
 DRY_RUN="${MACWALL_NATIVE_DRY_RUN:-0}"
 
@@ -24,7 +27,7 @@ Usage: ./dev.sh <command> [options]
 
 Commands:
   reset [--wallpaper-agent]  Terminate stale MacWall native wallpaper extension processes.
-  install [--snapshot-mode MODE] [--video-source MODE] [--allow-unsafe-snapshot-xpc]
+  install [--snapshot-mode MODE] [--video-source MODE] [--timing-clock MODE] [--timing-profile PROFILE] [--allow-unsafe-snapshot-xpc]
                              Generate, build, codesign-verify, and register the spike app.
   status                     Print WallpaperAgent and MacWall extension process status.
   logs [--last DURATION]     Show recent WallpaperAgent and extension logs. Default: 10m.
@@ -55,6 +58,14 @@ Snapshot modes:
 Video sources:
   asset                       Default. Use the bundled mp4 through AVAssetReader.
   generated                   Use generated sample buffers only, bypassing mp4/AVAssetReader.
+
+Timing clocks:
+  synchronizer                Default. Use AVSampleBufferRenderSynchronizer.
+  control-timebase            Use a host-clock-backed CMTimebase.
+
+Timing profiles:
+  normal                      Default timing thresholds.
+  reduced                     Reduced buffering and 30fps maximum cadence.
 EOF
 }
 
@@ -222,6 +233,60 @@ generate_video_source_mode_source() {
     printf 'video source: %s\n' "$mode"
 }
 
+swift_case_for_timing_clock() {
+    case "$1" in
+        synchronizer) printf '.synchronizer\n' ;;
+        control-timebase) printf '.controlTimebase\n' ;;
+        *)
+            printf 'Unknown timing clock: %s\n' "$1" >&2
+            exit 2
+            ;;
+    esac
+}
+
+swift_case_for_timing_profile() {
+    case "$1" in
+        normal) printf '.normal\n' ;;
+        reduced) printf '.reduced\n' ;;
+        *)
+            printf 'Unknown timing profile: %s\n' "$1" >&2
+            exit 2
+            ;;
+    esac
+}
+
+generate_timing_mode_source() {
+    local clock="$1"
+    local profile="$2"
+    local clock_case
+    local profile_case
+    clock_case="$(swift_case_for_timing_clock "$clock")"
+    profile_case="$(swift_case_for_timing_profile "$profile")"
+    print_command "generate-timing-mode" "$TIMING_MODE_FILE" "$clock" "$profile"
+    if [[ "$DRY_RUN" == "1" ]]; then
+        printf 'timing clock: %s\n' "$clock"
+        printf 'timing profile: %s\n' "$profile"
+        return 0
+    fi
+
+    {
+        printf 'enum MacWallNativeWallpaperTimingClockMode: String, Sendable {\n'
+        printf '    case controlTimebase = "control-timebase"\n'
+        printf '    case synchronizer\n'
+        printf '}\n\n'
+        printf 'enum MacWallNativeWallpaperTimingProfile: String, Sendable {\n'
+        printf '    case normal\n'
+        printf '    case reduced\n'
+        printf '}\n\n'
+        printf 'enum MacWallNativeWallpaperTimingConfiguration {\n'
+        printf '    static let clockMode: MacWallNativeWallpaperTimingClockMode = %s\n' "$clock_case"
+        printf '    static let profile: MacWallNativeWallpaperTimingProfile = %s\n' "$profile_case"
+        printf '}\n'
+    } >"$TIMING_MODE_FILE"
+    printf 'timing clock: %s\n' "$clock"
+    printf 'timing profile: %s\n' "$profile"
+}
+
 guard_unsafe_snapshot_mode() {
     local mode="$1"
     local allow_unsafe="$2"
@@ -276,6 +341,8 @@ cmd_reset() {
 cmd_install() {
     local snapshot_mode="$SNAPSHOT_MODE_DEFAULT"
     local video_source_mode="$VIDEO_SOURCE_MODE_DEFAULT"
+    local timing_clock="$TIMING_CLOCK_DEFAULT"
+    local timing_profile="$TIMING_PROFILE_DEFAULT"
     local allow_unsafe_snapshot_xpc=0
     while [[ "$#" -gt 0 ]]; do
         case "$1" in
@@ -295,6 +362,22 @@ cmd_install() {
                 }
                 video_source_mode="$1"
                 ;;
+            --timing-clock)
+                shift
+                [[ "$#" -gt 0 ]] || {
+                    printf 'install --timing-clock requires a mode\n' >&2
+                    exit 2
+                }
+                timing_clock="$1"
+                ;;
+            --timing-profile)
+                shift
+                [[ "$#" -gt 0 ]] || {
+                    printf 'install --timing-profile requires a profile\n' >&2
+                    exit 2
+                }
+                timing_profile="$1"
+                ;;
             --allow-unsafe-snapshot-xpc)
                 allow_unsafe_snapshot_xpc=1
                 ;;
@@ -309,6 +392,7 @@ cmd_install() {
     guard_unsafe_snapshot_mode "$snapshot_mode" "$allow_unsafe_snapshot_xpc"
     generate_snapshot_mode_source "$snapshot_mode"
     generate_video_source_mode_source "$video_source_mode"
+    generate_timing_mode_source "$timing_clock" "$timing_profile"
     run_cmd cmake -S "$SCRIPT_DIR" -B "$BUILD_DIR" -G Xcode
     run_cmd xcodebuild \
         -project "$PROJECT_PATH" \
@@ -336,6 +420,13 @@ cmd_status() {
         awk '/static let mode:/ { print "Video source: " $0 }' "$VIDEO_SOURCE_MODE_FILE"
     else
         printf 'Video source: missing generated source, run ./dev.sh install\n'
+    fi
+    printf 'Timing mode source: %s\n' "$TIMING_MODE_FILE"
+    if [[ -f "$TIMING_MODE_FILE" ]]; then
+        awk '/static let clockMode:/ { print "Timing clock: " $0 }' "$TIMING_MODE_FILE"
+        awk '/static let profile:/ { print "Timing profile: " $0 }' "$TIMING_MODE_FILE"
+    else
+        printf 'Timing mode: missing generated source, run ./dev.sh install\n'
     fi
     printf '\nProcesses:\n'
     process_lines | awk -v extension="$EXTENSION_PROCESS" -v agent="$WALLPAPER_AGENT_PROCESS" '
