@@ -126,6 +126,64 @@ Interpretation:
 - Keep `--snapshot-mode disabled` during this test so snapshot/export work does
   not affect frame pacing.
 
+## Playback Timing Verification Protocol
+
+Run timing comparisons with the asset source, normal profile, and snapshot
+probe disabled. Always reset before installing another clock mode.
+
+Control timebase:
+
+```bash
+./dev.sh reset
+./dev.sh install --snapshot-mode disabled --video-source asset --timing-clock control-timebase --timing-profile normal
+```
+
+Synchronizer:
+
+```bash
+./dev.sh reset
+./dev.sh install --snapshot-mode disabled --video-source asset --timing-clock synchronizer --timing-profile normal
+```
+
+Reduced profile:
+
+```bash
+./dev.sh reset
+./dev.sh install --snapshot-mode disabled --video-source asset --timing-clock synchronizer --timing-profile reduced
+```
+
+Collect focused timing and failure logs:
+
+```bash
+./dev.sh logs --last 3m \
+  | grep -E "nativeVideoTiming|nativeVideoBridge asset loop|clockMode|hard-reset|asset-repeated-hard-reset|WallpaperExtensionError|NSCocoaErrorDomain"
+```
+
+For each run, manually verify natural speed, smooth playback, the loop boundary,
+and Fullscreen -> Desktop behavior. Compare that observation with lead/lag,
+queued/dropped frame counts, and hard-reset events in the logs before changing
+the implementation.
+
+`WallpaperExtensionError(2)` is expected while snapshot mode is `disabled`.
+It belongs to the separate snapshot/export gate and does not fail playback
+acceptance by itself.
+
+To test a user-owned local video, pass an absolute path to an existing regular
+file:
+
+```bash
+./dev.sh reset
+./dev.sh install \
+  --snapshot-mode disabled \
+  --video-source asset \
+  --timing-clock synchronizer \
+  --timing-profile normal \
+  --video-path /absolute/path/to/user-owned-video.mp4
+```
+
+The runner passes that path to CMake, which copies the file into the temporary
+build resource. It does not edit or commit the original video.
+
 ## Snapshot Export Gate Protocol
 
 The default snapshot mode is `disabled`.

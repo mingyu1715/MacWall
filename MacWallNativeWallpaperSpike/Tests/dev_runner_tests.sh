@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SPIKE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 DEV_RUNNER="$SPIKE_DIR/dev.sh"
+CMAKE_SOURCE="$SPIKE_DIR/CMakeLists.txt"
 REMOTE_CONTEXT_SOURCE="$SPIKE_DIR/MacWallNativeWallpaperExtension/MacWallRemoteContextProbe.swift"
 VIDEO_BRIDGE_SOURCE="$SPIKE_DIR/MacWallNativeWallpaperExtension/NativeVideoFrameBridge.swift"
 RENDERER_ADAPTER_SOURCE="$SPIKE_DIR/MacWallNativeWallpaperExtension/NativeVideoRendererAdapter.swift"
@@ -47,16 +48,24 @@ assert_contains "$help_output" "status"
 assert_contains "$help_output" "logs"
 assert_contains "$help_output" "--allow-unsafe-snapshot-xpc"
 assert_contains "$help_output" "--video-source MODE"
+assert_contains "$help_output" "--video-path PATH"
 assert_contains "$help_output" "--timing-clock MODE"
 assert_contains "$help_output" "--timing-profile PROFILE"
 
 install_output="$(MACWALL_NATIVE_DRY_RUN=1 "$DEV_RUNNER" install)"
 assert_contains "$install_output" "cmake -S"
+assert_contains "$install_output" "-U MACWALL_NATIVE_SAMPLE_VIDEO_SOURCE"
 assert_contains "$install_output" "xcodebuild -project"
 assert_contains "$install_output" "codesign --verify --deep --strict"
 assert_contains "$install_output" "lsregister -f -R -trusted"
+assert_contains "$install_output" "snapshot mode: disabled"
+assert_contains "$install_output" "video source: asset"
 assert_contains "$install_output" "timing clock: synchronizer"
 assert_contains "$install_output" "timing profile: normal"
+
+synchronizer_install_output="$(MACWALL_NATIVE_DRY_RUN=1 "$DEV_RUNNER" install --timing-clock synchronizer --timing-profile normal)"
+assert_contains "$synchronizer_install_output" "timing clock: synchronizer"
+assert_contains "$synchronizer_install_output" "timing profile: normal"
 
 timing_install_output="$(MACWALL_NATIVE_DRY_RUN=1 "$DEV_RUNNER" install --timing-clock control-timebase)"
 assert_contains "$timing_install_output" "MacWallNativeWallpaperTimingMode.generated.swift"
@@ -65,14 +74,18 @@ assert_contains "$timing_install_output" "timing clock: control-timebase"
 reduced_timing_output="$(MACWALL_NATIVE_DRY_RUN=1 "$DEV_RUNNER" install --timing-profile reduced)"
 assert_contains "$reduced_timing_output" "timing profile: reduced"
 
-invalid_timing_output="$(
-    MACWALL_NATIVE_DRY_RUN=1 "$DEV_RUNNER" install --timing-clock invalid 2>&1 || true
-)"
+set +e
+invalid_timing_output="$(MACWALL_NATIVE_DRY_RUN=1 "$DEV_RUNNER" install --timing-clock invalid 2>&1)"
+invalid_timing_status=$?
+set -e
+[[ "$invalid_timing_status" -eq 2 ]] || fail "invalid timing clock should exit 2, got $invalid_timing_status"
 assert_contains "$invalid_timing_output" "Unknown timing clock: invalid"
 
-invalid_profile_output="$(
-    MACWALL_NATIVE_DRY_RUN=1 "$DEV_RUNNER" install --timing-profile invalid 2>&1 || true
-)"
+set +e
+invalid_profile_output="$(MACWALL_NATIVE_DRY_RUN=1 "$DEV_RUNNER" install --timing-profile invalid 2>&1)"
+invalid_profile_status=$?
+set -e
+[[ "$invalid_profile_status" -eq 2 ]] || fail "invalid timing profile should exit 2, got $invalid_profile_status"
 assert_contains "$invalid_profile_output" "Unknown timing profile: invalid"
 
 snapshot_install_output="$(MACWALL_NATIVE_DRY_RUN=1 "$DEV_RUNNER" install --snapshot-mode error)"
@@ -85,6 +98,30 @@ assert_contains "$generated_video_install_output" "video source: generated"
 
 asset_video_install_output="$(MACWALL_NATIVE_DRY_RUN=1 "$DEV_RUNNER" install --video-source asset)"
 assert_contains "$asset_video_install_output" "video source: asset"
+
+video_fixture_dir="$(mktemp -d)"
+trap 'rm -rf "$video_fixture_dir"' EXIT
+video_fixture="$video_fixture_dir/local-test-video.mp4"
+touch "$video_fixture"
+
+video_path_install_output="$(MACWALL_NATIVE_DRY_RUN=1 "$DEV_RUNNER" install --video-source asset --video-path "$video_fixture")"
+assert_contains "$video_path_install_output" "video path: $video_fixture"
+assert_contains "$video_path_install_output" "-DMACWALL_NATIVE_SAMPLE_VIDEO_SOURCE=$video_fixture"
+
+set +e
+relative_video_path_output="$(MACWALL_NATIVE_DRY_RUN=1 "$DEV_RUNNER" install --video-path relative-video.mp4 2>&1)"
+relative_video_path_status=$?
+set -e
+[[ "$relative_video_path_status" -eq 2 ]] || fail "relative video path should exit 2, got $relative_video_path_status"
+assert_contains "$relative_video_path_output" "install --video-path requires an absolute path"
+
+missing_video_path="$video_fixture_dir/missing-video.mp4"
+set +e
+missing_video_path_output="$(MACWALL_NATIVE_DRY_RUN=1 "$DEV_RUNNER" install --video-path "$missing_video_path" 2>&1)"
+missing_video_path_status=$?
+set -e
+[[ "$missing_video_path_status" -eq 2 ]] || fail "missing video path should exit 2, got $missing_video_path_status"
+assert_contains "$missing_video_path_output" "Video path is not an existing regular file: $missing_video_path"
 
 invalid_video_source_output="$(
     MACWALL_NATIVE_DRY_RUN=1 "$DEV_RUNNER" install --video-source invalid-source 2>&1 || true
@@ -228,6 +265,10 @@ assert_contains "$timing_mode_source" "clockMode"
 assert_contains "$timing_mode_source" "case controlTimebase"
 assert_contains "$timing_mode_source" "case synchronizer"
 
+cmake_source="$(cat "$CMAKE_SOURCE")"
+assert_contains "$cmake_source" "CACHE FILEPATH"
+assert_contains "$cmake_source" "configure_file"
+
 extension_source="$(cat "$EXTENSION_SOURCE")"
 assert_contains "$extension_source" "requiresSnapshotEncodeSwizzle"
 assert_contains "$extension_source" "WallpaperSnapshotXPC encode swizzle disabled"
@@ -263,7 +304,7 @@ assert_contains "$extension_info_plist" "NSAppDataUsageDescription"
 assert_contains "$extension_info_plist" "WallpaperAgent"
 
 fake_ps="$(mktemp)"
-trap 'rm -f "$fake_ps"' EXIT
+trap 'rm -rf "$video_fixture_dir"; rm -f "$fake_ps"' EXIT
 cat >"$fake_ps" <<'EOF'
  123 /tmp/MacWallNativeWallpaperSpikeApp.app/Contents/Extensions/MacWallNativeWallpaperExtension.appex/Contents/MacOS/MacWallNativeWallpaperExtension
  456 /System/Library/CoreServices/WallpaperAgent.app/Contents/MacOS/WallpaperAgent

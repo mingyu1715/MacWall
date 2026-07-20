@@ -27,7 +27,7 @@ Usage: ./dev.sh <command> [options]
 
 Commands:
   reset [--wallpaper-agent]  Terminate stale MacWall native wallpaper extension processes.
-  install [--snapshot-mode MODE] [--video-source MODE] [--timing-clock MODE] [--timing-profile PROFILE] [--allow-unsafe-snapshot-xpc]
+  install [--snapshot-mode MODE] [--video-source MODE] [--video-path PATH] [--timing-clock MODE] [--timing-profile PROFILE] [--allow-unsafe-snapshot-xpc]
                              Generate, build, codesign-verify, and register the spike app.
   status                     Print WallpaperAgent and MacWall extension process status.
   logs [--last DURATION]     Show recent WallpaperAgent and extension logs. Default: 10m.
@@ -58,6 +58,7 @@ Snapshot modes:
 Video sources:
   asset                       Default. Use the bundled mp4 through AVAssetReader.
   generated                   Use generated sample buffers only, bypassing mp4/AVAssetReader.
+  --video-path PATH           Copy an absolute local video file into the temporary build resource.
 
 Timing clocks:
   synchronizer                Default. Use AVSampleBufferRenderSynchronizer.
@@ -341,6 +342,7 @@ cmd_reset() {
 cmd_install() {
     local snapshot_mode="$SNAPSHOT_MODE_DEFAULT"
     local video_source_mode="$VIDEO_SOURCE_MODE_DEFAULT"
+    local video_path=""
     local timing_clock="$TIMING_CLOCK_DEFAULT"
     local timing_profile="$TIMING_PROFILE_DEFAULT"
     local allow_unsafe_snapshot_xpc=0
@@ -361,6 +363,14 @@ cmd_install() {
                     exit 2
                 }
                 video_source_mode="$1"
+                ;;
+            --video-path)
+                shift
+                [[ "$#" -gt 0 ]] || {
+                    printf 'install --video-path requires a path\n' >&2
+                    exit 2
+                }
+                video_path="$1"
                 ;;
             --timing-clock)
                 shift
@@ -389,11 +399,29 @@ cmd_install() {
         shift
     done
 
+    if [[ -n "$video_path" ]]; then
+        if [[ "$video_path" != /* ]]; then
+            printf 'install --video-path requires an absolute path: %s\n' "$video_path" >&2
+            exit 2
+        fi
+        if [[ ! -f "$video_path" ]]; then
+            printf 'Video path is not an existing regular file: %s\n' "$video_path" >&2
+            exit 2
+        fi
+        printf 'video path: %s\n' "$video_path"
+    fi
+
     guard_unsafe_snapshot_mode "$snapshot_mode" "$allow_unsafe_snapshot_xpc"
     generate_snapshot_mode_source "$snapshot_mode"
     generate_video_source_mode_source "$video_source_mode"
     generate_timing_mode_source "$timing_clock" "$timing_profile"
-    run_cmd cmake -S "$SCRIPT_DIR" -B "$BUILD_DIR" -G Xcode
+    local cmake_arguments=(-S "$SCRIPT_DIR" -B "$BUILD_DIR" -G Xcode)
+    if [[ -n "$video_path" ]]; then
+        cmake_arguments+=("-DMACWALL_NATIVE_SAMPLE_VIDEO_SOURCE=$video_path")
+    else
+        cmake_arguments+=(-U MACWALL_NATIVE_SAMPLE_VIDEO_SOURCE)
+    fi
+    run_cmd cmake "${cmake_arguments[@]}"
     run_cmd xcodebuild \
         -project "$PROJECT_PATH" \
         -scheme MacWallNativeWallpaperSpikeApp \
