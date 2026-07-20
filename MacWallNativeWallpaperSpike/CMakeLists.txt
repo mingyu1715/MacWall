@@ -26,6 +26,7 @@ add_executable(MacWallNativeWallpaperExtension MACOSX_BUNDLE
     MacWallNativeWallpaperExtension/MacWallRemoteContextProbe.swift
     MacWallNativeWallpaperExtension/MacWallSnapshotProbeMode.generated.swift
     MacWallNativeWallpaperExtension/NativeVideoFrameBridge.swift
+    MacWallNativeWallpaperExtension/NativeVideoPlaybackTiming.swift
     MacWallNativeWallpaperExtension/MacWallWallpaperExtensionConfiguration.swift
     MacWallNativeWallpaperExtension/MacWallWallpaperSettingsViewModelStub.swift
     MacWallNativeWallpaperExtension/MacWallWallpaperXPCHandler.swift
@@ -73,7 +74,9 @@ set_target_properties(MacWallNativeWallpaperSpikeApp PROPERTIES
 add_executable(MacWallNativeWallpaperRuntimeIdentityTests
     MacWallNativeWallpaperExtension/MacWallNativeWallpaperRuntimeIdentity.swift
     MacWallNativeWallpaperExtension/MacWallNativeWallpaperVideoSource.swift
+    MacWallNativeWallpaperExtension/NativeVideoPlaybackTiming.swift
     Tests/MacWallNativeWallpaperRuntimeIdentityTests.swift
+    Tests/NativeVideoPlaybackTimingTests.swift
 )
 
 set_target_properties(MacWallNativeWallpaperRuntimeIdentityTests PROPERTIES
