@@ -1,5 +1,6 @@
 .build/
 .swiftpm/
+.worktrees/
 dist/
 DerivedData/
 .DS_Store
