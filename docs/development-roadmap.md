@@ -510,8 +510,8 @@ S0 Format Research and Fixture Catalog
 
 다음 product work:
 
-1. 다른 project 우선순위가 끝난 뒤 macOS 26 Native Wallpaper follow-up gate를 다시 선택합니다.
-2. snapshot/export를 계속할 경우 `docs/superpowers/plans/2026-06-15-native-wallpaper-snapshot-export-gate.md`를 기준으로 진행합니다.
-3. playback timing을 계속할 경우 `docs/superpowers/specs/2026-06-19-native-wallpaper-playback-timing.md`를 기준으로 executable plan을 먼저 작성합니다.
+1. `docs/superpowers/plans/2026-07-20-native-wallpaper-playback-timing.md`의 Task 1부터 isolated branch/worktree에서 실행합니다.
+2. bounded pump, clock 비교, loop retiming, drop/reduced profile을 순서대로 검증합니다.
+3. snapshot/export는 playback timing과 섞지 않고 `docs/superpowers/plans/2026-06-15-native-wallpaper-snapshot-export-gate.md`의 별도 gate로 유지합니다.
 4. Main App 통합은 snapshot/export와 playback timing 안정화 전까지 시작하지 않습니다.
 5. P3 방향과 Scene runtime 우선순위가 확정되기 전에는 Scene S0를 시작하지 않습니다.

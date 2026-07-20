@@ -2,6 +2,31 @@
 
 모든 시간은 Asia/Seoul 기준입니다.
 
+## 2026-07-20
+
+### 20:14 KST
+
+- 완료: macOS 26 Native Wallpaper Playback Timing 실행 계획 작성
+- 문서:
+  - [Playback Timing 설계](superpowers/specs/2026-06-19-native-wallpaper-playback-timing.md)
+  - [Playback Timing 실행 계획](superpowers/plans/2026-07-20-native-wallpaper-playback-timing.md)
+- 결정:
+  - 순수 timing policy와 deterministic executable test부터 시작
+  - asset path는 `sampleBufferRenderer`와 bounded pump를 사용
+  - `controlTimebase`와 `AVSampleBufferRenderSynchronizer`는 runner mode로 분리 비교
+  - loop sample은 asset duration offset으로 PTS를 연속 증가
+  - reduced mode는 수동 profile만 제공하고 자동 battery/thermal policy는 보류
+  - 사용자 소유 4K/60 및 120fps fixture는 `--video-path`로만 검증하고 repository에 포함하지 않음
+- 검증:
+  - plan placeholder, task/step, code fence, API symbol, scope coverage 검색
+  - macOS 26 SDK 기준 AVFoundation/CoreMedia 계획 API `xcrun swiftc -typecheck` 통과
+  - `git diff --check`
+- 제외:
+  - 구현 코드 변경 없음
+  - build/test/app/GUI/System Settings 실행 없음
+  - snapshot/export, Main App, Scene, Web, fallback 변경 없음
+  - package, DMG, notarization, `dist` 작업 없음
+
 ## 2026-07-17
 
 ### 23:18 KST
