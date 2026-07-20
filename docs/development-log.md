@@ -4,6 +4,38 @@
 
 ## 2026-07-20
 
+### 21:30 KST
+
+- 완료: Native Wallpaper Playback Timing 실행 계획 Task 4 continuous loop PTS
+- 구현:
+  - `NativeVideoSampleRetimer`로 loop별 `assetDuration * loopIndex` offset을 모든 asset sample timing에 적용
+  - loop EOF에서 renderer flush와 playback clock seek 없이 reader만 재시작해 PTS를 단조 증가
+  - invalid/nonnumeric asset duration, offset, PTS, DTS와 indefinite duration을 enqueue 전에 거부
+  - retiming 실패는 raw sample을 enqueue하지 않고 generated fallback으로 전환하며 `osStatus`를 로그에 기록
+  - 첫 hard reset은 media-data 요청 중단 후 renderer flush completion에서 generation을 재검사하고 seek/retry
+  - 5초 안에 두 번째 hard reset이 발생하면 `asset-repeated-hard-reset`으로 generated fallback 전환
+- TDD:
+  - retimer/hard-reset 타입 부재 compile failure 확인 후 loop offset, timing offset, 5초 reset boundary 테스트 GREEN
+  - nonnumeric timing validation 부재 compile failure 확인 후 invalid offset/PTS 및 indefinite duration 테스트 GREEN
+  - 실제 `CVPixelBuffer` 기반 `CMSampleBuffer` copy/retime PTS 검증 추가
+- 리뷰:
+  - 1차 리뷰의 flush completion ordering과 nonnumeric timing 통과 위험을 수정
+  - 재리뷰 결과 Critical/Important issue 없음
+  - 남은 sample-buffer 실동작 test Minor도 추가해 focused 실행으로 검증
+- 검증:
+  - `MacWallNativeWallpaperRuntimeIdentityTests` focused build 및 executable 통과
+  - `MacWallNativeWallpaperExtension` target build 통과
+  - `dev_runner_tests.sh`, Swift parse, shell syntax, `git diff --check` 통과
+  - 전체 `swift test`: 149 tests, 0 failures
+- 커밋:
+  - `4b402f6 feat(native): keep loop presentation time continuous`
+- 다음:
+  - Task 5 verification matrix, `--video-path` runner 지원, README 및 최종 개발 로그 정리
+- 제외:
+  - Native Wallpaper runtime install, System Settings 조작, 실제 Desktop/loop 품질 검증 없음
+  - snapshot/export, Main App, Scene, Web, fallback 변경 없음
+  - package, DMG, notarization, `dist` 작업 없음
+
 ### 21:11 KST
 
 - 완료: Native Wallpaper Playback Timing 실행 계획 Task 3 bounded asset pump
