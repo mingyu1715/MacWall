@@ -29,6 +29,14 @@ assert_contains() {
     fi
 }
 
+assert_not_contains() {
+    local haystack="$1"
+    local needle="$2"
+    if [[ "$haystack" == *"$needle"* ]]; then
+        fail "expected output not to contain: $needle"
+    fi
+}
+
 [[ -x "$DEV_RUNNER" ]] || fail "dev runner is not executable: $DEV_RUNNER"
 
 help_output="$("$DEV_RUNNER" help)"
@@ -159,6 +167,35 @@ assert_contains "$video_bridge_source" "MacWallNativeWallpaperVideoSourceModeCon
 assert_contains "$video_bridge_source" "case .generated"
 assert_contains "$video_bridge_source" "case .asset"
 assert_contains "$video_bridge_source" "videoSourceMode="
+assert_contains "$video_bridge_source" "pendingAssetSampleBuffer"
+assert_contains "$video_bridge_source" "scheduleAssetPump"
+assert_contains "$video_bridge_source" "scheduleAssetLoopRestart"
+assert_contains "$video_bridge_source" "assetPumpGeneration"
+assert_contains "$video_bridge_source" "NativeVideoAssetPumpTransition"
+assert_contains "$video_bridge_source" "NativeVideoAssetLoopTail.remainingSeconds"
+assert_contains "$video_bridge_source" "min(max(delay, 0.005), 0.500)"
+assert_contains "$video_bridge_source" "playbackClock.start(at: .zero)"
+assert_contains "$video_bridge_source" "playbackClock?.stop()"
+assert_contains "$video_bridge_source" "playbackClock.stop(completion: finishFallback)"
+assert_contains "$video_bridge_source" "rendererAdapter.stopRequestingMediaData()"
+assert_contains "$video_bridge_source" "NativeVideoPlaybackTimingPolicy"
+assert_contains "$video_bridge_source" "NativeVideoRendererAdapter"
+assert_contains "$video_bridge_source" "NativeVideoPlaybackClock"
+assert_contains "$video_bridge_source" "nativeVideoTiming"
+assert_contains "$video_bridge_source" "samplePTS="
+assert_contains "$video_bridge_source" "mediaNow="
+assert_contains "$video_bridge_source" "lead="
+assert_contains "$video_bridge_source" "lag="
+assert_contains "$video_bridge_source" "bufferBand="
+assert_contains "$video_bridge_source" "rendererReady="
+assert_contains "$video_bridge_source" "loopIndex="
+assert_contains "$video_bridge_source" "droppedFrameCount="
+assert_contains "$video_bridge_source" "queuedFrameCount="
+assert_contains "$video_bridge_source" "decision="
+assert_contains "$video_bridge_source" "clockMode="
+assert_contains "$video_bridge_source" "profile="
+assert_not_contains "$video_bridge_source" "while isRunning, !didStop, displayLayer.isReadyForMoreMediaData"
+assert_not_contains "$video_bridge_source" "displayLayer.enqueue("
 
 renderer_adapter_source="$(cat "$RENDERER_ADAPTER_SOURCE")"
 assert_contains "$renderer_adapter_source" "sampleBufferRenderer"
@@ -167,6 +204,7 @@ assert_contains "$renderer_adapter_source" "requestMediaDataWhenReady"
 playback_clock_source="$(cat "$PLAYBACK_CLOCK_SOURCE")"
 assert_contains "$playback_clock_source" "AVSampleBufferRenderSynchronizer"
 assert_contains "$playback_clock_source" "CMTimebaseCreateWithSourceClock"
+assert_contains "$playback_clock_source" "delaysRateChangeUntilHasSufficientMediaData = false"
 assert_contains "$playback_clock_source" "case .synchronizer"
 assert_contains "$playback_clock_source" "case .controlTimebase"
 

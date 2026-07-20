@@ -4,6 +4,7 @@ import CoreMedia
 final class NativeVideoPlaybackClock: @unchecked Sendable {
     let mode: MacWallNativeWallpaperTimingClockMode
 
+    private let displayLayer: AVSampleBufferDisplayLayer
     private let renderer: AVSampleBufferVideoRenderer
     private var timebase: CMTimebase?
     private var synchronizer: AVSampleBufferRenderSynchronizer?
@@ -16,6 +17,7 @@ final class NativeVideoPlaybackClock: @unchecked Sendable {
         renderer: AVSampleBufferVideoRenderer
     ) {
         self.mode = mode
+        self.displayLayer = displayLayer
         self.renderer = renderer
 
         switch mode {
@@ -32,6 +34,7 @@ final class NativeVideoPlaybackClock: @unchecked Sendable {
         case .synchronizer:
             displayLayer.controlTimebase = nil
             let createdSynchronizer = AVSampleBufferRenderSynchronizer()
+            createdSynchronizer.delaysRateChangeUntilHasSufficientMediaData = false
             createdSynchronizer.addRenderer(renderer)
             synchronizer = createdSynchronizer
         }
@@ -76,15 +79,25 @@ final class NativeVideoPlaybackClock: @unchecked Sendable {
         )
     }
 
-    func stop() {
-        guard !isStopped else { return }
+    func stop(completion: (@Sendable () -> Void)? = nil) {
+        guard !isStopped else {
+            completion?()
+            return
+        }
         let time = currentTime
         isRunning = false
         setRate(0, time: time)
-        if let synchronizer {
-            synchronizer.removeRenderer(renderer, at: .invalid, completionHandler: nil)
-        }
         isStopped = true
+        if mode == .controlTimebase {
+            displayLayer.controlTimebase = nil
+            completion?()
+        } else if let synchronizer {
+            synchronizer.removeRenderer(renderer, at: .invalid) { _ in
+                completion?()
+            }
+        } else {
+            completion?()
+        }
         macWallNativeWallpaperLogger.info(
             "nativeVideoClock event=stop mode=\(self.mode.rawValue, privacy: .public) time=\(CMTimeGetSeconds(time))"
         )

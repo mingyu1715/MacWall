@@ -55,6 +55,60 @@ struct NativeVideoPlaybackEvaluation: Equatable, Sendable {
     var lagSeconds: Double { max(-leadSeconds, 0) }
 }
 
+struct NativeVideoAssetPumpTransition: Equatable, Sendable {
+    let consumesPendingSample: Bool
+    let stopsRequestingMediaData: Bool
+    let retryDelaySeconds: Double?
+
+    init(decision: NativeVideoPlaybackDecision) {
+        switch decision {
+        case .enqueue, .drop:
+            consumesPendingSample = true
+            stopsRequestingMediaData = false
+            retryDelaySeconds = nil
+        case .wait(let seconds):
+            consumesPendingSample = false
+            stopsRequestingMediaData = true
+            retryDelaySeconds = seconds
+        case .waitForRenderer:
+            consumesPendingSample = false
+            stopsRequestingMediaData = false
+            retryDelaySeconds = nil
+        case .reset:
+            consumesPendingSample = false
+            stopsRequestingMediaData = true
+            retryDelaySeconds = 0.005
+        }
+    }
+}
+
+struct NativeVideoAssetPumpGeneration: Equatable, Sendable {
+    private(set) var current: UInt64 = 0
+
+    mutating func advance() -> UInt64 {
+        current &+= 1
+        return current
+    }
+
+    func accepts(_ candidate: UInt64) -> Bool {
+        candidate == current
+    }
+}
+
+enum NativeVideoAssetLoopTail {
+    static func remainingSeconds(
+        lastQueuedEndPTSSeconds: Double?,
+        mediaNowSeconds: Double
+    ) -> Double {
+        guard let lastQueuedEndPTSSeconds,
+              lastQueuedEndPTSSeconds.isFinite,
+              mediaNowSeconds.isFinite else {
+            return 0
+        }
+        return max(lastQueuedEndPTSSeconds - mediaNowSeconds, 0)
+    }
+}
+
 struct NativeVideoPlaybackTimingPolicy: Sendable {
     let configuration: NativeVideoPlaybackTimingConfiguration
 

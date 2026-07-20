@@ -9,6 +9,10 @@ enum NativeVideoPlaybackTimingTests {
         testSeverelyLateSampleResets()
         testRendererBackpressureDoesNotConsumeSample()
         testReducedProfileDropsExcessCadence()
+        testWaitTransitionRetainsPendingSampleAndReschedules()
+        testRendererWaitTransitionRetainsPendingSampleWithoutRescheduling()
+        testPumpGenerationRejectsStaleCallbacks()
+        testLoopTailWaitPreservesQueuedFrames()
     }
 
     private static func testNormalSampleEnqueues() {
@@ -84,5 +88,42 @@ enum NativeVideoPlaybackTimingTests {
             lastEnqueuedPTSSeconds: 1.0
         )
         precondition(result.decision == .drop(reason: .cadence))
+    }
+
+    private static func testWaitTransitionRetainsPendingSampleAndReschedules() {
+        let transition = NativeVideoAssetPumpTransition(decision: .wait(seconds: 0.25))
+        precondition(!transition.consumesPendingSample)
+        precondition(transition.stopsRequestingMediaData)
+        precondition(transition.retryDelaySeconds == 0.25)
+    }
+
+    private static func testRendererWaitTransitionRetainsPendingSampleWithoutRescheduling() {
+        let transition = NativeVideoAssetPumpTransition(decision: .waitForRenderer)
+        precondition(!transition.consumesPendingSample)
+        precondition(!transition.stopsRequestingMediaData)
+        precondition(transition.retryDelaySeconds == nil)
+    }
+
+    private static func testPumpGenerationRejectsStaleCallbacks() {
+        var generation = NativeVideoAssetPumpGeneration()
+        let first = generation.advance()
+        precondition(generation.accepts(first))
+
+        let second = generation.advance()
+        precondition(!generation.accepts(first))
+        precondition(generation.accepts(second))
+    }
+
+    private static func testLoopTailWaitPreservesQueuedFrames() {
+        precondition(
+            abs(NativeVideoAssetLoopTail.remainingSeconds(lastQueuedEndPTSSeconds: 1.5, mediaNowSeconds: 1.2) - 0.3)
+                < 0.000_001
+        )
+        precondition(
+            NativeVideoAssetLoopTail.remainingSeconds(lastQueuedEndPTSSeconds: 1.5, mediaNowSeconds: 1.6) == 0
+        )
+        precondition(
+            NativeVideoAssetLoopTail.remainingSeconds(lastQueuedEndPTSSeconds: nil, mediaNowSeconds: 1.2) == 0
+        )
     }
 }
