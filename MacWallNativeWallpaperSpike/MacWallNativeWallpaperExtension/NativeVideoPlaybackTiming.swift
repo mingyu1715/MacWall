@@ -95,17 +95,28 @@ struct NativeVideoAssetPumpGeneration: Equatable, Sendable {
     }
 }
 
-enum NativeVideoAssetLoopTail {
-    static func remainingSeconds(
-        lastQueuedEndPTSSeconds: Double?,
-        mediaNowSeconds: Double
-    ) -> Double {
-        guard let lastQueuedEndPTSSeconds,
-              lastQueuedEndPTSSeconds.isFinite,
-              mediaNowSeconds.isFinite else {
-            return 0
+enum NativeVideoHardResetAction: Equatable, Sendable {
+    case retry
+    case fallback
+}
+
+struct NativeVideoHardResetTracker: Equatable, Sendable {
+    let windowSeconds: Double
+    private var lastResetHostTime: Double?
+
+    init(windowSeconds: Double) {
+        self.windowSeconds = windowSeconds
+    }
+
+    mutating func registerReset(at hostTime: Double) -> NativeVideoHardResetAction {
+        if let lastResetHostTime,
+           hostTime >= lastResetHostTime,
+           hostTime - lastResetHostTime <= windowSeconds {
+            self.lastResetHostTime = nil
+            return .fallback
         }
-        return max(lastQueuedEndPTSSeconds - mediaNowSeconds, 0)
+        lastResetHostTime = hostTime
+        return .retry
     }
 }
 

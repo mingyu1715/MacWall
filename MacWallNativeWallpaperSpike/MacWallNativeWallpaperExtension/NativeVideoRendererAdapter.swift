@@ -27,10 +27,13 @@ final class NativeVideoRendererAdapter: @unchecked Sendable {
         renderer.stopRequestingMediaData()
     }
 
-    func flush(removeDisplayedImage: Bool) {
+    func flush(
+        removeDisplayedImage: Bool,
+        completion: (@Sendable () -> Void)? = nil
+    ) {
         renderer.flush(
             removingDisplayedImage: removeDisplayedImage,
-            completionHandler: nil
+            completionHandler: completion
         )
     }
 }

@@ -30,6 +30,7 @@ add_executable(MacWallNativeWallpaperExtension MACOSX_BUNDLE
     MacWallNativeWallpaperExtension/NativeVideoPlaybackClock.swift
     MacWallNativeWallpaperExtension/NativeVideoPlaybackTiming.swift
     MacWallNativeWallpaperExtension/NativeVideoRendererAdapter.swift
+    MacWallNativeWallpaperExtension/NativeVideoSampleRetimer.swift
     MacWallNativeWallpaperExtension/MacWallWallpaperExtensionConfiguration.swift
     MacWallNativeWallpaperExtension/MacWallWallpaperSettingsViewModelStub.swift
     MacWallNativeWallpaperExtension/MacWallWallpaperXPCHandler.swift
@@ -78,6 +79,7 @@ add_executable(MacWallNativeWallpaperRuntimeIdentityTests
     MacWallNativeWallpaperExtension/MacWallNativeWallpaperRuntimeIdentity.swift
     MacWallNativeWallpaperExtension/MacWallNativeWallpaperVideoSource.swift
     MacWallNativeWallpaperExtension/NativeVideoPlaybackTiming.swift
+    MacWallNativeWallpaperExtension/NativeVideoSampleRetimer.swift
     Tests/MacWallNativeWallpaperRuntimeIdentityTests.swift
     Tests/NativeVideoPlaybackTimingTests.swift
 )

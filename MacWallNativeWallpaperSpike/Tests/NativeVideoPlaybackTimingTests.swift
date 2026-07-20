@@ -1,4 +1,6 @@
 import Foundation
+import CoreMedia
+import CoreVideo
 
 enum NativeVideoPlaybackTimingTests {
     static func runAll() {
@@ -12,7 +14,12 @@ enum NativeVideoPlaybackTimingTests {
         testWaitTransitionRetainsPendingSampleAndReschedules()
         testRendererWaitTransitionRetainsPendingSampleWithoutRescheduling()
         testPumpGenerationRejectsStaleCallbacks()
-        testLoopTailWaitPreservesQueuedFrames()
+        testLoopOffsetIsMonotonic()
+        testTimingInfoAddsLoopOffset()
+        testRetimingCopiesVideoSampleBufferPTS()
+        testRetimerRejectsNonnumericTiming()
+        testLoopOffsetRejectsInvalidDuration()
+        testRepeatedHardResetWithinWindowFallsBack()
     }
 
     private static func testNormalSampleEnqueues() {
@@ -114,16 +121,131 @@ enum NativeVideoPlaybackTimingTests {
         precondition(generation.accepts(second))
     }
 
-    private static func testLoopTailWaitPreservesQueuedFrames() {
+    private static func testLoopOffsetIsMonotonic() {
+        let duration = CMTime(value: 300, timescale: 30)
+        precondition(NativeVideoSampleRetimer.loopOffset(assetDuration: duration, loopIndex: 0) == .zero)
         precondition(
-            abs(NativeVideoAssetLoopTail.remainingSeconds(lastQueuedEndPTSSeconds: 1.5, mediaNowSeconds: 1.2) - 0.3)
-                < 0.000_001
+            CMTimeGetSeconds(NativeVideoSampleRetimer.loopOffset(assetDuration: duration, loopIndex: 2)) == 20
+        )
+    }
+
+    private static func testTimingInfoAddsLoopOffset() {
+        let timing = CMSampleTimingInfo(
+            duration: CMTime(value: 1, timescale: 30),
+            presentationTimeStamp: CMTime(value: 15, timescale: 30),
+            decodeTimeStamp: .invalid
+        )
+        let shifted = NativeVideoSampleRetimer.offset(
+            timing,
+            by: CMTime(seconds: 10, preferredTimescale: 600)
+        )
+        precondition(CMTimeGetSeconds(shifted.presentationTimeStamp) == 10.5)
+        precondition(shifted.decodeTimeStamp == .invalid)
+    }
+
+    private static func testRetimingCopiesVideoSampleBufferPTS() {
+        var pixelBuffer: CVPixelBuffer?
+        precondition(
+            CVPixelBufferCreate(
+                kCFAllocatorDefault,
+                2,
+                2,
+                kCVPixelFormatType_32BGRA,
+                nil,
+                &pixelBuffer
+            ) == kCVReturnSuccess
+        )
+        var formatDescription: CMVideoFormatDescription?
+        precondition(
+            CMVideoFormatDescriptionCreateForImageBuffer(
+                allocator: kCFAllocatorDefault,
+                imageBuffer: pixelBuffer!,
+                formatDescriptionOut: &formatDescription
+            ) == noErr
+        )
+        var timing = CMSampleTimingInfo(
+            duration: CMTime(value: 1, timescale: 30),
+            presentationTimeStamp: CMTime(value: 15, timescale: 30),
+            decodeTimeStamp: .invalid
+        )
+        var sampleBuffer: CMSampleBuffer?
+        precondition(
+            CMSampleBufferCreateReadyWithImageBuffer(
+                allocator: kCFAllocatorDefault,
+                imageBuffer: pixelBuffer!,
+                formatDescription: formatDescription!,
+                sampleTiming: &timing,
+                sampleBufferOut: &sampleBuffer
+            ) == noErr
+        )
+
+        let retimed = try! NativeVideoSampleRetimer.retime(
+            sampleBuffer!,
+            by: CMTime(seconds: 10, preferredTimescale: 600)
+        )
+        precondition(CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(retimed)) == 10.5)
+        precondition(CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(sampleBuffer!)) == 0.5)
+    }
+
+    private static func testRetimerRejectsNonnumericTiming() {
+        let validTiming = CMSampleTimingInfo(
+            duration: .invalid,
+            presentationTimeStamp: .zero,
+            decodeTimeStamp: .invalid
         )
         precondition(
-            NativeVideoAssetLoopTail.remainingSeconds(lastQueuedEndPTSSeconds: 1.5, mediaNowSeconds: 1.6) == 0
+            throwsRetimingError(.nonnumericOffset) {
+                try NativeVideoSampleRetimer.validate(validTiming, offset: .invalid)
+            }
+        )
+
+        let invalidPTS = CMSampleTimingInfo(
+            duration: .invalid,
+            presentationTimeStamp: .invalid,
+            decodeTimeStamp: .invalid
         )
         precondition(
-            NativeVideoAssetLoopTail.remainingSeconds(lastQueuedEndPTSSeconds: nil, mediaNowSeconds: 1.2) == 0
+            throwsRetimingError(.nonnumericPresentationTime) {
+                try NativeVideoSampleRetimer.validate(invalidPTS, offset: .zero)
+            }
         )
+
+        let indefiniteDuration = CMSampleTimingInfo(
+            duration: .indefinite,
+            presentationTimeStamp: .zero,
+            decodeTimeStamp: .invalid
+        )
+        precondition(
+            throwsRetimingError(.nonnumericDuration) {
+                try NativeVideoSampleRetimer.validate(indefiniteDuration, offset: .zero)
+            }
+        )
+
+        try! NativeVideoSampleRetimer.validate(validTiming, offset: .zero)
+    }
+
+    private static func testLoopOffsetRejectsInvalidDuration() {
+        precondition(!NativeVideoSampleRetimer.loopOffset(assetDuration: .invalid, loopIndex: 0).isValid)
+    }
+
+    private static func testRepeatedHardResetWithinWindowFallsBack() {
+        var tracker = NativeVideoHardResetTracker(windowSeconds: 5)
+        precondition(tracker.registerReset(at: 100) == .retry)
+        precondition(tracker.registerReset(at: 105) == .fallback)
+        precondition(tracker.registerReset(at: 106) == .retry)
+    }
+
+    private static func throwsRetimingError(
+        _ expected: NativeVideoSampleRetimer.RetimingError,
+        operation: () throws -> Void
+    ) -> Bool {
+        do {
+            try operation()
+            return false
+        } catch let error as NativeVideoSampleRetimer.RetimingError {
+            return error == expected
+        } catch {
+            return false
+        }
     }
 }
