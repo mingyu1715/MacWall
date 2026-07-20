@@ -4,6 +4,40 @@
 
 ## 2026-07-20
 
+### 21:38 KST
+
+- 진행: Native Wallpaper Playback Timing 실행 계획 Task 5 정적 검증 환경 준비
+- 구현:
+  - `dev.sh install --video-path <absolute-path>`로 사용자 소유 로컬 영상을 임시 build resource에 전달
+  - 입력 경로가 절대 경로이자 기존 regular file인지 확인하고 위반 시 exit 2 반환
+  - `MACWALL_NATIVE_SAMPLE_VIDEO_SOURCE`를 CMake `CACHE FILEPATH`로 전환
+  - 명시적 영상 경로를 생략한 다음 install에서는 이전 cache 값을 제거해 기본 local sample로 복귀
+- TDD:
+  - `--video-path` 도움말 계약 부재와 CMake cache reset 부재로 runner test RED 확인
+  - timing clock/profile 기본값, 허용값, invalid exit 2, snapshot/video source 기본값, local video path 성공/실패 계약 GREEN
+- 문서:
+  - control-timebase, synchronizer, reduced profile 비교 명령과 focused timing 로그 필터를 spike README에 추가
+  - snapshot disabled 상태의 `WallpaperExtensionError(2)`는 playback acceptance와 별개임을 명시
+  - 사용자 영상은 원본을 수정하거나 repository에 포함하지 않고 임시 build resource로만 복사하도록 기록
+- 검증:
+  - `bash -n` 및 `dev_runner_tests.sh` 통과
+  - 임시 CMake Xcode project 생성 통과
+  - `MacWallNativeWallpaperRuntimeIdentityTests` focused build 및 executable 통과
+  - `git diff --check` 통과
+  - isolated worktree에는 기본 local mp4가 없어 CMake warning이 발생했으며 focused test에는 영향 없음
+- 커밋:
+  - `36cfa60 feat(native): add playback timing verification runner`
+- 다음:
+  - control-timebase human verification 후 로그를 먼저 분석
+  - 이후 synchronizer와 reduced profile을 같은 절차로 비교
+  - 사용자 소유 4K/60 및 120fps fixture가 있을 때만 고해상도 gate 수행
+- 미검증:
+  - 실제 Desktop 자연 배속, 끊김, loop 경계, Fullscreen -> Desktop 빨간약 결과
+- 제외:
+  - Native Wallpaper runtime install 및 System Settings 조작 없음
+  - snapshot/export, Main App, Scene, Web, fallback 변경 없음
+  - package, DMG, notarization, `dist` 작업 없음
+
 ### 21:30 KST
 
 - 완료: Native Wallpaper Playback Timing 실행 계획 Task 4 continuous loop PTS
