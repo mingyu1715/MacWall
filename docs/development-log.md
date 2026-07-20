@@ -4,6 +4,37 @@
 
 ## 2026-07-20
 
+### 21:11 KST
+
+- 완료: Native Wallpaper Playback Timing 실행 계획 Task 3 bounded asset pump
+- 구현:
+  - asset sample을 host media time 기준 최대 500ms까지만 선행 enqueue
+  - renderer backpressure에서는 pending sample을 유지하고, 과도한 선행 sample은 5~500ms 범위로 재예약
+  - delayed callback과 loop restart에 generation 검사를 적용해 Stop/fallback 이후 stale enqueue 차단
+  - 1초 rate limit의 `nativeVideoTiming` 진단 로그 추가
+  - EOF에서 마지막 queued frame의 end PTS까지 기다린 뒤 loop를 재시작해 tail frame 절단 방지
+  - synchronizer renderer detach 완료 후에만 generated fallback을 시작해 첫 frame 유실 경쟁 방지
+- TDD:
+  - bounded pump source guard가 `pendingAssetSampleBuffer` 부재로 실패하는 RED 확인 후 GREEN
+  - pending 보존, renderer wait, stale generation, EOF tail wait 회귀 테스트를 추가하고 구현 전 compile failure 확인 후 GREEN
+- 리뷰:
+  - 1차 리뷰의 EOF tail 절단, asynchronous renderer detach, pump lifecycle test 부족 지적을 수정
+  - 재리뷰 결과 Critical/Important issue 없음
+- 검증:
+  - `MacWallNativeWallpaperRuntimeIdentityTests` focused build 및 executable 통과
+  - `MacWallNativeWallpaperExtension` target build 통과
+  - `dev_runner_tests.sh`, Swift parse, shell syntax, `git diff --check` 통과
+  - 전체 `swift test`: 149 tests, 0 failures
+- 커밋:
+  - `25d827f feat(native): bound asset frame enqueue timing`
+- 다음:
+  - Task 4에서 loop별 sample PTS를 asset duration offset으로 retime해 clock seek/flush 기반 임시 loop를 제거
+- 제외:
+  - Native Wallpaper runtime install, System Settings 조작, 실제 Desktop/화질 검증 없음
+  - snapshot/export, Main App, Scene, Web, fallback 변경 없음
+  - README 변경 없음: 연구용 spike 내부 timing 동작이며 사용자-facing Main App 동작은 아직 바뀌지 않음
+  - package, DMG, notarization, `dist` 작업 없음
+
 ### 20:30 KST
 
 - 완료: Native Wallpaper Playback Timing 실행 계획 Task 1~2
