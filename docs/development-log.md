@@ -4,6 +4,46 @@
 
 ## 2026-07-27
 
+### 23:40 KST
+
+- 완료: Native Wallpaper synchronizer/normal human verification 및 4K60 성능 측정
+- 실행 조건:
+  - H.264, yuv420p, 3840x2160, 60fps, 약 30Mbps, 19.75초 local sample
+  - snapshot mode `disabled`, video source `asset`, timing clock `synchronizer`, profile `normal`
+- 사용자 관측:
+  - 실제 Desktop 출력에 대해 "괜찮음"으로 확인
+  - 자연 배속, 끊김, loop 경계, Fullscreen -> Desktop 동작에서 즉시 확인되는 문제 없음
+- timing 결과:
+  - 정상 구간 lead는 주로 약 0.06~0.15초
+  - loop index 0에서 7 이상까지 continuous PTS로 재생
+  - 성능 측정 전 구간에서 drop 0, hard reset 0
+  - `vmmap` snapshot 시점과 일치해 1~2초 lag/reset이 두 번 발생했으며 이후 즉시 정상 lead로 복귀
+  - 진단 도구가 live process를 일시 정지해 만든 측정 간섭으로 판단하고 runtime failure와 분리
+- CPU 측정:
+  - extension steady CPU 약 7.8%
+  - 전용 `VTDecoderXPCService` steady CPU 약 8.0%
+  - 합산 약 15.8%이며 macOS `top` 기준 100%가 CPU core 1개
+  - `WallpaperAgent`는 측정 구간 0%에 가까움
+- 메모리 측정:
+  - extension physical footprint 14.6MB, peak 18.4MB
+  - 전용 decoder physical footprint 913.4MB, peak 약 1.0GB
+  - decoder footprint 중 836.8MB가 39개 IOSurface region
+  - 15초 반복 측정에서 decoder footprint가 약 912~915MB로 유지돼 계속 증가하는 누수보다는 큰 bounded buffer pool 형태
+  - `ps` RSS는 decoder를 약 29MB로 표시해 IOSurface 비용을 누락하므로 성능 판정에는 `vmmap` physical footprint 사용
+- 원인 단서:
+  - 입력은 yuv420p지만 `AVAssetReaderTrackOutput`이 4K frame을 `kCVPixelFormatType_32BGRA`로 출력
+  - 4K BGRA surface와 VideoToolbox/display layer buffer pool이 높은 IOSurface footprint의 우선 조사 대상
+- 판정:
+  - synchronizer/normal은 화면 품질과 timing 안정성에서 control-timebase보다 우세
+  - CPU 사용량은 낮은 편이지만 약 913MB decoder footprint는 production 기준 최적화 필요
+- 다음:
+  - reduced profile 비교 전에 BGRA output과 decoder/display buffer pool의 IOSurface 수명 및 대체 pixel format 조사
+- 제외:
+  - 성능 측정 과정에서 코드 수정 없음
+  - GPU 사용률과 package power는 이번 측정에 포함하지 않음
+  - snapshot/export, Main App, Scene, Web, fallback 변경 없음
+  - package, DMG, notarization, `dist` 작업 없음
+
 ### 23:31 KST
 
 - 완료: Native Wallpaper Playback Timing control-timebase human verification gate
