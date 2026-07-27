@@ -2,7 +2,7 @@
 
 작성일: 2026-07-27
 
-상태: 설계 승인 / 실행 계획 작성 전
+상태: 설계 승인 / 실행 계획 작성 완료
 
 ## 목적
 
@@ -123,6 +123,16 @@ MacWall.xcodeproj
 │   └── embedded appex
 └── shared App Group entitlements
 ```
+
+고정 identifier:
+
+```text
+Host bundle ID:      io.github.mingyu1715.MacWall
+Extension bundle ID: io.github.mingyu1715.MacWall.NativeWallpaper
+App Group:           group.com.mingyu1715.macwall
+```
+
+Host app은 현재 동작을 보존하기 위해 이번 phase에서 새로 sandboxing하지 않는다. Wallpaper extension만 app sandbox를 필수로 사용한다.
 
 Swift Package:
 
@@ -386,6 +396,8 @@ Native Stop은 original wallpaper restore와 별개다. Native mode에서는 앱
 - Native backend는 `DesktopFallbackCoordinator`를 호출하지 않는다.
 - Native backend는 `OriginalDesktopWallpaperStore`를 시작하거나 수정하지 않는다.
 - Legacy playback이 성공한 경우에만 기존 fallback side effect를 실행한다.
+- Legacy에서 Native로 전환할 때는 Native `playing` ACK 이후 Legacy window와 fallback active ownership을 정리하되 original wallpaper를 복원하지 않는다.
+- 위 handoff에서는 persisted managed restore session만 폐기한다. original restore가 Native wallpaper 선택을 다시 덮어쓰면 안 된다.
 - Native에서 Legacy로 전환해 fallback PNG를 macOS system wallpaper로 적용하면 Native wallpaper 선택이 해제될 수 있다.
 - 그 후 Native Play를 요청하면 active context가 없으므로 설정 안내를 다시 표시한다.
 - Native generation 실패 시 fallback PNG를 대신 적용하지 않는다.
@@ -397,6 +409,7 @@ Native Stop은 original wallpaper restore와 별개다. Native mode에서는 앱
 - active generation과 candidate generation을 cleanup 대상에서 제외한다.
 - candidate 실패 시 해당 generation을 정리한다.
 - replacement 성공 후 이전 generation을 지연 정리한다.
+- candidate 준비 중 Desktop context가 attach/detach되면 candidate 전체를 폐기하고 최신 context set으로 같은 command를 다시 준비한다.
 - app launch 또는 bounded maintenance 시 command/status에서 참조하지 않는 stale generation만 정리한다.
 - source Workshop folder와 imported asset 원본은 수정하지 않는다.
 

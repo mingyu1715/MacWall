@@ -196,7 +196,7 @@ Assets/
 
 ### Phase P2.6: Native Wallpaper Backend Promotion
 
-상태: 설계 승인 / 실행 계획 작성 전
+상태: 설계 승인 / 실행 계획 작성 완료
 
 목표:
 
@@ -218,6 +218,10 @@ Assets/
 설계:
 
 - `docs/superpowers/specs/2026-07-27-native-wallpaper-backend-promotion-design.md`
+
+실행 계획:
+
+- `docs/superpowers/plans/2026-07-28-native-wallpaper-backend-promotion.md`
 
 이번 phase 제외:
 

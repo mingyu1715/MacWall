@@ -2,6 +2,35 @@
 
 모든 시간은 Asia/Seoul 기준입니다.
 
+## 2026-07-28
+
+### 00:16 KST
+
+- 완료: macOS 26 Native Wallpaper Backend production 승격 실행 계획 작성
+- 설계: [Native Wallpaper Backend 승격 설계](superpowers/specs/2026-07-27-native-wallpaper-backend-promotion-design.md)
+- 계획: [Native Wallpaper Backend 승격 실행 계획](superpowers/plans/2026-07-28-native-wallpaper-backend-promotion.md)
+- 작업 순서:
+  - Foundation-only shared command/status/state model
+  - atomic App Group store와 immutable Video generation staging
+  - Xcode host/embedded appex/Lock Screen saver container
+  - 검증된 spike handshake와 Video runtime의 production target 승격
+  - extension heartbeat, generation ACK, multi-context all-or-nothing replacement
+  - Main App Native/Legacy coordinator
+  - 3버튼 Native 설정 안내와 one-shot Legacy 선택
+  - fallback handoff, Native Stop, stale generation cleanup
+  - 명령어/정적 검사/자동 테스트/로그 중심 최종 검증
+- 설계 보강:
+  - host bundle ID, extension bundle ID, App Group identifier 고정
+  - host app은 이번 phase에서 새로 sandboxing하지 않고 extension만 app sandbox 사용
+  - Legacy -> Native 성공 handoff는 original wallpaper 복원 없이 managed restore session만 폐기
+  - candidate 중 monitor topology 변경은 partial commit 없이 전체 재준비
+- 제한:
+  - 실제 System Settings, GUI, Desktop 출력, Fullscreen/Space QA는 실행 계획에서 제외
+  - snapshot/export, Web, Scene, pixel format/IOSurface 최적화 제외
+  - package, DMG, notarization, `dist` 작업 제외
+- 다음:
+  - 실행 방식 선택 후 Task 1부터 TDD로 구현
+
 ## 2026-07-27
 
 ### 23:58 KST
