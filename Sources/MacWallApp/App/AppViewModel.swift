@@ -88,7 +88,11 @@ final class AppViewModel: ObservableObject {
     private let loginItemController: LoginItemManaging
     private let lockScreenAnimationController: LockScreenAnimationManaging
     private let desktopWallpaperRestoreWarningPresenter: DesktopWallpaperRestoreWarningPresenting
+    private let playbackCoordinator: WallpaperPlaybackCoordinating
+    private let nativeSetupPresenter: NativeWallpaperSetupPresenting
+    private let wallpaperSettingsOpener: WallpaperSettingsOpening
     private let userDefaults: UserDefaults
+    private var playbackTask: Task<Void, Never>?
     private var isSyncingLaunchAtLogin = false
     private var isSyncingLockScreenAnimation = false
     private var isSyncingRestoreOriginalWallpaperOnStop = false
@@ -98,12 +102,29 @@ final class AppViewModel: ObservableObject {
         loginItemController = LoginItemController()
         lockScreenAnimationController = LockScreenAnimationController()
         desktopWallpaperRestoreWarningPresenter = DesktopWallpaperRestoreWarningPresenter()
+        nativeSetupPresenter = NativeWallpaperSetupPresenter()
+        wallpaperSettingsOpener = WallpaperSettingsController()
         wallpaperPlayer = WallpaperPlayer.shared
         let fallbackCoordinator = DesktopFallbackCoordinator()
         desktopFallbackCoordinator = fallbackCoordinator
-        desktopFallbackSpaceRefreshCoordinator = DesktopFallbackRuntime.isEnabled
+        let spaceRefreshCoordinator: DesktopFallbackSpaceRefreshCoordinating = DesktopFallbackRuntime.isEnabled
             ? DesktopFallbackSpaceRefreshCoordinator(fallbackCoordinator: fallbackCoordinator)
             : NoopDesktopFallbackSpaceRefreshCoordinator()
+        desktopFallbackSpaceRefreshCoordinator = spaceRefreshCoordinator
+        let nativeBackend: NativeWallpaperBackendManaging
+        if let liveNativeBackend = try? NativeWallpaperBackend() {
+            nativeBackend = liveNativeBackend
+        } else {
+            nativeBackend = UnavailableNativeWallpaperBackend()
+        }
+        playbackCoordinator = WallpaperPlaybackCoordinator(
+            nativeBackend: nativeBackend,
+            legacyBackend: LegacyWallpaperBackend(
+                wallpaperPlayer: wallpaperPlayer,
+                fallbackCoordinator: fallbackCoordinator,
+                spaceRefreshCoordinator: spaceRefreshCoordinator
+            )
+        )
         do {
             store = try LibraryStore.defaultStore()
             restorePreferences()
@@ -129,7 +150,10 @@ final class AppViewModel: ObservableObject {
         wallpaperPlayer: WallpaperPlayerManaging = WallpaperPlayer.shared,
         desktopFallbackCoordinator: DesktopFallbackCoordinating? = nil,
         desktopFallbackSpaceRefreshCoordinator: DesktopFallbackSpaceRefreshCoordinating? = nil,
-        desktopWallpaperRestoreWarningPresenter: DesktopWallpaperRestoreWarningPresenting = DesktopWallpaperRestoreWarningPresenter()
+        desktopWallpaperRestoreWarningPresenter: DesktopWallpaperRestoreWarningPresenting = DesktopWallpaperRestoreWarningPresenter(),
+        playbackCoordinator: WallpaperPlaybackCoordinating? = nil,
+        nativeSetupPresenter: NativeWallpaperSetupPresenting = NativeWallpaperSetupPresenter(),
+        wallpaperSettingsOpener: WallpaperSettingsOpening = WallpaperSettingsController()
     ) {
         self.store = store
         self.loginItemController = loginItemController
@@ -137,19 +161,34 @@ final class AppViewModel: ObservableObject {
         self.desktopWallpaperRestoreWarningPresenter = desktopWallpaperRestoreWarningPresenter
         self.userDefaults = userDefaults
         self.wallpaperPlayer = wallpaperPlayer
+        self.nativeSetupPresenter = nativeSetupPresenter
+        self.wallpaperSettingsOpener = wallpaperSettingsOpener
         let fallbackCoordinator = desktopFallbackCoordinator ?? DesktopFallbackCoordinator()
         self.desktopFallbackCoordinator = fallbackCoordinator
+        let resolvedSpaceRefreshCoordinator: DesktopFallbackSpaceRefreshCoordinating
         if !DesktopFallbackRuntime.isEnabled {
-            self.desktopFallbackSpaceRefreshCoordinator = NoopDesktopFallbackSpaceRefreshCoordinator()
+            resolvedSpaceRefreshCoordinator = NoopDesktopFallbackSpaceRefreshCoordinator()
         } else if let desktopFallbackSpaceRefreshCoordinator {
-            self.desktopFallbackSpaceRefreshCoordinator = desktopFallbackSpaceRefreshCoordinator
+            resolvedSpaceRefreshCoordinator = desktopFallbackSpaceRefreshCoordinator
         } else if let concreteFallbackCoordinator = fallbackCoordinator as? DesktopFallbackCoordinator {
-            self.desktopFallbackSpaceRefreshCoordinator = DesktopFallbackSpaceRefreshCoordinator(
+            resolvedSpaceRefreshCoordinator = DesktopFallbackSpaceRefreshCoordinator(
                 fallbackCoordinator: concreteFallbackCoordinator
             )
         } else {
-            self.desktopFallbackSpaceRefreshCoordinator = NoopDesktopFallbackSpaceRefreshCoordinator()
+            resolvedSpaceRefreshCoordinator = NoopDesktopFallbackSpaceRefreshCoordinator()
         }
+        self.desktopFallbackSpaceRefreshCoordinator = resolvedSpaceRefreshCoordinator
+        self.playbackCoordinator = playbackCoordinator ?? WallpaperPlaybackCoordinator(
+            eligibility: NativeWallpaperEligibility(
+                environment: .init(macOSMajorVersion: 0, isAppleSilicon: false)
+            ),
+            nativeBackend: UnavailableNativeWallpaperBackend(),
+            legacyBackend: LegacyWallpaperBackend(
+                wallpaperPlayer: wallpaperPlayer,
+                fallbackCoordinator: fallbackCoordinator,
+                spaceRefreshCoordinator: resolvedSpaceRefreshCoordinator
+            )
+        )
         restorePreferences()
         configureOriginalWallpaperRestore()
         loadLibrary()
@@ -305,11 +344,12 @@ extension AppViewModel {
             status = "Select a library project first."
             return
         }
-        do {
-            try play(asset: asset, remember: true)
-        } catch {
-            status = error.localizedDescription
-        }
+        beginPlayback(
+            asset: asset,
+            remember: true,
+            mayPresentNativeSetup: true,
+            isAutomaticRestore: false
+        )
     }
 
     func setStillWallpaper() {
@@ -388,14 +428,15 @@ extension AppViewModel {
     }
 
     func stopPlayback() {
-        wallpaperPlayer.stop()
-        if DesktopFallbackRuntime.isEnabled {
-            desktopFallbackCoordinator.clearActiveAsset()
-            desktopFallbackSpaceRefreshCoordinator.setActiveAsset(nil)
-            desktopFallbackCoordinator.restoreOriginalWallpaperIfNeeded()
+        playbackTask?.cancel()
+        playbackTask = Task { @MainActor [weak self] in
+            guard let self else {
+                return
+            }
+            await self.playbackCoordinator.stop()
+            self.userDefaults.removeObject(forKey: PreferenceKey.lastPlayedAssetId)
+            self.status = "Playback stopped."
         }
-        userDefaults.removeObject(forKey: PreferenceKey.lastPlayedAssetId)
-        status = "Playback stopped."
     }
 
     func hasDesktopFallback(for asset: WallpaperAsset) -> Bool {
@@ -564,13 +605,12 @@ extension AppViewModel {
             return
         }
         selectedLibraryAssetId = id
-        do {
-            try play(asset: asset, remember: false)
-            status = "Restored \(asset.title) on the desktop."
-        } catch {
-            userDefaults.removeObject(forKey: PreferenceKey.lastPlayedAssetId)
-            status = "Could not restore \(asset.title): \(error.localizedDescription)"
-        }
+        beginPlayback(
+            asset: asset,
+            remember: false,
+            mayPresentNativeSetup: false,
+            isAutomaticRestore: true
+        )
     }
 
     private func restoreLockScreenAnimationIfNeeded() {
@@ -588,40 +628,103 @@ extension AppViewModel {
         }
     }
 
-    private func play(asset: WallpaperAsset, remember: Bool) throws {
-        let previousSession = wallpaperPlayer.activeSessionSnapshot
-        do {
-            try wallpaperPlayer.play(
-                asset: asset,
+    private func beginPlayback(
+        asset: WallpaperAsset,
+        remember: Bool,
+        mayPresentNativeSetup: Bool,
+        isAutomaticRestore: Bool
+    ) {
+        playbackTask?.cancel()
+        let request = PendingPlaybackRequest(
+            requestID: UUID(),
+            asset: asset,
+            options: PlaybackOptions(
                 autoPauseWhenCovered: autoPauseWhenCovered,
                 experimentalSceneRendering: experimentalSceneRendering,
                 webMouseInteractionEnabled: webMouseInteractionEnabled,
                 displayMode: displayMode
-            )
-        } catch {
-            if DesktopFallbackRuntime.isEnabled {
-                if let previousAsset = activeLibraryAsset(matching: previousSession) {
-                    desktopFallbackSpaceRefreshCoordinator.setActiveAsset(previousAsset)
-                } else {
-                    desktopFallbackCoordinator.clearActiveAsset()
-                    desktopFallbackSpaceRefreshCoordinator.setActiveAsset(nil)
-                }
+            ),
+            remember: remember
+        )
+        playbackTask = Task { @MainActor [weak self] in
+            guard let self else {
+                return
             }
-            throw error
+            do {
+                let initialOutcome = try await self.playbackCoordinator.play(request)
+                let outcome: PlaybackStartOutcome
+                if case .nativeSetupRequired(let pending) = initialOutcome {
+                    guard mayPresentNativeSetup else {
+                        self.status = "Native Wallpaper is not active. Press Play to choose a playback method."
+                        return
+                    }
+                    let choice = self.nativeSetupPresenter.presentNativeWallpaperSetup()
+                    if choice == .openSettings,
+                       !self.wallpaperSettingsOpener.openWallpaperSettings() {
+                        self.status = "Wallpaper settings could not be opened."
+                        return
+                    }
+                    outcome = try await self.playbackCoordinator.resolveNativeSetup(
+                        choice,
+                        pending: pending
+                    )
+                } else {
+                    outcome = initialOutcome
+                }
+                try Task.checkCancellation()
+                self.applyPlaybackOutcome(
+                    outcome,
+                    request: request,
+                    isAutomaticRestore: isAutomaticRestore
+                )
+            } catch is CancellationError {
+                return
+            } catch {
+                self.status = error.localizedDescription
+            }
         }
-        if DesktopFallbackRuntime.isEnabled {
-            desktopFallbackSpaceRefreshCoordinator.setActiveAsset(asset)
-            let restoreSupport = desktopFallbackCoordinator.applyOrGenerate(asset: asset)
-            if restoreOriginalWallpaperOnStop {
+    }
+
+    private func applyPlaybackOutcome(
+        _ outcome: PlaybackStartOutcome,
+        request: PendingPlaybackRequest,
+        isAutomaticRestore: Bool
+    ) {
+        switch outcome {
+        case .started(let receipt):
+            if request.remember {
+                userDefaults.set(receipt.assetID, forKey: PreferenceKey.lastPlayedAssetId)
+            }
+            if restoreOriginalWallpaperOnStop,
+               let restoreSupport = receipt.restoreSupport {
                 presentRestoreWarningIfNeeded(restoreSupport)
             }
+            let lockScreenError = refreshLockScreenAnimationConfiguration(asset: request.asset)
+            status = playbackStatus(
+                asset: request.asset,
+                backend: receipt.backend,
+                lockScreenError: lockScreenError,
+                isAutomaticRestore: isAutomaticRestore
+            )
+        case .nativeSetupRequired:
+            status = "Native Wallpaper is not active. Press Play to choose a playback method."
+        case .cancelled:
+            break
         }
-        if remember {
-            userDefaults.set(asset.id, forKey: PreferenceKey.lastPlayedAssetId)
-        }
-        let lockScreenError = refreshLockScreenAnimationConfiguration(asset: asset)
+    }
+
+    private func playbackStatus(
+        asset: WallpaperAsset,
+        backend: PlaybackBackendKind,
+        lockScreenError: String?,
+        isAutomaticRestore: Bool
+    ) -> String {
         let playbackStatus: String
-        if asset.kind == .scene && !experimentalSceneRendering {
+        if isAutomaticRestore {
+            playbackStatus = "Restored \(asset.title) on the desktop."
+        } else if backend == .native {
+            playbackStatus = "Playing with Native Wallpaper."
+        } else if asset.kind == .scene && !experimentalSceneRendering {
             playbackStatus = "Showing the scene Workshop thumbnail on the desktop layer."
         } else if asset.kind == .web && webMouseInteractionEnabled {
             playbackStatus = "Playing an interactive Web wallpaper. Turn off Web Mouse Interaction to restore normal desktop clicks."
@@ -632,7 +735,9 @@ extension AppViewModel {
         } else {
             playbackStatus = "Playing continuously on the desktop layer. You can minimize this app."
         }
-        status = lockScreenError.map { "\(playbackStatus) Lock Screen update failed: \($0)" } ?? playbackStatus
+        return lockScreenError.map {
+            "\(playbackStatus) Lock Screen update failed: \($0)"
+        } ?? playbackStatus
     }
 
     private func refreshLockScreenAnimationConfiguration(asset: WallpaperAsset) -> String? {
@@ -647,13 +752,8 @@ extension AppViewModel {
         }
     }
 
-    private func activeLibraryAsset(matching snapshot: PlaybackSessionSnapshot?) -> WallpaperAsset? {
-        guard let snapshot else {
-            return nil
-        }
-        return libraryAssets.first {
-            $0.id == snapshot.assetId && $0.projectDirectory == snapshot.projectDirectory
-        }
+    func waitForPlaybackTask() async {
+        await playbackTask?.value
     }
 
     private func oldLockScreenAnimationPreference() -> Bool {

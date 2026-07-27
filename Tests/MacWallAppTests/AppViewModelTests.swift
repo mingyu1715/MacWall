@@ -241,7 +241,7 @@ final class AppViewModelTests: XCTestCase {
         XCTAssertTrue(warningPresenter.messages.isEmpty)
     }
 
-    func testPlayDoesNotShowFallbackRestoreWarningOnExperimentBranch() throws {
+    func testLegacyPlayShowsFallbackRestoreWarningWhenEnabled() async throws {
         // Given
         let player = MockWallpaperPlayer()
         let fallback = MockDesktopFallbackCoordinator()
@@ -266,11 +266,12 @@ final class AppViewModelTests: XCTestCase {
 
         // When
         model.playSelected()
+        await model.waitForPlaybackTask()
 
         // Then
         XCTAssertEqual(player.playedAssetIds, [asset.id])
-        XCTAssertTrue(fallback.appliedAssetIds.isEmpty)
-        XCTAssertTrue(warningPresenter.messages.isEmpty)
+        XCTAssertEqual(fallback.appliedAssetIds, [asset.id])
+        XCTAssertEqual(warningPresenter.messages.count, 1)
     }
 
     func testInitRestoresLockScreenAnimationPreferenceWithoutInstalling() throws {
@@ -312,7 +313,7 @@ final class AppViewModelTests: XCTestCase {
         XCTAssertTrue(model.status.contains("Installed the Lock Screen screen saver"))
     }
 
-    func testStopPlaybackClearsLastPlayedWallpaperPreference() throws {
+    func testStopPlaybackClearsLastPlayedWallpaperPreference() async throws {
         // Given
         let defaults = try makeUserDefaults()
         defaults.set("last-wallpaper", forKey: "lastPlayedAssetId")
@@ -324,12 +325,13 @@ final class AppViewModelTests: XCTestCase {
 
         // When
         model.stopPlayback()
+        await model.waitForPlaybackTask()
 
         // Then
         XCTAssertNil(defaults.string(forKey: "lastPlayedAssetId"))
     }
 
-    func testStopPlaybackSkipsFallbackRestoreOnExperimentBranch() throws {
+    func testStopPlaybackWithNoActiveReceiptIsNoop() async throws {
         // Given
         let defaults = try makeUserDefaults()
         let player = MockWallpaperPlayer()
@@ -346,15 +348,16 @@ final class AppViewModelTests: XCTestCase {
 
         // When
         model.stopPlayback()
+        await model.waitForPlaybackTask()
 
         // Then
-        XCTAssertEqual(player.stopCallCount, 1)
+        XCTAssertEqual(player.stopCallCount, 0)
         XCTAssertEqual(fallback.clearActiveAssetCallCount, 0)
         XCTAssertTrue(spaceRefresh.activeAssetIds.isEmpty)
         XCTAssertEqual(fallback.restoreOriginalWallpaperCallCount, 0)
     }
 
-    func testPlaySuccessStoresLastPlayedOnlyAfterPlayerSuccess() throws {
+    func testPlaySuccessStoresLastPlayedOnlyAfterPlayerSuccess() async throws {
         // Given
         let defaults = try makeUserDefaults()
         let player = MockWallpaperPlayer()
@@ -372,13 +375,14 @@ final class AppViewModelTests: XCTestCase {
 
         // When
         model.playSelected()
+        await model.waitForPlaybackTask()
 
         // Then
         XCTAssertEqual(player.playedAssetIds, [asset.id])
         XCTAssertEqual(defaults.string(forKey: "lastPlayedAssetId"), asset.id)
     }
 
-    func testExperimentBranchPlayDoesNotApplyDesktopFallback() throws {
+    func testLegacyPlayAppliesDesktopFallback() async throws {
         // Given
         let player = MockWallpaperPlayer()
         let fallback = MockDesktopFallbackCoordinator()
@@ -397,14 +401,15 @@ final class AppViewModelTests: XCTestCase {
 
         // When
         model.playSelected()
+        await model.waitForPlaybackTask()
 
         // Then
         XCTAssertEqual(player.playedAssetIds, [asset.id])
-        XCTAssertTrue(fallback.appliedAssetIds.isEmpty)
+        XCTAssertEqual(fallback.appliedAssetIds, [asset.id])
         XCTAssertTrue(spaceRefresh.activeAssetIds.isEmpty)
     }
 
-    func testPlayFailureDoesNotStoreFailedAssetAsLastPlayed() throws {
+    func testPlayFailureDoesNotStoreFailedAssetAsLastPlayed() async throws {
         // Given
         let defaults = try makeUserDefaults()
         let player = MockWallpaperPlayer()
@@ -423,13 +428,14 @@ final class AppViewModelTests: XCTestCase {
 
         // When
         model.playSelected()
+        await model.waitForPlaybackTask()
 
         // Then
         XCTAssertNil(defaults.string(forKey: "lastPlayedAssetId"))
         XCTAssertTrue(model.status.contains(TestError.expected.localizedDescription))
     }
 
-    func testSwitchingFromAtoFailingBKeepsAPlaybackAndLastPlayedWithoutFallbackSideEffects() throws {
+    func testSwitchingFromAtoFailingBKeepsAPlaybackAndLastPlayed() async throws {
         // Given
         let defaults = try makeUserDefaults()
         let player = MockWallpaperPlayer()
@@ -448,19 +454,225 @@ final class AppViewModelTests: XCTestCase {
         )
         model.selectedLibraryAssetId = assetA.id
         model.playSelected()
+        await model.waitForPlaybackTask()
         player.playErrorsByAssetId[assetB.id] = TestError.expected
 
         // When
         model.selectedLibraryAssetId = assetB.id
         model.playSelected()
+        await model.waitForPlaybackTask()
 
         // Then
         XCTAssertEqual(player.activeSessionSnapshot?.assetId, assetA.id)
-        XCTAssertTrue(fallback.appliedAssetIds.isEmpty)
+        XCTAssertEqual(fallback.appliedAssetIds, [assetA.id])
         XCTAssertEqual(fallback.clearActiveAssetCallCount, 0)
         XCTAssertTrue(spaceRefresh.activeAssetIds.isEmpty)
         XCTAssertEqual(defaults.string(forKey: "lastPlayedAssetId"), assetA.id)
         XCTAssertTrue(model.status.contains(TestError.expected.localizedDescription))
+    }
+
+    func testPlayShowsSetupPresenterWhenNativeIsInactive() async throws {
+        let coordinator = MockPlaybackCoordinator()
+        coordinator.playHandler = { .nativeSetupRequired($0) }
+        coordinator.resolveHandler = { _, _ in .cancelled }
+        let presenter = MockNativeWallpaperSetupPresenter(choice: .cancel)
+        let store = LibraryStore(root: try makeTempDirectory())
+        let asset = try store.importVideoFile(makeVideoFile())
+        let model = AppViewModel(
+            store: store,
+            loginItemController: MockLoginItemController(),
+            userDefaults: try makeUserDefaults(),
+            playbackCoordinator: coordinator,
+            nativeSetupPresenter: presenter,
+            wallpaperSettingsOpener: MockWallpaperSettingsOpener()
+        )
+        model.selectedLibraryAssetId = asset.id
+
+        model.playSelected()
+        await model.waitForPlaybackTask()
+
+        XCTAssertEqual(presenter.presentationCount, 1)
+        XCTAssertEqual(coordinator.resolvedChoices, [.cancel])
+    }
+
+    func testCancelKeepsCurrentPlaybackAndLastPlayedID() async throws {
+        let defaults = try makeUserDefaults()
+        defaults.set("current", forKey: "lastPlayedAssetId")
+        let coordinator = MockPlaybackCoordinator()
+        coordinator.playHandler = { .nativeSetupRequired($0) }
+        coordinator.resolveHandler = { _, _ in .cancelled }
+        let store = LibraryStore(root: try makeTempDirectory())
+        let asset = try store.importVideoFile(makeVideoFile())
+        let model = AppViewModel(
+            store: store,
+            loginItemController: MockLoginItemController(),
+            userDefaults: defaults,
+            playbackCoordinator: coordinator,
+            nativeSetupPresenter: MockNativeWallpaperSetupPresenter(choice: .cancel),
+            wallpaperSettingsOpener: MockWallpaperSettingsOpener()
+        )
+        model.selectedLibraryAssetId = asset.id
+
+        model.playSelected()
+        await model.waitForPlaybackTask()
+
+        XCTAssertEqual(defaults.string(forKey: "lastPlayedAssetId"), "current")
+    }
+
+    func testUseLegacyOnceResolvesPendingRequestWithoutPersistingBackendChoice() async throws {
+        let coordinator = MockPlaybackCoordinator()
+        coordinator.playHandler = { .nativeSetupRequired($0) }
+        coordinator.resolveHandler = { _, pending in
+            .started(Self.receipt(for: pending.asset, backend: .legacy))
+        }
+        let store = LibraryStore(root: try makeTempDirectory())
+        let asset = try store.importVideoFile(makeVideoFile())
+        let model = AppViewModel(
+            store: store,
+            loginItemController: MockLoginItemController(),
+            userDefaults: try makeUserDefaults(),
+            playbackCoordinator: coordinator,
+            nativeSetupPresenter: MockNativeWallpaperSetupPresenter(choice: .useLegacyOnce),
+            wallpaperSettingsOpener: MockWallpaperSettingsOpener()
+        )
+        model.selectedLibraryAssetId = asset.id
+
+        model.playSelected()
+        await model.waitForPlaybackTask()
+
+        XCTAssertEqual(coordinator.resolvedChoices, [.useLegacyOnce])
+        XCTAssertEqual(coordinator.playedRequests.count, 1)
+    }
+
+    func testOpenSettingsOpensWallpaperPaneAndWaitsForNative() async throws {
+        let events = MockAppEventLog()
+        let coordinator = MockPlaybackCoordinator(events: events)
+        coordinator.playHandler = { .nativeSetupRequired($0) }
+        coordinator.resolveHandler = { _, pending in
+            .started(Self.receipt(for: pending.asset, backend: .native))
+        }
+        let presenter = MockNativeWallpaperSetupPresenter(choice: .openSettings, events: events)
+        let opener = MockWallpaperSettingsOpener(events: events)
+        let store = LibraryStore(root: try makeTempDirectory())
+        let asset = try store.importVideoFile(makeVideoFile())
+        let model = AppViewModel(
+            store: store,
+            loginItemController: MockLoginItemController(),
+            userDefaults: try makeUserDefaults(),
+            playbackCoordinator: coordinator,
+            nativeSetupPresenter: presenter,
+            wallpaperSettingsOpener: opener
+        )
+        model.selectedLibraryAssetId = asset.id
+
+        model.playSelected()
+        await model.waitForPlaybackTask()
+
+        XCTAssertEqual(
+            events.values,
+            ["play", "present-setup", "open-wallpaper-settings", "resolve-openSettings"]
+        )
+        XCTAssertEqual(opener.openCount, 1)
+    }
+
+    func testNativeFailureDoesNotChangeLastPlayedID() async throws {
+        let defaults = try makeUserDefaults()
+        defaults.set("current", forKey: "lastPlayedAssetId")
+        let coordinator = MockPlaybackCoordinator()
+        coordinator.playError = TestError.expected
+        let store = LibraryStore(root: try makeTempDirectory())
+        let asset = try store.importVideoFile(makeVideoFile())
+        let model = AppViewModel(
+            store: store,
+            loginItemController: MockLoginItemController(),
+            userDefaults: defaults,
+            playbackCoordinator: coordinator,
+            nativeSetupPresenter: MockNativeWallpaperSetupPresenter(choice: .cancel),
+            wallpaperSettingsOpener: MockWallpaperSettingsOpener()
+        )
+        model.selectedLibraryAssetId = asset.id
+
+        model.playSelected()
+        await model.waitForPlaybackTask()
+
+        XCTAssertEqual(defaults.string(forKey: "lastPlayedAssetId"), "current")
+        XCTAssertTrue(model.status.contains(TestError.expected.localizedDescription))
+    }
+
+    func testSuccessfulNativePlayUpdatesLastPlayedID() async throws {
+        let defaults = try makeUserDefaults()
+        let coordinator = MockPlaybackCoordinator()
+        coordinator.playHandler = {
+            .started(Self.receipt(for: $0.asset, backend: .native))
+        }
+        let store = LibraryStore(root: try makeTempDirectory())
+        let asset = try store.importVideoFile(makeVideoFile())
+        let model = AppViewModel(
+            store: store,
+            loginItemController: MockLoginItemController(),
+            userDefaults: defaults,
+            playbackCoordinator: coordinator,
+            nativeSetupPresenter: MockNativeWallpaperSetupPresenter(choice: .cancel),
+            wallpaperSettingsOpener: MockWallpaperSettingsOpener()
+        )
+        model.selectedLibraryAssetId = asset.id
+
+        model.playSelected()
+        await model.waitForPlaybackTask()
+
+        XCTAssertEqual(defaults.string(forKey: "lastPlayedAssetId"), asset.id)
+        XCTAssertTrue(model.status.contains("Native"))
+    }
+
+    func testStopCancelsPendingSettingsWait() async throws {
+        let defaults = try makeUserDefaults()
+        defaults.set("current", forKey: "lastPlayedAssetId")
+        let coordinator = MockPlaybackCoordinator()
+        coordinator.playHandler = { .nativeSetupRequired($0) }
+        coordinator.resolveDelay = .seconds(60)
+        let store = LibraryStore(root: try makeTempDirectory())
+        let asset = try store.importVideoFile(makeVideoFile())
+        let model = AppViewModel(
+            store: store,
+            loginItemController: MockLoginItemController(),
+            userDefaults: defaults,
+            playbackCoordinator: coordinator,
+            nativeSetupPresenter: MockNativeWallpaperSetupPresenter(choice: .openSettings),
+            wallpaperSettingsOpener: MockWallpaperSettingsOpener()
+        )
+        model.selectedLibraryAssetId = asset.id
+
+        model.playSelected()
+        await Task.yield()
+        model.stopPlayback()
+        await model.waitForPlaybackTask()
+
+        XCTAssertEqual(coordinator.stopCallCount, 1)
+        XCTAssertNil(defaults.string(forKey: "lastPlayedAssetId"))
+    }
+
+    func testAutomaticRestoreDoesNotShowSetupPopup() async throws {
+        let defaults = try makeUserDefaults()
+        let store = LibraryStore(root: try makeTempDirectory())
+        let asset = try store.importVideoFile(makeVideoFile())
+        defaults.set(asset.id, forKey: "lastPlayedAssetId")
+        let coordinator = MockPlaybackCoordinator()
+        coordinator.playHandler = { .nativeSetupRequired($0) }
+        let presenter = MockNativeWallpaperSetupPresenter(choice: .cancel)
+
+        let model = AppViewModel(
+            store: store,
+            loginItemController: MockLoginItemController(),
+            userDefaults: defaults,
+            playbackCoordinator: coordinator,
+            nativeSetupPresenter: presenter,
+            wallpaperSettingsOpener: MockWallpaperSettingsOpener()
+        )
+        await model.waitForPlaybackTask()
+
+        XCTAssertEqual(presenter.presentationCount, 0)
+        XCTAssertEqual(defaults.string(forKey: "lastPlayedAssetId"), asset.id)
+        XCTAssertTrue(model.status.contains("Native Wallpaper is not active"))
     }
 
     private func makeTempDirectory() throws -> URL {
@@ -504,6 +716,19 @@ final class AppViewModelTests: XCTestCase {
             workshopId: id,
             redistributionAllowed: false,
             issues: []
+        )
+    }
+
+    private static func receipt(
+        for asset: WallpaperAsset,
+        backend: PlaybackBackendKind
+    ) -> PlaybackReceipt {
+        PlaybackReceipt(
+            backend: backend,
+            assetID: asset.id,
+            projectDirectory: asset.projectDirectory,
+            nativeGeneration: backend == .native ? UUID() : nil,
+            restoreSupport: backend == .legacy ? .restorable : nil
         )
     }
 }
@@ -664,6 +889,89 @@ private final class MockDesktopFallbackSpaceRefreshCoordinator: DesktopFallbackS
     func setActiveAsset(_ asset: WallpaperAsset?) {
         activeAssetIds.append(asset?.id)
     }
+}
+
+@MainActor
+private final class MockPlaybackCoordinator: WallpaperPlaybackCoordinating {
+    var playHandler: ((PendingPlaybackRequest) -> PlaybackStartOutcome)?
+    var resolveHandler: ((NativeWallpaperSetupChoice, PendingPlaybackRequest) -> PlaybackStartOutcome)?
+    var playError: Error?
+    var resolveDelay: Duration?
+    var playedRequests: [PendingPlaybackRequest] = []
+    var resolvedChoices: [NativeWallpaperSetupChoice] = []
+    var stopCallCount = 0
+    private let events: MockAppEventLog?
+
+    init(events: MockAppEventLog? = nil) {
+        self.events = events
+    }
+
+    func play(_ request: PendingPlaybackRequest) async throws -> PlaybackStartOutcome {
+        events?.values.append("play")
+        playedRequests.append(request)
+        if let playError {
+            throw playError
+        }
+        return playHandler?(request) ?? .cancelled
+    }
+
+    func resolveNativeSetup(
+        _ choice: NativeWallpaperSetupChoice,
+        pending: PendingPlaybackRequest
+    ) async throws -> PlaybackStartOutcome {
+        events?.values.append("resolve-\(choice)")
+        resolvedChoices.append(choice)
+        if let resolveDelay {
+            try await Task.sleep(for: resolveDelay)
+        }
+        return resolveHandler?(choice, pending) ?? .cancelled
+    }
+
+    func stop() async {
+        stopCallCount += 1
+    }
+}
+
+@MainActor
+private final class MockNativeWallpaperSetupPresenter: NativeWallpaperSetupPresenting {
+    let choice: NativeWallpaperSetupChoice
+    private let events: MockAppEventLog?
+    private(set) var presentationCount = 0
+
+    init(
+        choice: NativeWallpaperSetupChoice,
+        events: MockAppEventLog? = nil
+    ) {
+        self.choice = choice
+        self.events = events
+    }
+
+    func presentNativeWallpaperSetup() -> NativeWallpaperSetupChoice {
+        presentationCount += 1
+        events?.values.append("present-setup")
+        return choice
+    }
+}
+
+@MainActor
+private final class MockWallpaperSettingsOpener: WallpaperSettingsOpening {
+    private let events: MockAppEventLog?
+    private(set) var openCount = 0
+
+    init(events: MockAppEventLog? = nil) {
+        self.events = events
+    }
+
+    func openWallpaperSettings() -> Bool {
+        openCount += 1
+        events?.values.append("open-wallpaper-settings")
+        return true
+    }
+}
+
+@MainActor
+private final class MockAppEventLog {
+    var values: [String] = []
 }
 
 private enum TestError: Error {

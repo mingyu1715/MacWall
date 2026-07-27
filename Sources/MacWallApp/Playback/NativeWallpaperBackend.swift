@@ -14,12 +14,15 @@ struct NativePlaybackReceipt: Equatable {
 }
 
 enum NativeWallpaperBackendError: Error, Equatable, LocalizedError {
+    case runtimeUnavailable
     case missingEntrypoint
     case timedOut
     case runtimeFailed(code: String, message: String)
 
     var errorDescription: String? {
         switch self {
+        case .runtimeUnavailable:
+            return "The Native wallpaper runtime is unavailable."
         case .missingEntrypoint:
             return "The Native wallpaper video source is missing."
         case .timedOut:
@@ -28,6 +31,24 @@ enum NativeWallpaperBackendError: Error, Equatable, LocalizedError {
             return message
         }
     }
+}
+
+@MainActor
+final class UnavailableNativeWallpaperBackend: NativeWallpaperBackendManaging {
+    func activationStatus(timeout: Duration) async -> NativeWallpaperActivationStatus {
+        .inactive
+    }
+
+    func play(
+        asset: WallpaperAsset,
+        displayMode: WallpaperDisplayMode,
+        generation: UUID,
+        timeout: Duration
+    ) async throws -> NativePlaybackReceipt {
+        throw NativeWallpaperBackendError.runtimeUnavailable
+    }
+
+    func stop(generation: UUID) async throws {}
 }
 
 @MainActor
