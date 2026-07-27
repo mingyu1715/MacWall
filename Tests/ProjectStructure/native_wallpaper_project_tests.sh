@@ -26,6 +26,9 @@ test -f "$ROOT/MacWallNativeWallpaperExtension/NativeWallpaperSessionController.
 grep -q 'io.github.mingyu1715.MacWall' "$PROJECT"
 grep -q 'io.github.mingyu1715.MacWall.NativeWallpaper' "$PROJECT"
 grep -q 'MacWallNativeWallpaperExtension.appex' "$PROJECT"
+grep -q 'MacWallNativeWallpaperExtension.appex in Embed Foundation Extensions' "$PROJECT"
+grep -F -q 'dstPath = "$(EXTENSIONS_FOLDER_PATH)"' "$PROJECT"
+grep -q 'dstSubfolderSpec = 16' "$PROJECT"
 grep -q 'MacWallLockScreenSaver' "$PROJECT"
 grep -q 'MacWallNativeRuntimeSupport' "$PROJECT"
 grep -q 'MacWallApp' "$PROJECT"
@@ -38,6 +41,12 @@ test "$(plutil -extract LSUIElement raw "$HOST_PLIST")" = "true"
 
 grep -q 'group.com.mingyu1715.macwall' "$HOST_ENTITLEMENTS"
 grep -q 'group.com.mingyu1715.macwall' "$EXTENSION_ENTITLEMENTS"
+HOST_APP_GROUP="$(/usr/libexec/PlistBuddy -c \
+  'Print :com.apple.security.application-groups:0' "$HOST_ENTITLEMENTS")"
+EXTENSION_APP_GROUP="$(/usr/libexec/PlistBuddy -c \
+  'Print :com.apple.security.application-groups:0' "$EXTENSION_ENTITLEMENTS")"
+test "$HOST_APP_GROUP" = "group.com.mingyu1715.macwall"
+test "$HOST_APP_GROUP" = "$EXTENSION_APP_GROUP"
 grep -q 'provideSettingsViewModels' \
   "$ROOT/MacWallNativeWallpaperExtension/MacWallWallpaperXPCHandler.swift"
 grep -q 'func acquire' \
@@ -59,6 +68,38 @@ grep -q 'candidateInstanceID' \
   "$ROOT/MacWallNativeWallpaperExtension/NativeWallpaperSessionController.swift"
 grep -q 'bridge.layer.opacity = 0' \
   "$ROOT/MacWallNativeWallpaperExtension/NativeWallpaperSessionController.swift"
+grep -q 'MACOSX_DEPLOYMENT_TARGET = 14.0' "$PROJECT"
+grep -q 'MACOSX_DEPLOYMENT_TARGET = 26.0' "$PROJECT"
+grep -q 'fallbackCoordinator.applyOrGenerate' \
+  "$ROOT/Sources/MacWallApp/Playback/LegacyWallpaperBackend.swift"
+grep -q 'fallbackCoordinator.abandonManagedWallpaperSession' \
+  "$ROOT/Sources/MacWallApp/Playback/LegacyWallpaperBackend.swift"
+
+if grep -E -q \
+  'DesktopFallbackCoordinator|DesktopFallbackCoordinating|desktop-fallback' \
+  "$ROOT/Sources/MacWallApp/Playback/NativeWallpaperBackend.swift"; then
+  echo "Native wallpaper backend must not depend on desktop fallback." >&2
+  exit 1
+fi
+
+while IFS= read -r private_source; do
+  case "$private_source" in
+    "$ROOT/MacWallNativeWallpaperExtension/"*|"$ROOT/MacWallNativeWallpaperSpike/"*)
+      ;;
+    *)
+      echo "Native wallpaper private API escaped its target: $private_source" >&2
+      exit 1
+      ;;
+  esac
+done < <(
+  grep -R -l -E \
+    'WallpaperExtensionKit|WallpaperRemoteContextXPC|CAContext.*remoteContext' \
+    "$ROOT" \
+    --include='*.swift' \
+    --exclude-dir='.build' \
+    --exclude-dir='.git' \
+    --exclude-dir='.worktrees' || true
+)
 
 if grep -R -E -q \
   'MacWallSnapshotProbe|fallbackToGenerated|bundledProbeURL|attachGeneratedProbe' \

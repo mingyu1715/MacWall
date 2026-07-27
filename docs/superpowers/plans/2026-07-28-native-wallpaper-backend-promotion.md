@@ -143,7 +143,7 @@ The host app keeps deployment target 14.0. The extension has deployment target 2
 - Produces: `NativeRuntimeSessionState.markReady(generation:contextID:) -> NativeRuntimeSessionDecision`
 - Consumed by: App Group store in Task 2, extension session controller in Tasks 4-5, and Main App backend in Task 6.
 
-- [ ] **Step 1: Add the shared package target and failing model tests**
+- [x] **Step 1: Add the shared package target and failing model tests**
 
 Add products/targets to `Package.swift`:
 
@@ -232,7 +232,7 @@ func testCandidateFailureKeepsPreviousGeneration() {
 }
 ```
 
-- [ ] **Step 2: Run the focused tests and verify RED**
+- [x] **Step 2: Run the focused tests and verify RED**
 
 Run:
 
@@ -243,7 +243,7 @@ swift test --filter NativeRuntimeSessionStateTests
 
 Expected: compile failure because the shared model and state-machine types do not exist.
 
-- [ ] **Step 3: Implement the versioned models**
+- [x] **Step 3: Implement the versioned models**
 
 Create `NativeRuntimeModels.swift` with these exact public types:
 
@@ -380,7 +380,7 @@ public enum NativeRuntimeStoreError: Error, Equatable {
 }
 ```
 
-- [ ] **Step 4: Implement the transactional state machine**
+- [x] **Step 4: Implement the transactional state machine**
 
 Create `NativeRuntimeSessionState.swift`:
 
@@ -448,7 +448,7 @@ public struct NativeRuntimeSessionState: Equatable, Sendable {
 
 If `contextIDs` is empty, do not call `beginCandidate`; extension code must publish `inactive` instead.
 
-- [ ] **Step 5: Run focused tests and commit**
+- [x] **Step 5: Run focused tests and commit**
 
 Run:
 
@@ -485,7 +485,7 @@ git commit -m "feat(native): add shared runtime protocol"
 - Produces: `removeGeneration(_:)` and `removeUnreferencedGenerations(keeping:)`
 - Consumed by: Extension in Task 4 and Main App backend in Task 6.
 
-- [ ] **Step 1: Write failing store and traversal tests**
+- [x] **Step 1: Write failing store and traversal tests**
 
 Use a test-created root directory. Cover:
 
@@ -565,7 +565,7 @@ Also test:
 - cleanup never removes active/candidate generations
 - malformed schema version is rejected
 
-- [ ] **Step 2: Run the focused store tests and verify RED**
+- [x] **Step 2: Run the focused store tests and verify RED**
 
 Run:
 
@@ -575,7 +575,7 @@ swift test --filter NativeRuntimeStoreTests
 
 Expected: compile failure because `NativeRuntimeStore` does not exist.
 
-- [ ] **Step 3: Implement paths and atomic JSON I/O**
+- [x] **Step 3: Implement paths and atomic JSON I/O**
 
 Create `NativeRuntimeStore` with:
 
@@ -619,7 +619,7 @@ Implement a private `writeAtomically(_:to:)` that:
 
 Reject any payload whose `schemaVersion != NativeRuntimeConstants.schemaVersion`.
 
-- [ ] **Step 4: Implement immutable staging and containment checks**
+- [x] **Step 4: Implement immutable staging and containment checks**
 
 `stageVideo` must:
 
@@ -649,7 +649,7 @@ public func removeUnreferencedGenerations(
 
 Never delete `command.json`, `status.json`, the current command generation, or a caller-provided active/candidate generation.
 
-- [ ] **Step 5: Run focused tests and commit**
+- [x] **Step 5: Run focused tests and commit**
 
 Run:
 
@@ -688,7 +688,7 @@ git commit -m "feat(native): add atomic runtime store"
 - Produces: `MacWallHostApp`, `MacWallNativeWallpaperExtension`, and `MacWallLockScreenSaver` Xcode targets.
 - Consumed by: Extension source promotion in Task 4.
 
-- [ ] **Step 1: Add a failing project-structure guard**
+- [x] **Step 1: Add a failing project-structure guard**
 
 Create a Bash test that fails until all project contracts exist:
 
@@ -729,7 +729,7 @@ bash Tests/ProjectStructure/native_wallpaper_project_tests.sh
 
 Expected: fail because the production Xcode container does not exist.
 
-- [ ] **Step 2: Add host, extension, and screen saver metadata**
+- [x] **Step 2: Add host, extension, and screen saver metadata**
 
 `MacWallHostApp/main.swift`:
 
@@ -779,7 +779,7 @@ Extension entitlements contain:
 </array>
 ```
 
-- [ ] **Step 3: Create the Xcode project with exact target boundaries**
+- [x] **Step 3: Create the Xcode project with exact target boundaries**
 
 Create `MacWall.xcodeproj/project.pbxproj` with:
 
@@ -815,7 +815,7 @@ Use `CODE_SIGN_STYLE = Automatic` in project configuration but do not hardcode a
 
 Do not modify `Scripts/package-app.sh` in this task.
 
-- [ ] **Step 4: Run static project verification**
+- [x] **Step 4: Run static project verification**
 
 Run:
 
@@ -832,7 +832,7 @@ plutil -lint MacWallLockScreenSaver/Info.plist
 
 Expected: target list and all static guards pass. Do not launch the app.
 
-- [ ] **Step 5: Commit the container gate**
+- [x] **Step 5: Commit the container gate**
 
 ```bash
 git add MacWall.xcodeproj MacWallHostApp MacWallNativeWallpaperExtension/Info.plist MacWallNativeWallpaperExtension/MacWallNativeWallpaperExtension.entitlements MacWallLockScreenSaver/Info.plist Tests/ProjectStructure/native_wallpaper_project_tests.sh
@@ -855,7 +855,7 @@ git commit -m "build(native): add production app container"
 - Produces: stable `com.apple.wallpaper` handshake, `CAContext` creation, Desktop/Preview role parsing, fixed synchronizer/normal asset bridge, and disabled snapshot baseline.
 - Consumed by: command/session control in Task 5.
 
-- [ ] **Step 1: Extend the static guard and verify RED**
+- [x] **Step 1: Extend the static guard and verify RED**
 
 Require these production-only contracts:
 
@@ -877,7 +877,7 @@ grep -q 'MacWall' \
 
 Run the guard and confirm it fails because the production extension sources are absent.
 
-- [ ] **Step 2: Copy only the proven spike mechanisms into production files**
+- [x] **Step 2: Copy only the proven spike mechanisms into production files**
 
 Use the current spike implementations as the source of truth for:
 
@@ -903,7 +903,7 @@ snapshot reply: nil with "snapshotGate mode=disabled" log
 
 Do not modify the spike copies.
 
-- [ ] **Step 3: Refactor the production bridge to accept an injected video URL**
+- [x] **Step 3: Refactor the production bridge to accept an injected video URL**
 
 The production bridge API is:
 
@@ -949,7 +949,7 @@ Behavior:
 - `teardown` cancels reader/pump, flushes, and removes the layer.
 - display mode maps to `.resizeAspect`, `.resizeAspectFill`, or `.resize`.
 
-- [ ] **Step 4: Keep Preview and snapshot behavior isolated**
+- [x] **Step 4: Keep Preview and snapshot behavior isolated**
 
 `MacWallRemoteContext` creates:
 
@@ -968,7 +968,7 @@ reply(nil, nil)
 
 Do not copy file-url, IOSurface, PNG-data, wrapper, swizzle, cache-home writes, or export experiments.
 
-- [ ] **Step 5: Compile without signing and run static guards**
+- [x] **Step 5: Compile without signing and run static guards**
 
 Run:
 
@@ -985,7 +985,7 @@ xcodebuild \
 
 Expected: extension target compiles. No runtime launch or wallpaper selection.
 
-- [ ] **Step 6: Commit the promoted runtime**
+- [x] **Step 6: Commit the promoted runtime**
 
 ```bash
 git add MacWallNativeWallpaperExtension MacWall.xcodeproj/project.pbxproj Tests/ProjectStructure/native_wallpaper_project_tests.sh
@@ -1016,7 +1016,7 @@ git commit -m "feat(native): promote wallpaper extension runtime"
 - Produces: heartbeat/status ACK and freeze-on-Stop behavior.
 - Consumed by: Main App activation and Play wait logic in Task 6.
 
-- [ ] **Step 1: Add failing state-machine edge tests**
+- [x] **Step 1: Add failing state-machine edge tests**
 
 Add tests for:
 
@@ -1048,7 +1048,7 @@ func testStaleReadyFromOldGenerationIsIgnored() {
 
 Run and confirm RED for any missing transition required by these cases.
 
-- [ ] **Step 2: Implement the Darwin observer**
+- [x] **Step 2: Implement the Darwin observer**
 
 `NativeRuntimeDarwinObserver`:
 
@@ -1066,7 +1066,7 @@ final class NativeRuntimeDarwinObserver {
 
 Use `CFNotificationCenterGetDarwinNotifyCenter`. Pass no object or user info. The callback dispatches onto one serial session queue.
 
-- [ ] **Step 3: Implement extension session ownership**
+- [x] **Step 3: Implement extension session ownership**
 
 `NativeWallpaperSessionController` owns:
 
@@ -1117,7 +1117,7 @@ Every 2 seconds and whenever the Darwin notification is received:
 - process a new generation once,
 - write a status with a fresh heartbeat.
 
-- [ ] **Step 4: Implement all-or-nothing Play**
+- [x] **Step 4: Implement all-or-nothing Play**
 
 For a `play` command:
 
@@ -1141,7 +1141,7 @@ On any bridge failure:
 
 Never report `playing` when only a subset of contexts is ready.
 
-- [ ] **Step 5: Implement freeze-on-Stop and stale-command rejection**
+- [x] **Step 5: Implement freeze-on-Stop and stale-command rejection**
 
 For a matching new `stop` command:
 
@@ -1160,7 +1160,7 @@ Ignore:
 
 Do not delete the active generation on Stop.
 
-- [ ] **Step 6: Run tests and unsigned extension compile**
+- [x] **Step 6: Run tests and unsigned extension compile**
 
 Run:
 
@@ -1178,7 +1178,7 @@ xcodebuild \
 
 Expected: tests and compile pass. Do not install or select the extension.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add MacWallNativeWallpaperExtension Sources/MacWallNativeRuntimeSupport Tests/MacWallNativeRuntimeSupportTests Tests/ProjectStructure/native_wallpaper_project_tests.sh
@@ -1209,7 +1209,7 @@ git commit -m "feat(native): control extension playback generations"
 - Produces: request-scoped `resolveNativeSetup(_:pending:)`
 - Consumed by: AppViewModel in Task 7.
 
-- [ ] **Step 1: Write failing eligibility and route tests**
+- [x] **Step 1: Write failing eligibility and route tests**
 
 Inject environment instead of reading the real machine:
 
@@ -1243,7 +1243,7 @@ Coordinator tests must prove:
 - same in-flight asset request is deduped
 - stale async result cannot replace a newer active receipt
 
-- [ ] **Step 2: Add deterministic wait abstractions**
+- [x] **Step 2: Add deterministic wait abstractions**
 
 Define:
 
@@ -1274,7 +1274,7 @@ active Play ACK timeout: 5 seconds
 settings-open timeout: 120 seconds
 ```
 
-- [ ] **Step 3: Implement eligibility and Native backend**
+- [x] **Step 3: Implement eligibility and Native backend**
 
 `NativeWallpaperBackendManaging`:
 
@@ -1320,7 +1320,7 @@ protocol NativeWallpaperBackendManaging: AnyObject {
 3. wait up to 500ms for a newer fresh heartbeat,
 4. return inactive if no active response arrives.
 
-- [ ] **Step 4: Implement Legacy backend with explicit stop reasons**
+- [x] **Step 4: Implement Legacy backend with explicit stop reasons**
 
 ```swift
 enum LegacyPlaybackStopReason {
@@ -1366,7 +1366,7 @@ On Play failure, restore previous Legacy active fallback/Space-refresh ownership
 - clear fallback and Space-refresh active asset,
 - abandon the managed restore session without applying any wallpaper.
 
-- [ ] **Step 5: Implement the coordinator**
+- [x] **Step 5: Implement the coordinator**
 
 Use:
 
@@ -1427,7 +1427,7 @@ Transition rules:
 - any candidate failure: leave previous backend and receipt active.
 - only a successful receipt is visible to AppViewModel.
 
-- [ ] **Step 6: Run focused tests and commit**
+- [x] **Step 6: Run focused tests and commit**
 
 Run:
 
@@ -1462,7 +1462,7 @@ git commit -m "feat(playback): coordinate native and legacy backends"
 - Consumes: `WallpaperPlaybackCoordinating` and `NativeWallpaperSetupChoice` from Task 6.
 - Produces: user-triggered setup resolution, async Play cancellation/dedupe, and success-only `lastPlayedAssetId`.
 
-- [ ] **Step 1: Add failing AppViewModel setup-flow tests**
+- [x] **Step 1: Add failing AppViewModel setup-flow tests**
 
 Use mock coordinator, presenter, and settings opener. Cover:
 
@@ -1487,7 +1487,7 @@ present setup
 -> lastPlayedAssetId update
 ```
 
-- [ ] **Step 2: Implement the exact 3-button presenter**
+- [x] **Step 2: Implement the exact 3-button presenter**
 
 Define:
 
@@ -1517,7 +1517,7 @@ buttons:
 
 Map first/second/third responses to `.openSettings`, `.useLegacyOnce`, and `.cancel`.
 
-- [ ] **Step 3: Implement Wallpaper settings opening**
+- [x] **Step 3: Implement Wallpaper settings opening**
 
 ```swift
 @MainActor
@@ -1543,7 +1543,7 @@ return NSWorkspace.shared.open(
 
 This runs only after the user presses `배경화면 설정 열기`. Tests use a mock and never call `NSWorkspace`.
 
-- [ ] **Step 4: Convert Play to generation-aware async coordination**
+- [x] **Step 4: Convert Play to generation-aware async coordination**
 
 In `AppViewModel`:
 
@@ -1567,7 +1567,7 @@ private var playbackTask: Task<Void, Never>?
 
 No return path from the setup prompt may call the old private synchronous `play(asset:remember:)`.
 
-- [ ] **Step 5: Handle startup restore without an unsolicited popup**
+- [x] **Step 5: Handle startup restore without an unsolicited popup**
 
 Replace synchronous startup restore with a Task that calls the coordinator using `remember: false`.
 
@@ -1580,7 +1580,7 @@ If the outcome is `.nativeSetupRequired`:
 
 Only user-initiated Play may present setup UI.
 
-- [ ] **Step 6: Run focused AppViewModel tests and commit**
+- [x] **Step 6: Run focused AppViewModel tests and commit**
 
 Run:
 
@@ -1620,7 +1620,7 @@ git commit -m "feat(app): guide native wallpaper setup"
 - Produces: `OriginalDesktopWallpaperManaging.abandonManagedWallpaperSession()`
 - Finalizes: backend handoff and Stop semantics.
 
-- [ ] **Step 1: Add failing fallback-isolation tests**
+- [x] **Step 1: Add failing fallback-isolation tests**
 
 Tests must prove:
 
@@ -1649,7 +1649,7 @@ func testAbandonManagedSessionRemovesStateWithoutRestoringWallpaper() throws {
 }
 ```
 
-- [ ] **Step 2: Add explicit managed-session abandonment**
+- [x] **Step 2: Add explicit managed-session abandonment**
 
 Extend protocols:
 
@@ -1671,7 +1671,7 @@ func abandonManagedWallpaperSession()
 - cancels automatic refresh/generation tasks that can still apply a fallback,
 - delegates to the original store abandonment method.
 
-- [ ] **Step 3: Remove the experiment-wide fallback disable switch**
+- [x] **Step 3: Remove the experiment-wide fallback disable switch**
 
 Delete:
 
@@ -1690,7 +1690,7 @@ Replace branch-wide `DesktopFallbackRuntime.isEnabled` guards with backend owner
 
 Update tests that currently assert “fallback side effects disabled on experiment branch” to assert backend-specific isolation instead.
 
-- [ ] **Step 4: Finalize Stop and transition ordering**
+- [x] **Step 4: Finalize Stop and transition ordering**
 
 `AppViewModel.stopPlayback()`:
 
@@ -1710,7 +1710,7 @@ no active backend -> no-op
 
 If Native Stop ACK times out, keep local active receipt long enough to report the failure but do not run Legacy restore or fallback.
 
-- [ ] **Step 5: Run all focused playback/fallback tests**
+- [x] **Step 5: Run all focused playback/fallback tests**
 
 Run:
 
@@ -1723,7 +1723,7 @@ swift test --filter AppViewModelTests
 
 Expected: pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add Sources/MacWallApp Tests/MacWallAppTests
@@ -1749,7 +1749,7 @@ git commit -m "fix(playback): isolate native and fallback sessions"
 - Consumes: all prior tasks.
 - Produces: statically verified implementation state and user/developer documentation.
 
-- [ ] **Step 1: Add final source guards**
+- [x] **Step 1: Add final source guards**
 
 Require:
 
@@ -1767,7 +1767,7 @@ Scripts/package-app.sh is unchanged by this plan
 
 The private-framework scan must exclude `MacWallNativeWallpaperSpike` when checking the new production boundary.
 
-- [ ] **Step 2: Run automated and static verification**
+- [x] **Step 2: Run automated and static verification**
 
 Run:
 
@@ -1809,7 +1809,7 @@ codesign -d --entitlements :- /tmp/macwall-native-backend-dd/Build/Products/Debu
 
 Do not request certificates, change signing accounts, open Xcode UI, or block completion on this optional inspection.
 
-- [ ] **Step 3: Update user documentation**
+- [x] **Step 3: Update user documentation**
 
 Document in both READMEs:
 
@@ -1822,7 +1822,7 @@ Document in both READMEs:
 
 Do not claim actual Desktop runtime verification for the production target.
 
-- [ ] **Step 4: Update developer documentation**
+- [x] **Step 4: Update developer documentation**
 
 `docs/development-guide.md`:
 
@@ -1844,14 +1844,14 @@ Do not claim actual Desktop runtime verification for the production target.
 
 Do not create an `implemented/` completion record until later production runtime QA passes.
 
-- [ ] **Step 5: Commit documentation and static gates**
+- [x] **Step 5: Commit documentation and static gates**
 
 ```bash
 git add README.ko.md README.md docs Tests/ProjectStructure/native_wallpaper_project_tests.sh
 git commit -m "docs(native): document backend integration"
 ```
 
-- [ ] **Step 6: Final clean-state report**
+- [x] **Step 6: Final clean-state report**
 
 Run:
 

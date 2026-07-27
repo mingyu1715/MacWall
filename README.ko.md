@@ -34,6 +34,11 @@ MacWall은 Windows에서 Wallpaper Engine을 구매해 사용하던 사람이, �
 
 ## 재생 방식
 
+- macOS 26 이상 Apple Silicon Mac의 MP4, MOV, M4V 동영상은 Native Video 재생 대상입니다.
+- Native Video를 처음 사용할 때는 macOS **배경화면** 설정에서 MacWall을 한 번 선택해야 합니다.
+- Native가 활성화되지 않은 상태에서 **Play on Desktop**을 누르면 **배경화면 설정 열기**, **기존 방식으로 재생**, **취소** 중에서 선택할 수 있습니다. 기존 방식 선택은 해당 Play 요청에만 적용됩니다.
+- macOS 25 이하, Intel Mac, Native 미지원 형식은 기존 Legacy 데스크톱 레이어로 재생합니다.
+- Native 재생에서 **Stop Playback**을 누르면 재생 시계만 멈추고 마지막 프레임과 macOS의 MacWall 배경화면 선택은 유지합니다. Native 모드는 `desktop-fallback.png`를 생성하거나 적용하지 않습니다.
 - **Auto-pause behind apps**가 기본으로 켜져 있습니다.
 - MacWall 컨트롤 창을 최소화하거나 숨겨도 재생은 멈추지 않습니다.
 - 설정창을 닫아도 앱은 종료되지 않습니다. 완전히 끄려면 메뉴바 아이콘에서 **Quit**을 누릅니다.
@@ -44,7 +49,9 @@ MacWall은 Windows에서 Wallpaper Engine을 구매해 사용하던 사람이, �
 - 로그인 후 자동으로 켜지게 하려면 **Open at Login**을 켭니다. **Stop Playback**을 누르지 않았다면 앱 실행 시 마지막으로 재생한 월페이퍼를 다시 복구합니다.
 - 가져온 항목이 필요 없어지면 imported library 목록에서 **Remove**를 눌러 Mac 라이브러리 복사본을 삭제합니다.
 
-Spaces 전환이나 전체화면 전환 중 기존 macOS 배경화면이 잠깐 보이는 현상을 줄이기 위해 항목별 `Derived/desktop-fallback.png`를 유지합니다. Play/Apply는 먼저 라이브 데스크톱 레이어를 시작하고, 파일이 이미 있으면 이어서 macOS system wallpaper에 적용합니다. 파일이 없으면 Video, Image, Web 항목에 한해 실제 원본이나 렌더링된 Web 출력에서 비동기로 생성합니다. Web snapshot이 실패해도 라이브 재생은 계속됩니다. Workshop 썸네일과 Scene 썸네일은 데스크톱 fallback cache 원본으로 사용하지 않습니다. 라이브러리 항목 메뉴의 **Show in Finder**, **Generate Desktop Fallback**, **Regenerate Desktop Fallback**으로 폴더를 열거나 cache를 수동으로 다시 생성할 수 있습니다. **Restore on Stop**을 켜면 정적 이미지 배경화면에 한해 fallback 적용 전 원본 이미지를 `Application Support/MacWall/DesktopWallpaperRestore/Originals`에 복사하고, **Stop Playback** 시 현재 macOS 배경화면이 앱이 적용한 fallback일 때 그 복사본으로 자동 복원합니다. MacWall의 `desktop-fallback.png`는 원본 배경화면으로 저장하지 않습니다. `Macintosh` 같은 macOS 기본/동적 배경화면은 공개 API로 안정적으로 복원할 수 없어 경고를 표시하고 자동 복원을 건너뜁니다. 다른 항목으로 전환해 새 fallback 적용이 성공하면 이전 항목의 `desktop-fallback.png`는 삭제되며, **Stop Playback**은 현재 항목 cache 파일을 유지합니다.
+현재 Native production target은 자동 테스트와 정적 통합 검증까지 완료됐으며, 실제 Desktop 출력과 Fullscreen/Space 동작에 대한 production runtime QA는 후속 검증으로 남아 있습니다.
+
+Legacy 재생에서는 Spaces 전환이나 전체화면 전환 중 기존 macOS 배경화면이 잠깐 보이는 현상을 줄이기 위해 항목별 `Derived/desktop-fallback.png`를 유지합니다. Play/Apply는 먼저 라이브 데스크톱 레이어를 시작하고, 파일이 이미 있으면 이어서 macOS system wallpaper에 적용합니다. 파일이 없으면 Video, Image, Web 항목에 한해 실제 원본이나 렌더링된 Web 출력에서 비동기로 생성합니다. Web snapshot이 실패해도 라이브 재생은 계속됩니다. Workshop 썸네일과 Scene 썸네일은 데스크톱 fallback cache 원본으로 사용하지 않습니다. 라이브러리 항목 메뉴의 **Show in Finder**, **Generate Desktop Fallback**, **Regenerate Desktop Fallback**으로 폴더를 열거나 cache를 수동으로 다시 생성할 수 있습니다. **Restore on Stop**을 켜면 정적 이미지 배경화면에 한해 fallback 적용 전 원본 이미지를 `Application Support/MacWall/DesktopWallpaperRestore/Originals`에 복사하고, **Stop Playback** 시 현재 macOS 배경화면이 앱이 적용한 fallback일 때 그 복사본으로 자동 복원합니다. MacWall의 `desktop-fallback.png`는 원본 배경화면으로 저장하지 않습니다. `Macintosh` 같은 macOS 기본/동적 배경화면은 공개 API로 안정적으로 복원할 수 없어 경고를 표시하고 자동 복원을 건너뜁니다. 다른 항목으로 전환해 새 fallback 적용이 성공하면 이전 항목의 `desktop-fallback.png`는 삭제되며, **Stop Playback**은 현재 항목 cache 파일을 유지합니다.
 
 ## 성능 스냅샷
 

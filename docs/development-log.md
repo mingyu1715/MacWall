@@ -4,6 +4,51 @@
 
 ## 2026-07-28
 
+### 00:59 KST
+
+- 완료: macOS 26 Native Wallpaper Backend production 승격 구현 및 정적 통합 검증
+- 설계: [Native Wallpaper Backend 승격 설계](superpowers/specs/2026-07-27-native-wallpaper-backend-promotion-design.md)
+- 계획: [Native Wallpaper Backend 승격 실행 계획](superpowers/plans/2026-07-28-native-wallpaper-backend-promotion.md)
+- 구현:
+  - Foundation-only `MacWallNativeRuntimeSupport` command/status/store/state machine
+  - macOS 14+ Host, macOS 26+ Apple Silicon wallpaper extension, Lock Screen saver를 소유하는 Xcode container
+  - production extension handshake, remote `CAContext`, Video frame bridge, heartbeat, generation ACK
+  - 모든 active Desktop context가 준비된 뒤 교체하는 transactional generation lifecycle
+  - Main App Native/Legacy eligibility routing과 실패 시 이전 playback 유지
+  - Native 미활성 상태의 `취소` / `기존 방식으로 재생` / `배경화면 설정 열기` 흐름
+  - Native/Legacy fallback ownership 분리와 Native Stop 마지막 frame 유지
+- 통합 수정:
+  - ExtensionKit appex embed destination을 `Contents/PlugIns`에서 `Contents/Extensions`로 수정
+  - unsigned build 산출물의 `MacWall.app/Contents/Extensions/MacWallNativeWallpaperExtension.appex` 존재 확인
+- 로컬 commit:
+  - `6d66843 feat(native): add shared runtime protocol`
+  - `f8ce0cd feat(native): add atomic runtime store`
+  - `1033c7a build(native): add production app container`
+  - `be8f3d8 feat(native): promote wallpaper extension runtime`
+  - `d8d1743 feat(native): control extension playback generations`
+  - `309c45c feat(playback): coordinate native and legacy backends`
+  - `fd0d696 feat(app): guide native wallpaper setup`
+  - `6fb4874 fix(playback): isolate native and fallback sessions`
+- 검증:
+  - focused Native/Legacy/AppViewModel/fallback test groups 통과
+  - `swift test` -> `201 tests, 0 failures`
+  - `bash -n Tests/ProjectStructure/native_wallpaper_project_tests.sh` 통과
+  - `bash Tests/ProjectStructure/native_wallpaper_project_tests.sh` 통과
+  - `xcodebuild -project MacWall.xcodeproj -list` 통과
+  - `xcodebuild -project MacWall.xcodeproj -scheme MacWallHostApp -configuration Debug -derivedDataPath /tmp/macwall-native-backend-dd CODE_SIGNING_ALLOWED=NO build` 통과
+  - `git diff --check` 통과
+  - base commit 대비 `Scripts/package-app.sh` 무변경 확인
+- 검증 제한:
+  - unsigned compile만 수행했으며 signing/codesign 검사는 수행하지 않음
+  - 앱/GUI/System Settings를 실행하지 않음
+  - production target의 실제 Desktop 출력과 Fullscreen/Space runtime QA는 아직 수행하지 않음
+  - package, DMG, notarization, `dist` 작업 없음
+- 보류:
+  - snapshot/export
+  - Native Web/Scene
+  - pixel format/BGRA IOSurface memory 최적화
+  - production runtime QA 전까지 별도 `implemented/` 완료 기록 생성 및 spike 제거 금지
+
 ### 00:16 KST
 
 - 완료: macOS 26 Native Wallpaper Backend production 승격 실행 계획 작성

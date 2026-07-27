@@ -35,14 +35,14 @@ repository root에는 사용자와 외부 기여자가 바로 확인해야 하�
 
 ## 활성 설계와 계획
 
-진행 중이거나 다음에 실행할 Superpowers 설계/계획은 `superpowers/specs/`와 `superpowers/plans/` 아래에서 관리합니다.
+진행 중이거나 후속 runtime QA가 남은 Superpowers 설계/계획은 `superpowers/specs/`와 `superpowers/plans/` 아래에서 관리합니다.
 
 - [macOS 26 Native Wallpaper Snapshot Export Gate 설계](superpowers/specs/2026-06-15-native-wallpaper-snapshot-export-gate-design.md)
 - [macOS 26 Native Wallpaper Snapshot Export Gate 실행 계획](superpowers/plans/2026-06-15-native-wallpaper-snapshot-export-gate.md)
 - [macOS 26 Native Wallpaper Playback Timing 설계](superpowers/specs/2026-06-19-native-wallpaper-playback-timing.md)
 - [macOS 26 Native Wallpaper Playback Timing 실행 계획](superpowers/plans/2026-07-20-native-wallpaper-playback-timing.md)
 - [macOS 26 Native Wallpaper Backend 승격 설계](superpowers/specs/2026-07-27-native-wallpaper-backend-promotion-design.md)
-- [macOS 26 Native Wallpaper Backend 승격 실행 계획](superpowers/plans/2026-07-28-native-wallpaper-backend-promotion.md)
+- [macOS 26 Native Wallpaper Backend 승격 실행 계획](superpowers/plans/2026-07-28-native-wallpaper-backend-promotion.md): 구현 및 정적 검증 완료, production runtime QA 대기
 
 ## 재사용 템플릿
 
