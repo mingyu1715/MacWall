@@ -1,0 +1,3 @@
+import MacWallApp
+
+MacWallApplication.main()
