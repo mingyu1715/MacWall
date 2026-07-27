@@ -2,6 +2,38 @@
 
 모든 시간은 Asia/Seoul 기준입니다.
 
+## 2026-07-27
+
+### 23:31 KST
+
+- 완료: Native Wallpaper Playback Timing control-timebase human verification gate
+- 실행 조건:
+  - snapshot mode: `disabled`
+  - video source: `asset`
+  - timing clock: `control-timebase`
+  - timing profile: `normal`
+  - local sample: 3840x2160 mp4
+- 사용자 관측:
+  - 실제 Desktop 출력에 대해 "괜찮은 것 같음"으로 확인
+  - 자연 배속, 끊김, loop 경계, Fullscreen -> Desktop 동작에서 즉시 확인되는 문제 없음
+- 로그 근거:
+  - 약 60초 동안 `queuedFrameCount`가 1에서 3591까지 지속 증가
+  - 정상 구간 lead는 주로 약 0.06~0.14초이며 renderer는 ready 상태 유지
+  - continuous PTS로 loop index 0에서 3까지 진행
+  - loop index 2 시작 지연에서 lag 약 0.724초, 단발 reset 및 25 frame drop 발생
+  - reset 이후 `droppedFrameCount=25`로 고정되고 queue 증가 및 loop 재생 지속
+  - repeated hard reset 및 `asset-repeated-hard-reset` 없음
+  - snapshot disabled에 따른 `WallpaperExtensionError(2)`는 예상된 별도 snapshot/export gate
+- 판정:
+  - control-timebase/normal은 사용자 화면 기준 조건부 통과
+  - 단발 loop reset은 synchronizer 비교 결과와 함께 최종 clock 선택 전에 재평가
+- 다음:
+  - 동일 영상과 normal profile로 synchronizer human verification 및 focused 로그 비교
+- 제외:
+  - 코드 수정 없음
+  - snapshot/export, Main App, Scene, Web, fallback 변경 없음
+  - package, DMG, notarization, `dist` 작업 없음
+
 ## 2026-07-20
 
 ### 21:38 KST
