@@ -18,6 +18,18 @@
 		A10000000000000000000009 /* CoreMedia.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000E /* CoreMedia.framework */; };
 		A1000000000000000000000A /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000F /* QuartzCore.framework */; };
 		A1000000000000000000000B /* ScreenSaver.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20000000000000000000010 /* ScreenSaver.framework */; };
+		A1000000000000000000000C /* MacWallNativeWallpaperExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000011 /* MacWallNativeWallpaperExtension.swift */; };
+		A1000000000000000000000D /* MacWallWallpaperExtensionConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000012 /* MacWallWallpaperExtensionConfiguration.swift */; };
+		A1000000000000000000000E /* MacWallWallpaperSettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000013 /* MacWallWallpaperSettingsViewModel.swift */; };
+		A1000000000000000000000F /* MacWallWallpaperXPCProtocols.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000014 /* MacWallWallpaperXPCProtocols.swift */; };
+		A10000000000000000000010 /* MacWallWallpaperXPCHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000015 /* MacWallWallpaperXPCHandler.swift */; };
+		A10000000000000000000011 /* MacWallWallpaperXPCIntrospection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000016 /* MacWallWallpaperXPCIntrospection.swift */; };
+		A10000000000000000000012 /* MacWallRemoteContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000017 /* MacWallRemoteContext.swift */; };
+		A10000000000000000000013 /* NativeVideoFrameBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000018 /* NativeVideoFrameBridge.swift */; };
+		A10000000000000000000014 /* NativeVideoPlaybackClock.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000019 /* NativeVideoPlaybackClock.swift */; };
+		A10000000000000000000015 /* NativeVideoPlaybackTiming.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001A /* NativeVideoPlaybackTiming.swift */; };
+		A10000000000000000000016 /* NativeVideoRendererAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001B /* NativeVideoRendererAdapter.swift */; };
+		A10000000000000000000017 /* NativeVideoSampleRetimer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001C /* NativeVideoSampleRetimer.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -78,6 +90,18 @@
 		A2000000000000000000000E /* CoreMedia.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMedia.framework; path = System/Library/Frameworks/CoreMedia.framework; sourceTree = SDKROOT; };
 		A2000000000000000000000F /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
 		A20000000000000000000010 /* ScreenSaver.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ScreenSaver.framework; path = System/Library/Frameworks/ScreenSaver.framework; sourceTree = SDKROOT; };
+		A20000000000000000000011 /* MacWallNativeWallpaperExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacWallNativeWallpaperExtension.swift; sourceTree = "<group>"; };
+		A20000000000000000000012 /* MacWallWallpaperExtensionConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacWallWallpaperExtensionConfiguration.swift; sourceTree = "<group>"; };
+		A20000000000000000000013 /* MacWallWallpaperSettingsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacWallWallpaperSettingsViewModel.swift; sourceTree = "<group>"; };
+		A20000000000000000000014 /* MacWallWallpaperXPCProtocols.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacWallWallpaperXPCProtocols.swift; sourceTree = "<group>"; };
+		A20000000000000000000015 /* MacWallWallpaperXPCHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacWallWallpaperXPCHandler.swift; sourceTree = "<group>"; };
+		A20000000000000000000016 /* MacWallWallpaperXPCIntrospection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacWallWallpaperXPCIntrospection.swift; sourceTree = "<group>"; };
+		A20000000000000000000017 /* MacWallRemoteContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacWallRemoteContext.swift; sourceTree = "<group>"; };
+		A20000000000000000000018 /* NativeVideoFrameBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeVideoFrameBridge.swift; sourceTree = "<group>"; };
+		A20000000000000000000019 /* NativeVideoPlaybackClock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeVideoPlaybackClock.swift; sourceTree = "<group>"; };
+		A2000000000000000000001A /* NativeVideoPlaybackTiming.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeVideoPlaybackTiming.swift; sourceTree = "<group>"; };
+		A2000000000000000000001B /* NativeVideoRendererAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeVideoRendererAdapter.swift; sourceTree = "<group>"; };
+		A2000000000000000000001C /* NativeVideoSampleRetimer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeVideoSampleRetimer.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -136,6 +160,18 @@
 		A70000000000000000000003 /* MacWallNativeWallpaperExtension */ = {
 			isa = PBXGroup;
 			children = (
+				A20000000000000000000011 /* MacWallNativeWallpaperExtension.swift */,
+				A20000000000000000000012 /* MacWallWallpaperExtensionConfiguration.swift */,
+				A20000000000000000000013 /* MacWallWallpaperSettingsViewModel.swift */,
+				A20000000000000000000014 /* MacWallWallpaperXPCProtocols.swift */,
+				A20000000000000000000015 /* MacWallWallpaperXPCHandler.swift */,
+				A20000000000000000000016 /* MacWallWallpaperXPCIntrospection.swift */,
+				A20000000000000000000017 /* MacWallRemoteContext.swift */,
+				A20000000000000000000018 /* NativeVideoFrameBridge.swift */,
+				A20000000000000000000019 /* NativeVideoPlaybackClock.swift */,
+				A2000000000000000000001A /* NativeVideoPlaybackTiming.swift */,
+				A2000000000000000000001B /* NativeVideoRendererAdapter.swift */,
+				A2000000000000000000001C /* NativeVideoSampleRetimer.swift */,
 				A20000000000000000000004 /* Info.plist */,
 				A20000000000000000000005 /* MacWallNativeWallpaperExtension.entitlements */,
 			);
@@ -321,6 +357,18 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A1000000000000000000000C /* MacWallNativeWallpaperExtension.swift in Sources */,
+				A1000000000000000000000D /* MacWallWallpaperExtensionConfiguration.swift in Sources */,
+				A1000000000000000000000E /* MacWallWallpaperSettingsViewModel.swift in Sources */,
+				A1000000000000000000000F /* MacWallWallpaperXPCProtocols.swift in Sources */,
+				A10000000000000000000010 /* MacWallWallpaperXPCHandler.swift in Sources */,
+				A10000000000000000000011 /* MacWallWallpaperXPCIntrospection.swift in Sources */,
+				A10000000000000000000012 /* MacWallRemoteContext.swift in Sources */,
+				A10000000000000000000013 /* NativeVideoFrameBridge.swift in Sources */,
+				A10000000000000000000014 /* NativeVideoPlaybackClock.swift in Sources */,
+				A10000000000000000000015 /* NativeVideoPlaybackTiming.swift in Sources */,
+				A10000000000000000000016 /* NativeVideoRendererAdapter.swift in Sources */,
+				A10000000000000000000017 /* NativeVideoSampleRetimer.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -410,6 +458,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
+				ARCHS = arm64;
 				CODE_SIGN_ENTITLEMENTS = MacWallNativeWallpaperExtension/MacWallNativeWallpaperExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				ENABLE_APP_SANDBOX = YES;
@@ -432,6 +481,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
+				ARCHS = arm64;
 				CODE_SIGN_ENTITLEMENTS = MacWallNativeWallpaperExtension/MacWallNativeWallpaperExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				ENABLE_APP_SANDBOX = YES;
@@ -454,6 +504,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
 				CODE_SIGN_STYLE = Automatic;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = MacWallLockScreenSaver/Info.plist;
@@ -469,6 +520,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
 				CODE_SIGN_STYLE = Automatic;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = MacWallLockScreenSaver/Info.plist;
