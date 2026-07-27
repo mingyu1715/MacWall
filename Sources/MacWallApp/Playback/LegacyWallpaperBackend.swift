@@ -75,6 +75,8 @@ final class LegacyWallpaperBackend: LegacyWallpaperBackendManaging {
         spaceRefreshCoordinator.setActiveAsset(nil)
         if reason == .userStop {
             fallbackCoordinator.restoreOriginalWallpaperIfNeeded()
+        } else {
+            fallbackCoordinator.abandonManagedWallpaperSession()
         }
     }
 }

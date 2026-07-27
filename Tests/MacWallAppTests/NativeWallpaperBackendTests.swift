@@ -81,6 +81,52 @@ final class NativeWallpaperBackendTests: XCTestCase {
         XCTAssertNotNil(try harness.store.resolveSourceURL(for: command))
     }
 
+    func testSuccessfulNewGenerationRemovesOnlyOlderGeneration() async throws {
+        let now = Date(timeIntervalSince1970: 1_000)
+        let oldGeneration = UUID()
+        let newGeneration = UUID()
+        let harness = try makeHarness(
+            now: now,
+            statuses: [
+                nil,
+                Self.status(
+                    state: .playing,
+                    heartbeatAt: now,
+                    contextCount: 1,
+                    requestedGeneration: newGeneration,
+                    activeGeneration: newGeneration
+                )
+            ]
+        )
+        let asset = try makeVideoAsset(root: harness.root)
+        _ = try harness.store.stageVideo(
+            sourceURL: URL(filePath: try XCTUnwrap(asset.entrypoint)),
+            generation: oldGeneration
+        )
+
+        _ = try await harness.backend.play(
+            asset: asset,
+            displayMode: .fit,
+            generation: newGeneration,
+            timeout: .seconds(5)
+        )
+
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: harness.store.generationsURL
+                    .appending(path: oldGeneration.uuidString)
+                    .path
+            )
+        )
+        XCTAssertTrue(
+            FileManager.default.fileExists(
+                atPath: harness.store.generationsURL
+                    .appending(path: newGeneration.uuidString)
+                    .path
+            )
+        )
+    }
+
     func testPlayRejectsExplicitFailureAndRemovesCandidateGeneration() async throws {
         let now = Date(timeIntervalSince1970: 1_000)
         let generation = UUID()

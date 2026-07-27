@@ -154,6 +154,61 @@ final class WallpaperPlaybackCoordinatorTests: XCTestCase {
         XCTAssertEqual(coordinator.activeReceipt?.backend, .legacy)
     }
 
+    func testNativeStopDoesNotInvokeLegacyRestoreOrDeleteFallbackCache() async throws {
+        let native = MockNativeWallpaperBackend()
+        native.activation = .active(Self.status())
+        let legacy = MockLegacyWallpaperBackend()
+        let coordinator = makeCoordinator(native: native, legacy: legacy)
+        let project = FileManager.default.temporaryDirectory
+            .appending(path: "MacWallCoordinatorTests-\(UUID().uuidString)")
+        let fallback = project.appending(path: "Derived/desktop-fallback.png")
+        try FileManager.default.createDirectory(
+            at: fallback.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("cache".utf8).write(to: fallback)
+        defer { try? FileManager.default.removeItem(at: project) }
+        let asset = WallpaperAsset(
+            id: "native",
+            title: "native",
+            kind: .video,
+            supportStatus: .playable,
+            source: .manualFolder,
+            projectDirectory: project.path,
+            entrypoint: project.appending(path: "source.mp4").path,
+            thumbnail: nil,
+            workshopId: nil,
+            redistributionAllowed: false,
+            issues: []
+        )
+        _ = try await coordinator.play(Self.request(asset: asset))
+
+        try await coordinator.stop()
+
+        XCTAssertEqual(native.stoppedGenerations.count, 1)
+        XCTAssertTrue(legacy.stopReasons.isEmpty)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fallback.path))
+    }
+
+    func testNativeStopFailureKeepsActiveReceipt() async throws {
+        let native = MockNativeWallpaperBackend()
+        native.activation = .active(Self.status())
+        let coordinator = makeCoordinator(native: native)
+        _ = try await coordinator.play(
+            Self.request(asset: Self.asset(id: "native", kind: .video))
+        )
+        native.stopError = TestError.expected
+
+        do {
+            try await coordinator.stop()
+            XCTFail("Expected Stop failure")
+        } catch TestError.expected {
+        }
+
+        XCTAssertEqual(coordinator.activeReceipt?.backend, .native)
+        XCTAssertEqual(coordinator.activeReceipt?.assetID, "native")
+    }
+
     private func makeCoordinator(
         native: MockNativeWallpaperBackend = MockNativeWallpaperBackend(),
         legacy: MockLegacyWallpaperBackend = MockLegacyWallpaperBackend()
@@ -213,6 +268,7 @@ private final class MockNativeWallpaperBackend: NativeWallpaperBackendManaging {
     var playedAssetIDs: [WallpaperAsset.ID] = []
     var stoppedGenerations: [UUID] = []
     var playError: Error?
+    var stopError: Error?
     var suspendPlay = false
     private var continuations: [CheckedContinuation<Void, Never>] = []
     private let events: EventLog?
@@ -251,6 +307,9 @@ private final class MockNativeWallpaperBackend: NativeWallpaperBackendManaging {
 
     func stop(generation: UUID) async throws {
         stoppedGenerations.append(generation)
+        if let stopError {
+            throw stopError
+        }
     }
 
     func resumeAllPlays() {

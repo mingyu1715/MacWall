@@ -15,6 +15,7 @@ protocol DesktopFallbackCoordinating: AnyObject {
     func generate(asset: WallpaperAsset) async throws
     func regenerate(asset: WallpaperAsset) async throws
     func restoreOriginalWallpaperIfNeeded()
+    func abandonManagedWallpaperSession()
 }
 
 @MainActor
@@ -147,6 +148,17 @@ final class DesktopFallbackCoordinator: DesktopFallbackCoordinating {
 
     func restoreOriginalWallpaperIfNeeded() {
         originalWallpaperStore.restoreOriginalWallpaperIfCurrentMatchesManagedFallback()
+    }
+
+    func abandonManagedWallpaperSession() {
+        activeProjectDirectory = nil
+        lastAppliedFallbackProjectDirectory = nil
+        for task in inFlightAutomaticTasks.values {
+            task.task.cancel()
+        }
+        inFlightAutomaticTasks.removeAll()
+        latestGenerationTokens.removeAll()
+        originalWallpaperStore.abandonManagedWallpaperSession()
     }
 
     func refreshFromLiveSnapshot(

@@ -194,7 +194,7 @@ final class AppViewModelTests: XCTestCase {
         XCTAssertTrue(model.restoreOriginalWallpaperOnStop)
     }
 
-    func testRestoreOriginalWallpaperTogglePersistsWithoutFallbackSideEffectsOnExperimentBranch() throws {
+    func testRestoreOriginalWallpaperToggleConfiguresLegacyFallbackRestore() throws {
         // Given
         let defaults = try makeUserDefaults()
         let fallback = MockDesktopFallbackCoordinator()
@@ -216,8 +216,8 @@ final class AppViewModelTests: XCTestCase {
 
         // Then
         XCTAssertTrue(defaults.bool(forKey: "restoreOriginalWallpaperOnStop"))
-        XCTAssertTrue(fallback.restoreOnStopValues.isEmpty)
-        XCTAssertTrue(warningPresenter.messages.isEmpty)
+        XCTAssertEqual(fallback.restoreOnStopValues.last, true)
+        XCTAssertEqual(warningPresenter.messages.count, 1)
     }
 
     func testRestoreOriginalWallpaperToggleDoesNotWarnForStaticImageWallpaper() throws {
@@ -406,7 +406,7 @@ final class AppViewModelTests: XCTestCase {
         // Then
         XCTAssertEqual(player.playedAssetIds, [asset.id])
         XCTAssertEqual(fallback.appliedAssetIds, [asset.id])
-        XCTAssertTrue(spaceRefresh.activeAssetIds.isEmpty)
+        XCTAssertEqual(spaceRefresh.activeAssetIds, [asset.id])
     }
 
     func testPlayFailureDoesNotStoreFailedAssetAsLastPlayed() async throws {
@@ -466,7 +466,7 @@ final class AppViewModelTests: XCTestCase {
         XCTAssertEqual(player.activeSessionSnapshot?.assetId, assetA.id)
         XCTAssertEqual(fallback.appliedAssetIds, [assetA.id])
         XCTAssertEqual(fallback.clearActiveAssetCallCount, 0)
-        XCTAssertTrue(spaceRefresh.activeAssetIds.isEmpty)
+        XCTAssertEqual(spaceRefresh.activeAssetIds, [assetA.id, assetA.id])
         XCTAssertEqual(defaults.string(forKey: "lastPlayedAssetId"), assetA.id)
         XCTAssertTrue(model.status.contains(TestError.expected.localizedDescription))
     }
@@ -602,6 +602,8 @@ final class AppViewModelTests: XCTestCase {
     func testSuccessfulNativePlayUpdatesLastPlayedID() async throws {
         let defaults = try makeUserDefaults()
         let coordinator = MockPlaybackCoordinator()
+        let fallback = MockDesktopFallbackCoordinator()
+        let spaceRefresh = MockDesktopFallbackSpaceRefreshCoordinator()
         coordinator.playHandler = {
             .started(Self.receipt(for: $0.asset, backend: .native))
         }
@@ -611,6 +613,8 @@ final class AppViewModelTests: XCTestCase {
             store: store,
             loginItemController: MockLoginItemController(),
             userDefaults: defaults,
+            desktopFallbackCoordinator: fallback,
+            desktopFallbackSpaceRefreshCoordinator: spaceRefresh,
             playbackCoordinator: coordinator,
             nativeSetupPresenter: MockNativeWallpaperSetupPresenter(choice: .cancel),
             wallpaperSettingsOpener: MockWallpaperSettingsOpener()
@@ -622,6 +626,8 @@ final class AppViewModelTests: XCTestCase {
 
         XCTAssertEqual(defaults.string(forKey: "lastPlayedAssetId"), asset.id)
         XCTAssertTrue(model.status.contains("Native"))
+        XCTAssertTrue(fallback.appliedAssetIds.isEmpty)
+        XCTAssertTrue(spaceRefresh.activeAssetIds.isEmpty)
     }
 
     func testStopCancelsPendingSettingsWait() async throws {
@@ -864,6 +870,8 @@ private final class MockDesktopFallbackCoordinator: DesktopFallbackCoordinating 
     func restoreOriginalWallpaperIfNeeded() {
         restoreOriginalWallpaperCallCount += 1
     }
+
+    func abandonManagedWallpaperSession() {}
 }
 
 @MainActor
@@ -927,7 +935,7 @@ private final class MockPlaybackCoordinator: WallpaperPlaybackCoordinating {
         return resolveHandler?(choice, pending) ?? .cancelled
     }
 
-    func stop() async {
+    func stop() async throws {
         stopCallCount += 1
     }
 }

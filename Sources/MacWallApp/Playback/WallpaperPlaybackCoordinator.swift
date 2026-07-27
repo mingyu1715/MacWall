@@ -40,7 +40,7 @@ protocol WallpaperPlaybackCoordinating: AnyObject {
         _ choice: NativeWallpaperSetupChoice,
         pending: PendingPlaybackRequest
     ) async throws -> PlaybackStartOutcome
-    func stop() async
+    func stop() async throws
 }
 
 @MainActor
@@ -91,7 +91,7 @@ final class WallpaperPlaybackCoordinator: WallpaperPlaybackCoordinating {
         }
     }
 
-    func stop() async {
+    func stop() async throws {
         latestRequestID = nil
         inFlight?.task.cancel()
         inFlight = nil
@@ -99,12 +99,13 @@ final class WallpaperPlaybackCoordinator: WallpaperPlaybackCoordinating {
         switch activeReceipt?.backend {
         case .legacy:
             legacyBackend.stop(reason: .userStop)
+            activeReceipt = nil
         case .native:
-            try? await nativeBackend.stop(generation: UUID())
+            try await nativeBackend.stop(generation: UUID())
+            activeReceipt = nil
         case nil:
             break
         }
-        activeReceipt = nil
     }
 
     private func start(
