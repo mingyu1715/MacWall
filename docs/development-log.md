@@ -4,6 +4,27 @@
 
 ## 2026-07-28
 
+### 01:05 KST
+
+- 진행: production Native Wallpaper runtime QA signing preflight
+- 확인:
+  - `security find-identity -v -p codesigning` 결과 유효한 개발용 signing identity 없음
+  - Xcode ad-hoc signing override는 Host/Extension의 App Group entitlement 때문에 provisioning profile 요구로 실패
+  - 기존 unsigned 산출물의 saver, extension, host를 nested 순서로 수동 ad-hoc signing
+  - `codesign --verify --deep --strict` 통과
+  - Host와 extension 모두 `group.com.mingyu1715.macwall` entitlement 보존 확인
+  - extension의 `com.apple.security.app-sandbox = true` 보존 확인
+- 현재 상태:
+  - QA artifact: `/tmp/macwall-native-backend-dd/Build/Products/Debug/MacWall.app`
+  - `pluginkit` 조회는 이 머신의 기존 문제인 `match: Connection invalid`로 신뢰할 수 없음
+  - LaunchServices dump에는 production/spike 등록 항목이 확인되지 않음
+- 제한:
+  - app/GUI/System Settings 실행 없음
+  - extension process 종료, LaunchServices 등록, wallpaper 선택 없음
+- 다음:
+  - ad-hoc artifact 등록과 production runtime QA를 진행할지 사용자 승인 필요
+  - 진행 시 stale extension reset, LaunchServices register, 사용자 System Settings 선택, Main App Video Play, 로그/화면 대조 순서 사용
+
 ### 00:59 KST
 
 - 완료: macOS 26 Native Wallpaper Backend production 승격 구현 및 정적 통합 검증
