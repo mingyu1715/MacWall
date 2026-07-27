@@ -1,6 +1,6 @@
 # MacWall 개발 로드맵
 
-수정일: 2026-06-07
+수정일: 2026-07-27
 
 이 문서는 현재 활성 제품 개발 방향과 Scene 개발 방향을 정리합니다. 완료된 세부 구현 계획은 `docs/implemented/`에 기록하고, 과거 계획은 `docs/archive/`에 보관합니다.
 
@@ -179,10 +179,11 @@ Assets/
 
 아직 production 기능이 아닙니다.
 
-- Main App 통합은 시작하지 않습니다.
+- Main App 통합 구현은 아직 시작하지 않았으며, production backend 승격 설계가 승인되었습니다.
 - 기존 `NSWindow` backend는 유지합니다.
 - snapshot/export gate는 별도 활성 작업으로 남아 있습니다.
-- asset mp4 playback timing 품질 개선은 별도 설계로 남겨둡니다.
+- asset mp4 playback timing은 bounded PTS pump, continuous loop PTS, `CMSampleBufferRenderSynchronizer` normal profile까지 구현하고 검증했습니다.
+- 4K60 H.264 sample에서 재생 품질과 timing은 안정적이었지만 BGRA decode path의 높은 IOSurface memory는 후속 최적화 대상으로 남아 있습니다.
 - Web, Scene, fallback PNG 정책 변경은 제외합니다.
 - SIP 비활성화, Dock/Finder injection, 시스템 wallpaper DB 직접 수정은 금지합니다.
 
@@ -191,6 +192,40 @@ Assets/
 - `docs/superpowers/specs/2026-06-15-native-wallpaper-snapshot-export-gate-design.md`
 - `docs/superpowers/plans/2026-06-15-native-wallpaper-snapshot-export-gate.md`
 - `docs/superpowers/specs/2026-06-19-native-wallpaper-playback-timing.md`
+- `docs/superpowers/plans/2026-07-20-native-wallpaper-playback-timing.md`
+
+### Phase P2.6: Native Wallpaper Backend Promotion
+
+상태: 설계 승인 / 실행 계획 작성 전
+
+목표:
+
+- 검증된 `MacWallNativeWallpaperSpike` runtime을 MacWall Main App의 production playback backend로 승격합니다.
+- 하나의 앱 안에서 Native와 Legacy backend를 분리합니다.
+- macOS 26+ Apple Silicon Video는 Native backend 대상으로 삼습니다.
+- macOS 25 이하, Intel, Native 미지원 format은 기존 Legacy backend를 유지합니다.
+
+핵심 결정:
+
+- Xcode app container가 containing app과 embedded wallpaper extension을 소유합니다.
+- 기존 Core/App/CLI와 테스트는 Swift Package로 유지합니다.
+- Main App과 extension은 App Group generation manifest와 ACK로 통신합니다.
+- Native wallpaper가 활성화되지 않은 Play 요청에는 `취소`, `기존 방식으로 재생`, `배경화면 설정 열기`를 제공합니다.
+- Native playback에서는 Desktop fallback과 original wallpaper restore state를 변경하지 않습니다.
+- 새 generation은 모든 active Desktop context에서 준비된 뒤에만 이전 generation을 교체합니다.
+- 구현 검증은 명령어, 정적 검사, 자동 테스트, 제공된 로그 분석 범위로 제한합니다.
+
+설계:
+
+- `docs/superpowers/specs/2026-07-27-native-wallpaper-backend-promotion-design.md`
+
+이번 phase 제외:
+
+- snapshot/export 해결
+- Native Web/Scene
+- pixel format 및 IOSurface memory 최적화
+- GUI/System Settings 자동 검증
+- package, DMG, notarization, `dist` 작업
 
 ### Phase P3: Web Runtime Completion
 

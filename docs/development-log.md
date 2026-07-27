@@ -4,6 +4,32 @@
 
 ## 2026-07-27
 
+### 23:58 KST
+
+- 완료: macOS 26 Native Wallpaper Backend production 승격 설계 승인 및 문서화
+- 설계: [Native Wallpaper Backend 승격 설계](superpowers/specs/2026-07-27-native-wallpaper-backend-promotion-design.md)
+- 결정:
+  - MacWall 앱은 하나로 유지하고 playback 구현만 Native/Legacy backend로 분리
+  - Xcode app container가 Main App과 embedded wallpaper extension을 소유하고 기존 Core/App/CLI는 Swift Package로 유지
+  - macOS 26+ Apple Silicon Video는 Native 대상, macOS 25 이하/Intel/미지원 format은 Legacy 유지
+  - Main App과 extension은 App Group의 immutable generation, atomic manifest, generation-aware ACK로 통신
+  - Native wallpaper가 활성화되지 않은 경우 `취소`, `기존 방식으로 재생`, `배경화면 설정 열기` 3버튼 안내 제공
+  - `기존 방식으로 재생`은 해당 Play 요청에만 적용
+  - Native playback은 Desktop fallback과 original wallpaper restore state를 건드리지 않음
+  - Native Stop은 playback clock을 멈추고 마지막 frame과 System Settings 선택을 유지
+  - multi-monitor replacement는 모든 active Desktop context가 준비된 뒤 all-or-nothing으로 commit
+- 로드맵:
+  - P2.5에 playback timing 구현/검증 상태와 BGRA IOSurface memory 후속 과제를 반영
+  - P2.6 Native Wallpaper Backend Promotion을 추가
+- 검증:
+  - 문서 목록 및 핵심 정책 문구 검색 통과
+  - `git diff --check` 통과
+- 제한:
+  - 검증은 명령어, 정적 검사, 자동 테스트, 제공된 로그 분석 범위로 제한
+  - 코드, spike runtime, GUI, System Settings, package, DMG, notarization, `dist` 변경 없음
+- 다음:
+  - 사용자 문서 검토 후 executable implementation plan 작성
+
 ### 23:40 KST
 
 - 완료: Native Wallpaper synchronizer/normal human verification 및 4K60 성능 측정
