@@ -46,6 +46,11 @@ enum MacWallRemoteContext {
         MacWallRemoteWallpaperContextStore.shared.store(
             MacWallRemoteWallpaperContext(
                 key: key,
+                surfaceKey: surfaceKey(
+                    wallpaperKey: key,
+                    displayID: requestInfo.displayID,
+                    contextID: contextID
+                ),
                 caContext: caContext,
                 rootLayer: rootLayer,
                 contextID: contextID,
@@ -53,6 +58,19 @@ enum MacWallRemoteContext {
                 requestInfo: requestInfo
             )
         )
+        if role == .desktop,
+           let context = MacWallRemoteWallpaperContextStore.shared.context(
+               for: id
+           ) {
+            NativeWallpaperSessionController.shared.registerDesktopSurface(
+                NativeDesktopSurface(
+                    key: context.surfaceKey,
+                    rootLayer: rootLayer,
+                    frame: rootLayer.bounds,
+                    contentsScale: rootLayer.contentsScale
+                )
+            )
+        }
         macWallNativeWallpaperLogger.info(
             "remoteContext acquire reply key=\(key, privacy: .public) role=\(role.rawValue, privacy: .public) contextID=\(contextID)"
         )
@@ -68,6 +86,7 @@ enum MacWallWallpaperContextRole: String, Sendable {
 
 final class MacWallRemoteWallpaperContext: @unchecked Sendable {
     let key: String
+    let surfaceKey: String
     let caContext: AnyObject
     let rootLayer: CALayer
     let contextID: UInt32
@@ -79,6 +98,7 @@ final class MacWallRemoteWallpaperContext: @unchecked Sendable {
 
     init(
         key: String,
+        surfaceKey: String,
         caContext: AnyObject,
         rootLayer: CALayer,
         contextID: UInt32,
@@ -86,6 +106,7 @@ final class MacWallRemoteWallpaperContext: @unchecked Sendable {
         requestInfo: MacWallWallpaperCreationRequestInfo
     ) {
         self.key = key
+        self.surfaceKey = surfaceKey
         self.caContext = caContext
         self.rootLayer = rootLayer
         self.contextID = contextID
@@ -107,6 +128,11 @@ final class MacWallRemoteWallpaperContext: @unchecked Sendable {
         didStop = true
         stateLock.unlock()
 
+        if role == .desktop {
+            NativeWallpaperSessionController.shared.unregisterDesktopSurface(
+                key: surfaceKey
+            )
+        }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         rootLayer.sublayers?.forEach { $0.removeFromSuperlayer() }
@@ -413,6 +439,15 @@ private func createWallpaperRemoteContextXPC(
         "WallpaperRemoteContextXPC created contextID=\(contextID) offset=\(offset)"
     )
     return object
+}
+
+private func surfaceKey(
+    wallpaperKey: String,
+    displayID: UInt32?,
+    contextID: UInt32
+) -> String {
+    let displayKey = displayID.map(String.init) ?? "context-\(contextID)"
+    return "\(wallpaperKey)|display-\(displayKey)"
 }
 
 func wallpaperIDKey(from id: Any?) -> String {

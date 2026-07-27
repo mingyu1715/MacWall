@@ -30,6 +30,8 @@
 		A10000000000000000000015 /* NativeVideoPlaybackTiming.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001A /* NativeVideoPlaybackTiming.swift */; };
 		A10000000000000000000016 /* NativeVideoRendererAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001B /* NativeVideoRendererAdapter.swift */; };
 		A10000000000000000000017 /* NativeVideoSampleRetimer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001C /* NativeVideoSampleRetimer.swift */; };
+		A10000000000000000000018 /* NativeRuntimeDarwinObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001D /* NativeRuntimeDarwinObserver.swift */; };
+		A10000000000000000000019 /* NativeWallpaperSessionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001E /* NativeWallpaperSessionController.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -102,6 +104,8 @@
 		A2000000000000000000001A /* NativeVideoPlaybackTiming.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeVideoPlaybackTiming.swift; sourceTree = "<group>"; };
 		A2000000000000000000001B /* NativeVideoRendererAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeVideoRendererAdapter.swift; sourceTree = "<group>"; };
 		A2000000000000000000001C /* NativeVideoSampleRetimer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeVideoSampleRetimer.swift; sourceTree = "<group>"; };
+		A2000000000000000000001D /* NativeRuntimeDarwinObserver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeRuntimeDarwinObserver.swift; sourceTree = "<group>"; };
+		A2000000000000000000001E /* NativeWallpaperSessionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeWallpaperSessionController.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -172,6 +176,8 @@
 				A2000000000000000000001A /* NativeVideoPlaybackTiming.swift */,
 				A2000000000000000000001B /* NativeVideoRendererAdapter.swift */,
 				A2000000000000000000001C /* NativeVideoSampleRetimer.swift */,
+				A2000000000000000000001D /* NativeRuntimeDarwinObserver.swift */,
+				A2000000000000000000001E /* NativeWallpaperSessionController.swift */,
 				A20000000000000000000004 /* Info.plist */,
 				A20000000000000000000005 /* MacWallNativeWallpaperExtension.entitlements */,
 			);
@@ -369,6 +375,8 @@
 				A10000000000000000000015 /* NativeVideoPlaybackTiming.swift in Sources */,
 				A10000000000000000000016 /* NativeVideoRendererAdapter.swift in Sources */,
 				A10000000000000000000017 /* NativeVideoSampleRetimer.swift in Sources */,
+				A10000000000000000000018 /* NativeRuntimeDarwinObserver.swift in Sources */,
+				A10000000000000000000019 /* NativeWallpaperSessionController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

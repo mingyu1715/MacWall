@@ -20,6 +20,8 @@ test -f "$ROOT/MacWallNativeWallpaperExtension/MacWallNativeWallpaperExtension.s
 test -f "$ROOT/MacWallNativeWallpaperExtension/MacWallWallpaperXPCHandler.swift"
 test -f "$ROOT/MacWallNativeWallpaperExtension/MacWallRemoteContext.swift"
 test -f "$ROOT/MacWallNativeWallpaperExtension/NativeVideoFrameBridge.swift"
+test -f "$ROOT/MacWallNativeWallpaperExtension/NativeRuntimeDarwinObserver.swift"
+test -f "$ROOT/MacWallNativeWallpaperExtension/NativeWallpaperSessionController.swift"
 
 grep -q 'io.github.mingyu1715.MacWall' "$PROJECT"
 grep -q 'io.github.mingyu1715.MacWall.NativeWallpaper' "$PROJECT"
@@ -47,6 +49,16 @@ grep -q 'MacWall' \
 grep -q 'ARCHS = arm64' "$PROJECT"
 grep -q 'freezeKeepingLastFrame' \
   "$ROOT/MacWallNativeWallpaperExtension/NativeVideoFrameBridge.swift"
+grep -q 'CFNotificationCenterGetDarwinNotifyCenter' \
+  "$ROOT/MacWallNativeWallpaperExtension/NativeRuntimeDarwinObserver.swift"
+grep -q 'registerDesktopSurface' \
+  "$ROOT/MacWallNativeWallpaperExtension/NativeWallpaperSessionController.swift"
+grep -q 'state.beginCandidate' \
+  "$ROOT/MacWallNativeWallpaperExtension/NativeWallpaperSessionController.swift"
+grep -q 'candidateInstanceID' \
+  "$ROOT/MacWallNativeWallpaperExtension/NativeWallpaperSessionController.swift"
+grep -q 'bridge.layer.opacity = 0' \
+  "$ROOT/MacWallNativeWallpaperExtension/NativeWallpaperSessionController.swift"
 
 if grep -R -E -q \
   'MacWallSnapshotProbe|fallbackToGenerated|bundledProbeURL|attachGeneratedProbe' \

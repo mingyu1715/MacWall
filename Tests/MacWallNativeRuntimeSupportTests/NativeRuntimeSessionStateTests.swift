@@ -40,6 +40,29 @@ final class NativeRuntimeSessionStateTests: XCTestCase {
         XCTAssertNil(state.candidateGeneration)
     }
 
+    func testFailureAfterOneReadyContextRejectsWholeCandidate() {
+        let previous = UUID()
+        let candidate = UUID()
+        var state = NativeRuntimeSessionState(activeGeneration: previous)
+        state.beginCandidate(
+            generation: candidate,
+            contextIDs: ["display-1", "display-2"]
+        )
+
+        XCTAssertEqual(
+            state.markReady(generation: candidate, contextID: "display-1"),
+            .waiting
+        )
+        XCTAssertEqual(
+            state.failCandidate(generation: candidate),
+            .reject(candidate)
+        )
+        XCTAssertEqual(state.activeGeneration, previous)
+        XCTAssertNil(state.candidateGeneration)
+        XCTAssertTrue(state.targetContextIDs.isEmpty)
+        XCTAssertTrue(state.readyContextIDs.isEmpty)
+    }
+
     func testStaleReadyFromOldGenerationIsIgnored() {
         let active = UUID()
         let stale = UUID()

@@ -16,9 +16,11 @@ final class MacWallNativeWallpaperExtension: NSObject, AppExtension {
             "MacWall native wallpaper extension process started"
         )
         loadWallpaperExtensionKit()
+        _ = NativeWallpaperSessionController.shared
     }
 
     deinit {
+        NativeWallpaperSessionController.shared.shutdown()
         let removed = MacWallRemoteWallpaperContextStore.shared.removeAll(
             reason: "extension-deinit"
         )
