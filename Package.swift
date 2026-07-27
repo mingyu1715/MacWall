@@ -7,14 +7,20 @@ let package = Package(
     platforms: [.macOS(.v14)],
     products: [
         .library(name: "MacWallCore", targets: ["MacWallCore"]),
+        .library(name: "MacWallApp", targets: ["MacWallApp"]),
+        .library(
+            name: "MacWallNativeRuntimeSupport",
+            targets: ["MacWallNativeRuntimeSupport"]
+        ),
         .executable(name: "MacWall", targets: ["MacWallExecutable"]),
         .executable(name: "macwallctl", targets: ["macwallctl"])
     ],
     targets: [
         .target(name: "MacWallCore"),
+        .target(name: "MacWallNativeRuntimeSupport"),
         .target(
             name: "MacWallApp",
-            dependencies: ["MacWallCore"]
+            dependencies: ["MacWallCore", "MacWallNativeRuntimeSupport"]
         ),
         .executableTarget(
             name: "MacWallExecutable",
@@ -31,6 +37,10 @@ let package = Package(
         .testTarget(
             name: "MacWallAppTests",
             dependencies: ["MacWallApp"]
+        ),
+        .testTarget(
+            name: "MacWallNativeRuntimeSupportTests",
+            dependencies: ["MacWallNativeRuntimeSupport"]
         )
     ]
 )
