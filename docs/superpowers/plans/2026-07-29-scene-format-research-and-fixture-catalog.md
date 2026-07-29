@@ -1205,7 +1205,7 @@ git commit -m "feat(scene): audit package features"
 - Produces: schema-versioned aggregate catalog for three local fixture IDs
 - Does not produce: package extraction, copied texture/shader, CLI output
 
-- [ ] **Step 1: Add the tracked aggregate catalog**
+- [x] **Step 1: Add the tracked aggregate catalog**
 
 Create `Tests/Fixtures/SceneAudit/local-scene-catalog.json`:
 
@@ -1306,7 +1306,7 @@ Create `Tests/Fixtures/SceneAudit/local-scene-catalog.json`:
 This file contains counts only. Do not add package hash, local path, title,
 preview, texture name, shader source, script source, or extracted payload.
 
-- [ ] **Step 2: Write the local-only compatibility test**
+- [x] **Step 2: Write the local-only compatibility test**
 
 Create `SceneLocalFixtureAuditTests.swift` with private Codable catalog models.
 Resolve repository root from `#filePath`, not current working directory:
@@ -1343,7 +1343,7 @@ private func counts(_ values: [SceneAuditCount]) -> [String: Int] {
 Feature counts are built from `report.features` using
 `feature.key.rawValue`.
 
-- [ ] **Step 3: Run local fixture audit**
+- [x] **Step 3: Run local fixture audit**
 
 Run:
 
@@ -1362,7 +1362,7 @@ well-defined JSON shape or whether the catalog research value was wrong.
 Fix the parser or catalog using direct fixture evidence; do not weaken the
 assertion or add an approximate range.
 
-- [ ] **Step 4: Verify no local fixture was staged**
+- [x] **Step 4: Verify no local fixture was staged**
 
 Run:
 
@@ -1377,7 +1377,7 @@ Expected:
 - Only `Tests/Fixtures/SceneAudit/local-scene-catalog.json` and the Swift test
   are new for this task.
 
-- [ ] **Step 5: Commit the catalog gate**
+- [x] **Step 5: Commit the catalog gate**
 
 ```bash
 git add Tests/Fixtures/SceneAudit/local-scene-catalog.json Tests/MacWallCoreTests/SceneLocalFixtureAuditTests.swift

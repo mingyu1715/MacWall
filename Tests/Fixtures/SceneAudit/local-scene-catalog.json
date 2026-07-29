@@ -1,0 +1,91 @@
+{
+  "fixtures": [
+    {
+      "entryCount": 107,
+      "features": {
+        "effect": 7,
+        "sceneScript": 0
+      },
+      "objectKinds": {
+        "image": 23,
+        "particle": 3,
+        "sound": 2
+      },
+      "packageVersion": "PKGV0008",
+      "textureContainers": {
+        "TEXB0003": 37
+      },
+      "textureFlags": {
+        "0": 1,
+        "2": 32,
+        "7": 4
+      },
+      "textureFormats": {
+        "0": 37
+      },
+      "workshopID": "2174863503"
+    },
+    {
+      "entryCount": 387,
+      "features": {
+        "effect": 16,
+        "sceneScript": 2
+      },
+      "objectKinds": {
+        "image": 88,
+        "particle": 3,
+        "sound": 5,
+        "text": 2
+      },
+      "packageVersion": "PKGV0018",
+      "textureContainers": {
+        "TEXB0003": 136
+      },
+      "textureFlags": {
+        "0": 2,
+        "2": 133,
+        "34": 1
+      },
+      "textureFormats": {
+        "0": 78,
+        "8": 39,
+        "9": 19
+      },
+      "workshopID": "2834933421"
+    },
+    {
+      "entryCount": 125,
+      "features": {
+        "effect": 12,
+        "instance": 31,
+        "parentGraph": 53,
+        "sceneScript": 119
+      },
+      "objectKinds": {
+        "image": 49,
+        "particle": 7,
+        "sound": 1,
+        "text": 11,
+        "unknown": 1
+      },
+      "packageVersion": "PKGV0023",
+      "textureContainers": {
+        "TEXB0003": 16,
+        "TEXB0004": 11
+      },
+      "textureFlags": {
+        "0": 1,
+        "2": 22,
+        "6": 4
+      },
+      "textureFormats": {
+        "0": 4,
+        "4": 18,
+        "8": 1,
+        "9": 4
+      },
+      "workshopID": "3516106265"
+    }
+  ],
+  "schemaVersion": 1
+}
