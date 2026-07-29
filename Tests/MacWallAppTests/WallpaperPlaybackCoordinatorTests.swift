@@ -121,7 +121,7 @@ final class WallpaperPlaybackCoordinatorTests: XCTestCase {
         let request = Self.request(asset: Self.asset(id: "video", kind: .video))
 
         async let first = coordinator.play(request)
-        await Task.yield()
+        await native.waitForSuspendedPlay()
         async let second = coordinator.play(request)
         await Task.yield()
         XCTAssertEqual(native.playedAssetIDs, ["video"])
@@ -143,7 +143,7 @@ final class WallpaperPlaybackCoordinatorTests: XCTestCase {
                 Self.request(asset: Self.asset(id: "old", kind: .video))
             )
         }
-        await Task.yield()
+        await native.waitForSuspendedPlay()
         _ = try await coordinator.play(
             Self.request(asset: Self.asset(id: "new", kind: .web))
         )
@@ -209,6 +209,82 @@ final class WallpaperPlaybackCoordinatorTests: XCTestCase {
         XCTAssertEqual(coordinator.activeReceipt?.assetID, "native")
     }
 
+    func testDisplayModeUpdateTargetsActiveNativeGeneration() async throws {
+        let native = MockNativeWallpaperBackend()
+        native.activation = .active(Self.status())
+        let coordinator = makeCoordinator(native: native)
+        _ = try await coordinator.play(
+            Self.request(asset: Self.asset(id: "native", kind: .video))
+        )
+
+        coordinator.updateDisplayMode(.stretch)
+
+        XCTAssertEqual(native.displayModeUpdates.count, 1)
+        XCTAssertEqual(native.displayModeUpdates.first?.mode, .stretch)
+        XCTAssertEqual(
+            native.displayModeUpdates.first?.activeGeneration,
+            native.playedGenerations.first
+        )
+    }
+
+    func testDisplayModeUpdateDoesNotPublishForLegacyPlayback() async throws {
+        let native = MockNativeWallpaperBackend()
+        let coordinator = makeCoordinator(native: native)
+        _ = try await coordinator.play(
+            Self.request(asset: Self.asset(id: "web", kind: .web))
+        )
+
+        coordinator.updateDisplayMode(.fill)
+
+        XCTAssertTrue(native.displayModeUpdates.isEmpty)
+    }
+
+    func testDisplayModeUpdateDuringNativePlayIsDeferredUntilCommit() async throws {
+        let native = MockNativeWallpaperBackend()
+        native.activation = .active(Self.status())
+        native.suspendPlay = true
+        let coordinator = makeCoordinator(native: native)
+        let playTask = Task {
+            try await coordinator.play(
+                Self.request(asset: Self.asset(id: "native", kind: .video))
+            )
+        }
+        await native.waitForSuspendedPlay()
+
+        coordinator.updateDisplayMode(.stretch)
+        XCTAssertTrue(native.displayModeUpdates.isEmpty)
+
+        native.resumeAllPlays()
+        _ = try await playTask.value
+
+        XCTAssertEqual(native.displayModeUpdates.count, 1)
+        XCTAssertEqual(native.displayModeUpdates.first?.mode, .stretch)
+        XCTAssertEqual(
+            native.displayModeUpdates.first?.activeGeneration,
+            native.playedGenerations.first
+        )
+    }
+
+    func testDeferredDisplayModeUpdateKeepsOnlyLatestValue() async throws {
+        let native = MockNativeWallpaperBackend()
+        native.activation = .active(Self.status())
+        native.suspendPlay = true
+        let coordinator = makeCoordinator(native: native)
+        let playTask = Task {
+            try await coordinator.play(
+                Self.request(asset: Self.asset(id: "native", kind: .video))
+            )
+        }
+        await native.waitForSuspendedPlay()
+
+        coordinator.updateDisplayMode(.fill)
+        coordinator.updateDisplayMode(.stretch)
+        native.resumeAllPlays()
+        _ = try await playTask.value
+
+        XCTAssertEqual(native.displayModeUpdates.map(\.mode), [.stretch])
+    }
+
     private func makeCoordinator(
         native: MockNativeWallpaperBackend = MockNativeWallpaperBackend(),
         legacy: MockLegacyWallpaperBackend = MockLegacyWallpaperBackend()
@@ -263,14 +339,23 @@ final class WallpaperPlaybackCoordinatorTests: XCTestCase {
 
 @MainActor
 private final class MockNativeWallpaperBackend: NativeWallpaperBackendManaging {
+    struct DisplayModeUpdate: Equatable {
+        let mode: WallpaperDisplayMode
+        let activeGeneration: UUID
+        let commandID: UUID
+    }
+
     var activation: NativeWallpaperActivationStatus = .inactive
     var activationCallCount = 0
     var playedAssetIDs: [WallpaperAsset.ID] = []
+    var playedGenerations: [UUID] = []
+    var displayModeUpdates: [DisplayModeUpdate] = []
     var stoppedGenerations: [UUID] = []
     var playError: Error?
     var stopError: Error?
     var suspendPlay = false
     private var continuations: [CheckedContinuation<Void, Never>] = []
+    private var suspensionWaiters: [CheckedContinuation<Void, Never>] = []
     private let events: EventLog?
 
     init(events: EventLog? = nil) {
@@ -289,10 +374,14 @@ private final class MockNativeWallpaperBackend: NativeWallpaperBackendManaging {
         timeout: Duration
     ) async throws -> NativePlaybackReceipt {
         playedAssetIDs.append(asset.id)
+        playedGenerations.append(generation)
         events?.values.append("native-play-\(asset.id)")
         if suspendPlay {
             await withCheckedContinuation { continuation in
                 continuations.append(continuation)
+                let waiters = suspensionWaiters
+                suspensionWaiters.removeAll()
+                waiters.forEach { $0.resume() }
             }
         }
         if let playError {
@@ -302,6 +391,20 @@ private final class MockNativeWallpaperBackend: NativeWallpaperBackendManaging {
             generation: generation,
             assetID: asset.id,
             projectDirectory: asset.projectDirectory
+        )
+    }
+
+    func updateDisplayMode(
+        _ displayMode: WallpaperDisplayMode,
+        activeGeneration: UUID,
+        commandID: UUID
+    ) throws {
+        displayModeUpdates.append(
+            DisplayModeUpdate(
+                mode: displayMode,
+                activeGeneration: activeGeneration,
+                commandID: commandID
+            )
         )
     }
 
@@ -316,6 +419,15 @@ private final class MockNativeWallpaperBackend: NativeWallpaperBackendManaging {
         let pending = continuations
         continuations.removeAll()
         pending.forEach { $0.resume() }
+    }
+
+    func waitForSuspendedPlay() async {
+        guard continuations.isEmpty else {
+            return
+        }
+        await withCheckedContinuation { continuation in
+            suspensionWaiters.append(continuation)
+        }
     }
 }
 

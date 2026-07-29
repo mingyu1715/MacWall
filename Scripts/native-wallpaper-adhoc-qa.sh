@@ -2,9 +2,11 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DERIVED_DATA="/tmp/macwall-native-adhoc-qa-dd"
+DERIVED_DATA="$ROOT/tmp/macwall-native-adhoc-qa-dd"
 APP="$DERIVED_DATA/Build/Products/AdHocQA/MacWall.app"
 EXTENSION="$APP/Contents/Extensions/MacWallNativeWallpaperExtension.appex"
+LEGACY_APP="/tmp/macwall-native-adhoc-qa-dd/Build/Products/AdHocQA/MacWall.app"
+LEGACY_APP_CANONICAL="/private$LEGACY_APP"
 QA_ROOT="$HOME/Library/Application Support/MacWall/NativeRuntimeAdHocQA"
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 EXTENSION_EXECUTABLE="MacWallNativeWallpaperExtension"
@@ -28,7 +30,9 @@ matching_extension_pids() {
   while read -r pid; do
     command="$(ps -p "$pid" -o command= 2>/dev/null || true)"
     case "$command" in
-      *"$APP/Contents/Extensions/"*) printf '%s\n' "$pid" ;;
+      *"$APP/Contents/Extensions/"*|\
+      *"$LEGACY_APP/Contents/Extensions/"*|\
+      *"$LEGACY_APP_CANONICAL/Contents/Extensions/"*) printf '%s\n' "$pid" ;;
     esac
   done < <(pgrep -x "$EXTENSION_EXECUTABLE" 2>/dev/null || true)
 }
@@ -41,6 +45,9 @@ reset_qa() {
 
   if [[ -d "$APP" ]]; then
     "$LSREGISTER" -u "$APP" >/dev/null 2>&1 || true
+  fi
+  if [[ -d "$LEGACY_APP" ]]; then
+    "$LSREGISTER" -u "$LEGACY_APP" >/dev/null 2>&1 || true
   fi
 
   local expected

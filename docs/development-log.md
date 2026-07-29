@@ -4,6 +4,51 @@
 
 ## 2026-07-29
 
+### 20:18 KST
+
+- 완료: Production Native Wallpaper의 `Fit` / `Fill` / `Stretch` 실제 Desktop QA
+- 사용자 확인:
+  - 재생 중 세 표시 모드가 즉시 전환됨
+  - 검은 화면, 재생 재시작, 눈에 띄는 끊김 없음
+- 로그 확인:
+  - `fit`, `fill`, `stretch` update가 active generation에 `active=true`, `candidate=false`로 반영
+  - 표시 모드 변경 중 candidate bridge 생성, generation 교체, display-mode update 실패 없음
+- QA runner 정리:
+  - AdHocQA DerivedData를 repository root의 `tmp/macwall-native-adhoc-qa-dd`로 이동
+  - root `tmp/`를 Git ignore 처리
+  - `reset`에서 이전 `/tmp/macwall-native-adhoc-qa-dd` 앱 등록도 해제
+  - 최초 경로 이동 중 WallpaperAgent가 이전 bundle URL을 유지해 `Invalid bundle record for current process`로 반복 종료한 원인을 확인
+  - WallpaperAgent 1회 재시작 후 새 repository-local extension 경로에서 acquire/update/invalidate 정상 동작 확인
+- 환경 정리:
+  - 설치된 Native Spike extension process 및 LaunchServices 등록 제거
+  - Production MacWall extension 등록과 연구용 `MacWallNativeWallpaperSpike/` 소스는 유지
+- 검증:
+  - AdHocQA runner structure test와 `git diff --check` 통과
+  - repository-local AdHocQA build 및 `codesign --verify --deep --strict` 통과
+  - `pluginkit`에서 Production extension 1개와 새 경로 확인, Spike extension은 검색 결과 없음
+
+### 19:51 KST
+
+- 완료: Native Wallpaper 재생 중 `Fit` / `Fill` / `Stretch` 실시간 변경 연결
+- 구현:
+  - `AppViewModel.displayMode` 변경을 playback coordinator까지 전달
+  - 활성 Native generation을 대상으로 별도 `display-mode.json` atomic update 발행
+  - Play/Stop의 `command.json`을 보존해 extension 재시작 및 Desktop context 재구성 시 원본 재생 정보를 유지
+  - Play 전환 중 여러 모드 변경은 마지막 값만 보류하고 새 generation commit 후 적용
+  - extension은 target generation이 현재 active/candidate generation과 일치할 때 해당 `AVSampleBufferDisplayLayer.videoGravity`를 비애니메이션 트랜잭션으로 갱신
+  - monitor topology 재구성 중에는 active/candidate 양쪽을 함께 갱신하고, Desktop context가 0개면 최신 모드를 보존해 다음 surface 등록에 적용
+  - `Fit -> resizeAspect`, `Fill -> resizeAspectFill`, `Stretch -> resize` 매핑 유지
+- 검증:
+  - 전체 `swift test`: 222 tests, 0 failures
+  - display mode policy/backend focused test: 12 tests, 0 failures
+  - Native Wallpaper project structure guard 및 Bash syntax 검사 통과
+  - 독립 코드 리뷰 후 Critical/Important 잔여 finding 없음
+  - `git diff --check` 통과
+- 미실행:
+  - 앱 및 GUI 실행
+  - System Settings 조작과 실제 Desktop 표시 모드 전환 확인
+  - package, DMG, notarization, `dist`
+
 ### 17:09 KST
 
 - 완료: Native Wallpaper `AdHocQA` development-only runtime transport 구현 및 정적 검증

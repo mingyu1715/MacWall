@@ -119,6 +119,36 @@ final class NativeRuntimeStoreTests: XCTestCase {
         }
     }
 
+    func testDisplayModeUpdateAtomicWriteRoundTripsLatestValue() throws {
+        let root = try makeTemporaryDirectory()
+        let store = NativeRuntimeStore(rootURL: root.appending(path: "NativeRuntime"))
+        let generation = UUID()
+        let first = NativeRuntimeDisplayModeUpdate(
+            commandID: UUID(),
+            targetGeneration: generation,
+            displayMode: .fit,
+            createdAt: Date(timeIntervalSince1970: 1)
+        )
+        let second = NativeRuntimeDisplayModeUpdate(
+            commandID: UUID(),
+            targetGeneration: generation,
+            displayMode: .stretch,
+            createdAt: Date(timeIntervalSince1970: 2)
+        )
+
+        try store.writeDisplayModeUpdate(first)
+        try store.writeDisplayModeUpdate(second)
+
+        XCTAssertEqual(try store.readDisplayModeUpdate(), second)
+        XCTAssertEqual(store.displayModeUpdateURL.lastPathComponent, "display-mode.json")
+        XCTAssertFalse(
+            try FileManager.default.contentsOfDirectory(
+                at: store.rootURL,
+                includingPropertiesForKeys: nil
+            ).contains { $0.lastPathComponent.hasPrefix(".tmp-") }
+        )
+    }
+
     func testResolveRejectsTraversal() throws {
         let store = NativeRuntimeStore(rootURL: try makeTemporaryDirectory())
         let command = NativeRuntimeCommand.play(

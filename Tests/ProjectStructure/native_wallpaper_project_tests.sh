@@ -22,6 +22,8 @@ test -f "$ROOT/MacWallNativeWallpaperExtension/MacWallRemoteContext.swift"
 test -f "$ROOT/MacWallNativeWallpaperExtension/NativeVideoFrameBridge.swift"
 test -f "$ROOT/MacWallNativeWallpaperExtension/NativeRuntimeDarwinObserver.swift"
 test -f "$ROOT/MacWallNativeWallpaperExtension/NativeWallpaperSessionController.swift"
+test -f \
+  "$ROOT/Sources/MacWallNativeRuntimeSupport/NativeRuntimeDisplayModeUpdatePolicy.swift"
 
 grep -q 'io.github.mingyu1715.MacWall' "$PROJECT"
 grep -q 'io.github.mingyu1715.MacWall.NativeWallpaper' "$PROJECT"
@@ -68,6 +70,14 @@ grep -q 'candidateInstanceID' \
   "$ROOT/MacWallNativeWallpaperExtension/NativeWallpaperSessionController.swift"
 grep -q 'bridge.layer.opacity = 0' \
   "$ROOT/MacWallNativeWallpaperExtension/NativeWallpaperSessionController.swift"
+grep -q 'readDisplayModeUpdate' \
+  "$ROOT/MacWallNativeWallpaperExtension/NativeWallpaperSessionController.swift"
+grep -q 'NativeRuntimeDisplayModeUpdatePolicy.decision' \
+  "$ROOT/MacWallNativeWallpaperExtension/NativeWallpaperSessionController.swift"
+grep -q 'bridge.setDisplayMode' \
+  "$ROOT/MacWallNativeWallpaperExtension/NativeWallpaperSessionController.swift"
+grep -q 'layer.videoGravity = videoGravity(for: displayMode)' \
+  "$ROOT/MacWallNativeWallpaperExtension/NativeVideoFrameBridge.swift"
 grep -q 'MACOSX_DEPLOYMENT_TARGET = 14.0' "$PROJECT"
 grep -q 'MACOSX_DEPLOYMENT_TARGET = 26.0' "$PROJECT"
 grep -q 'fallbackCoordinator.applyOrGenerate' \

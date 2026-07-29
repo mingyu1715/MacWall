@@ -27,6 +27,10 @@ public struct NativeRuntimeStore: Sendable {
         rootURL.appending(path: "status.json")
     }
 
+    public var displayModeUpdateURL: URL {
+        rootURL.appending(path: "display-mode.json")
+    }
+
     public var generationsURL: URL {
         rootURL.appending(path: "Generations")
     }
@@ -61,6 +65,27 @@ public struct NativeRuntimeStore: Sendable {
         )
         try validateSchema(status.schemaVersion)
         return status
+    }
+
+    public func writeDisplayModeUpdate(
+        _ update: NativeRuntimeDisplayModeUpdate
+    ) throws {
+        try writeAtomically(
+            JSONEncoder().encode(update),
+            to: displayModeUpdateURL
+        )
+    }
+
+    public func readDisplayModeUpdate() throws -> NativeRuntimeDisplayModeUpdate? {
+        guard FileManager.default.fileExists(atPath: displayModeUpdateURL.path) else {
+            return nil
+        }
+        let update = try JSONDecoder().decode(
+            NativeRuntimeDisplayModeUpdate.self,
+            from: Data(contentsOf: displayModeUpdateURL)
+        )
+        try validateSchema(update.schemaVersion)
+        return update
     }
 
     public func stageVideo(

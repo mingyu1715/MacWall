@@ -29,7 +29,10 @@ final class NativeWallpaperSessionController: @unchecked Sendable {
     private var state = NativeRuntimeSessionState()
     private var candidateInstanceID: UUID?
     private var lastProcessedCommandGeneration: UUID?
+    private var lastProcessedDisplayModeCommandID: UUID?
     private var lastCommand: NativeRuntimeCommand?
+    private var activeDisplayMode: NativeRuntimeDisplayMode?
+    private var candidateDisplayMode: NativeRuntimeDisplayMode?
     private var requestedGeneration: UUID?
     private var statusState: NativeRuntimeStatusState = .inactive
     private var statusFailure: NativeRuntimeFailure?
@@ -44,7 +47,7 @@ final class NativeWallpaperSessionController: @unchecked Sendable {
 
         let observer = NativeRuntimeDarwinObserver { [weak self] in
             self?.queue.async { [weak self] in
-                self?.processCurrentCommandOnQueue(forceReconcile: false)
+                self?.processRuntimeUpdatesOnQueue(forceReconcile: false)
             }
         }
         self.observer = observer
@@ -55,7 +58,7 @@ final class NativeWallpaperSessionController: @unchecked Sendable {
                 return
             }
             self.startHeartbeatOnQueue()
-            self.processCurrentCommandOnQueue(forceReconcile: false)
+            self.processRuntimeUpdatesOnQueue(forceReconcile: false)
             self.publishStatusOnQueue()
         }
     }
@@ -97,7 +100,7 @@ final class NativeWallpaperSessionController: @unchecked Sendable {
                 )?.teardown(reason: "desktop-surface-replaced")
             }
             self.cancelCandidateOnQueue(reason: "desktop-topology-changed")
-            self.processCurrentCommandOnQueue(forceReconcile: true)
+            self.processRuntimeUpdatesOnQueue(forceReconcile: true)
             self.publishStatusOnQueue()
         }
     }
@@ -120,7 +123,7 @@ final class NativeWallpaperSessionController: @unchecked Sendable {
                 self.statusState = .inactive
                 self.statusFailure = nil
             } else {
-                self.processCurrentCommandOnQueue(forceReconcile: true)
+                self.processRuntimeUpdatesOnQueue(forceReconcile: true)
             }
             self.publishStatusOnQueue()
         }
@@ -128,7 +131,7 @@ final class NativeWallpaperSessionController: @unchecked Sendable {
 
     func processCurrentCommand() {
         queue.async { [weak self] in
-            self?.processCurrentCommandOnQueue(forceReconcile: false)
+            self?.processRuntimeUpdatesOnQueue(forceReconcile: false)
         }
     }
 
@@ -163,11 +166,16 @@ final class NativeWallpaperSessionController: @unchecked Sendable {
             guard let self, !self.isShuttingDown else {
                 return
             }
-            self.processCurrentCommandOnQueue(forceReconcile: false)
+            self.processRuntimeUpdatesOnQueue(forceReconcile: false)
             self.publishStatusOnQueue()
         }
         heartbeatTimer = timer
         timer.resume()
+    }
+
+    private func processRuntimeUpdatesOnQueue(forceReconcile: Bool) {
+        processCurrentCommandOnQueue(forceReconcile: forceReconcile)
+        processCurrentDisplayModeUpdateOnQueue()
     }
 
     private func processCurrentCommandOnQueue(forceReconcile: Bool) {
@@ -224,7 +232,7 @@ final class NativeWallpaperSessionController: @unchecked Sendable {
         }
         guard command.schemaVersion == NativeRuntimeConstants.schemaVersion,
               command.assetKind == .video,
-              let displayMode = command.displayMode else {
+              let requestedDisplayMode = command.displayMode else {
             lastProcessedCommandGeneration = command.generation
             failStatusOnQueue(
                 requestedGeneration: command.generation,
@@ -269,6 +277,10 @@ final class NativeWallpaperSessionController: @unchecked Sendable {
 
         let instanceID = UUID()
         candidateInstanceID = instanceID
+        let displayMode = state.activeGeneration == command.generation
+            ? activeDisplayMode ?? requestedDisplayMode
+            : requestedDisplayMode
+        candidateDisplayMode = displayMode
         state.beginCandidate(
             generation: command.generation,
             contextIDs: targetKeys
@@ -331,6 +343,74 @@ final class NativeWallpaperSessionController: @unchecked Sendable {
         }
     }
 
+    private func processCurrentDisplayModeUpdateOnQueue() {
+        guard let store else {
+            return
+        }
+
+        let update: NativeRuntimeDisplayModeUpdate
+        do {
+            guard let current = try store.readDisplayModeUpdate() else {
+                return
+            }
+            update = current
+        } catch {
+            macWallNativeWallpaperLogger.error(
+                "nativeRuntime displayMode read failed error=\(String(describing: error), privacy: .public)"
+            )
+            return
+        }
+
+        guard lastProcessedDisplayModeCommandID != update.commandID else {
+            return
+        }
+
+        let persistedPlayGeneration = lastCommand?.kind == .play
+            ? lastCommand?.generation
+            : nil
+        let decision = NativeRuntimeDisplayModeUpdatePolicy.decision(
+            targetGeneration: update.targetGeneration,
+            activeGeneration: state.activeGeneration,
+            candidateGeneration: state.candidateGeneration,
+            persistedPlayGeneration: persistedPlayGeneration
+        )
+        switch decision {
+        case .deferred:
+            return
+        case .ignore:
+            lastProcessedDisplayModeCommandID = update.commandID
+            let activeGenerationDescription =
+                state.activeGeneration?.uuidString ?? "none"
+            macWallNativeWallpaperLogger.info(
+                "nativeRuntime displayMode ignored command=\(update.commandID.uuidString, privacy: .public) target=\(update.targetGeneration.uuidString, privacy: .public) active=\(activeGenerationDescription, privacy: .public)"
+            )
+            return
+        case .apply(let targets):
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            if targets.active {
+                activeDisplayMode = update.displayMode
+                for bridge in activeBridges.values {
+                    bridge.setDisplayMode(update.displayMode)
+                }
+            }
+            if targets.candidate {
+                candidateDisplayMode = update.displayMode
+                for bridge in candidateBridges.values {
+                    bridge.setDisplayMode(update.displayMode)
+                }
+            }
+            CATransaction.commit()
+            CATransaction.flush()
+
+            lastProcessedDisplayModeCommandID = update.commandID
+            publishStatusOnQueue()
+            macWallNativeWallpaperLogger.info(
+                "nativeRuntime displayMode updated command=\(update.commandID.uuidString, privacy: .public) target=\(update.targetGeneration.uuidString, privacy: .public) mode=\(update.displayMode.rawValue, privacy: .public) active=\(targets.active, privacy: .public) candidate=\(targets.candidate, privacy: .public)"
+            )
+        }
+    }
+
     private func markCandidateReadyOnQueue(
         generation: UUID,
         instanceID: UUID,
@@ -382,6 +462,8 @@ final class NativeWallpaperSessionController: @unchecked Sendable {
         activeBridges = replacements
         candidateBridges = [:]
         candidateInstanceID = nil
+        activeDisplayMode = candidateDisplayMode
+        candidateDisplayMode = nil
         requestedGeneration = generation
         statusState = .playing
         statusFailure = nil
@@ -389,6 +471,7 @@ final class NativeWallpaperSessionController: @unchecked Sendable {
             bridge.teardown(reason: "candidate-committed")
         }
         publishStatusOnQueue()
+        processCurrentDisplayModeUpdateOnQueue()
     }
 
     private func failCandidateOnQueue(
@@ -406,6 +489,7 @@ final class NativeWallpaperSessionController: @unchecked Sendable {
         let rejected = candidateBridges
         candidateBridges = [:]
         candidateInstanceID = nil
+        candidateDisplayMode = nil
         for bridge in rejected.values {
             bridge.teardown(reason: "candidate-failed")
         }
@@ -437,6 +521,7 @@ final class NativeWallpaperSessionController: @unchecked Sendable {
         let cancelled = candidateBridges
         candidateBridges = [:]
         candidateInstanceID = nil
+        candidateDisplayMode = nil
         for bridge in cancelled.values {
             bridge.teardown(reason: reason)
         }

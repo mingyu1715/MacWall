@@ -28,6 +28,28 @@ public enum NativeRuntimeDisplayMode: String, Codable, Sendable {
     case stretch
 }
 
+public struct NativeRuntimeDisplayModeUpdate: Codable, Equatable, Sendable {
+    public let schemaVersion: Int
+    public let commandID: UUID
+    public let targetGeneration: UUID
+    public let displayMode: NativeRuntimeDisplayMode
+    public let createdAt: Date
+
+    public init(
+        schemaVersion: Int = NativeRuntimeConstants.schemaVersion,
+        commandID: UUID,
+        targetGeneration: UUID,
+        displayMode: NativeRuntimeDisplayMode,
+        createdAt: Date
+    ) {
+        self.schemaVersion = schemaVersion
+        self.commandID = commandID
+        self.targetGeneration = targetGeneration
+        self.displayMode = displayMode
+        self.createdAt = createdAt
+    }
+}
+
 public struct NativeRuntimeCommand: Codable, Equatable, Sendable {
     public let schemaVersion: Int
     public let kind: NativeRuntimeCommandKind

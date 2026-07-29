@@ -15,6 +15,7 @@ final class AppViewModel: ObservableObject {
     @Published var displayMode: WallpaperDisplayMode = .fit {
         didSet {
             wallpaperPlayer.setDisplayMode(displayMode)
+            playbackCoordinator.updateDisplayMode(displayMode)
             userDefaults.set(displayMode.rawValue, forKey: PreferenceKey.displayMode)
             if lockScreenAnimationEnabled, let asset = selectedLibraryAsset {
                 _ = refreshLockScreenAnimationConfiguration(asset: asset)

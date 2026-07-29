@@ -102,6 +102,10 @@ final class NativeVideoFrameBridge: @unchecked Sendable {
         }
     }
 
+    func setDisplayMode(_ displayMode: NativeRuntimeDisplayMode) {
+        layer.videoGravity = videoGravity(for: displayMode)
+    }
+
     func freezeKeepingLastFrame(reason: String) {
         queue.async { [weak self] in
             guard let self, !self.didTearDown else {

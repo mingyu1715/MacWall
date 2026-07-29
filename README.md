@@ -26,6 +26,7 @@ MacWall is for people who already bought Wallpaper Engine on Windows and copied 
     - **Fit** keeps the full wallpaper visible and may show letterboxing.
     - **Fill** covers the screen like Wallpaper Engine's cover-style modes and may crop the edges.
     - **Stretch** fills the screen exactly and may distort the image.
+    - Changing the mode during playback updates the current video without restarting it.
 11. Use **Remove** to delete an imported item from the Mac library without touching the original copied folder or video.
 
 The app runs as a menu bar utility. It does not stay in the Dock or app switcher, and the settings window can be closed while animated wallpapers continue running on the desktop layer.

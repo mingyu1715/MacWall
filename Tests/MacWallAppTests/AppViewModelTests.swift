@@ -194,6 +194,20 @@ final class AppViewModelTests: XCTestCase {
         XCTAssertTrue(model.restoreOriginalWallpaperOnStop)
     }
 
+    func testDisplayModeChangeUpdatesPlaybackCoordinator() throws {
+        let coordinator = MockPlaybackCoordinator()
+        let model = AppViewModel(
+            store: LibraryStore(root: try makeTempDirectory()),
+            loginItemController: MockLoginItemController(),
+            userDefaults: try makeUserDefaults(),
+            playbackCoordinator: coordinator
+        )
+
+        model.displayMode = .stretch
+
+        XCTAssertEqual(coordinator.displayModeUpdates, [.stretch])
+    }
+
     func testRestoreOriginalWallpaperToggleConfiguresLegacyFallbackRestore() throws {
         // Given
         let defaults = try makeUserDefaults()
@@ -907,6 +921,7 @@ private final class MockPlaybackCoordinator: WallpaperPlaybackCoordinating {
     var resolveDelay: Duration?
     var playedRequests: [PendingPlaybackRequest] = []
     var resolvedChoices: [NativeWallpaperSetupChoice] = []
+    var displayModeUpdates: [WallpaperDisplayMode] = []
     var stopCallCount = 0
     private let events: MockAppEventLog?
 
@@ -937,6 +952,10 @@ private final class MockPlaybackCoordinator: WallpaperPlaybackCoordinating {
 
     func stop() async throws {
         stopCallCount += 1
+    }
+
+    func updateDisplayMode(_ displayMode: WallpaperDisplayMode) {
+        displayModeUpdates.append(displayMode)
     }
 }
 

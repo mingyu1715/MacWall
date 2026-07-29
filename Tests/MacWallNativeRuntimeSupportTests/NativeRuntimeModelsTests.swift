@@ -19,9 +19,30 @@ final class NativeRuntimeModelsTests: XCTestCase {
         )
 
         XCTAssertEqual(decoded, command)
-        XCTAssertEqual(decoded.schemaVersion, 1)
+        XCTAssertEqual(decoded.schemaVersion, NativeRuntimeConstants.schemaVersion)
         XCTAssertEqual(decoded.kind, .play)
         XCTAssertEqual(decoded.assetKind, .video)
+    }
+
+    func testUpdateDisplayModeCommandTargetsActiveGeneration() throws {
+        let commandID = UUID()
+        let activeGeneration = UUID()
+        let update = NativeRuntimeDisplayModeUpdate(
+            commandID: commandID,
+            targetGeneration: activeGeneration,
+            displayMode: .stretch,
+            createdAt: Date(timeIntervalSince1970: 150)
+        )
+
+        let decoded = try JSONDecoder().decode(
+            NativeRuntimeDisplayModeUpdate.self,
+            from: JSONEncoder().encode(update)
+        )
+
+        XCTAssertEqual(decoded, update)
+        XCTAssertEqual(decoded.commandID, commandID)
+        XCTAssertEqual(decoded.targetGeneration, activeGeneration)
+        XCTAssertEqual(decoded.displayMode, .stretch)
     }
 
     func testStopCommandHasNoAssetPayload() {

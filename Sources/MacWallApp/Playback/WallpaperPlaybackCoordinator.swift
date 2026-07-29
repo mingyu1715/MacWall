@@ -1,5 +1,6 @@
 import Foundation
 import MacWallCore
+import os
 
 enum PlaybackBackendKind: Equatable {
     case legacy
@@ -40,11 +41,17 @@ protocol WallpaperPlaybackCoordinating: AnyObject {
         _ choice: NativeWallpaperSetupChoice,
         pending: PendingPlaybackRequest
     ) async throws -> PlaybackStartOutcome
+    func updateDisplayMode(_ displayMode: WallpaperDisplayMode)
     func stop() async throws
 }
 
 @MainActor
 final class WallpaperPlaybackCoordinator: WallpaperPlaybackCoordinating {
+    private static let logger = Logger(
+        subsystem: "io.github.mingyu1715.MacWall",
+        category: "PlaybackCoordinator"
+    )
+
     private enum Route {
         case automatic
         case legacy
@@ -61,6 +68,7 @@ final class WallpaperPlaybackCoordinator: WallpaperPlaybackCoordinating {
     private let legacyBackend: LegacyWallpaperBackendManaging
     private var inFlight: InFlightRequest?
     private var latestRequestID: UUID?
+    private var pendingDisplayMode: WallpaperDisplayMode?
     private(set) var activeReceipt: PlaybackReceipt?
 
     init(
@@ -91,8 +99,17 @@ final class WallpaperPlaybackCoordinator: WallpaperPlaybackCoordinating {
         }
     }
 
+    func updateDisplayMode(_ displayMode: WallpaperDisplayMode) {
+        guard inFlight == nil else {
+            pendingDisplayMode = displayMode
+            return
+        }
+        publishDisplayModeUpdate(displayMode)
+    }
+
     func stop() async throws {
         latestRequestID = nil
+        pendingDisplayMode = nil
         inFlight?.task.cancel()
         inFlight = nil
 
@@ -134,11 +151,13 @@ final class WallpaperPlaybackCoordinator: WallpaperPlaybackCoordinating {
             let outcome = try await task.value
             if inFlight?.request.requestID == request.requestID {
                 inFlight = nil
+                flushPendingDisplayModeUpdate()
             }
             return outcome
         } catch {
             if inFlight?.request.requestID == request.requestID {
                 inFlight = nil
+                flushPendingDisplayModeUpdate()
             }
             throw error
         }
@@ -194,6 +213,32 @@ final class WallpaperPlaybackCoordinator: WallpaperPlaybackCoordinating {
         )
         activeReceipt = receipt
         return .started(receipt)
+    }
+
+    private func flushPendingDisplayModeUpdate() {
+        guard let displayMode = pendingDisplayMode else {
+            return
+        }
+        pendingDisplayMode = nil
+        publishDisplayModeUpdate(displayMode)
+    }
+
+    private func publishDisplayModeUpdate(_ displayMode: WallpaperDisplayMode) {
+        guard activeReceipt?.backend == .native,
+              let activeGeneration = activeReceipt?.nativeGeneration else {
+            return
+        }
+        do {
+            try nativeBackend.updateDisplayMode(
+                displayMode,
+                activeGeneration: activeGeneration,
+                commandID: UUID()
+            )
+        } catch {
+            Self.logger.error(
+                "native displayMode update failed mode=\(displayMode.rawValue, privacy: .public) error=\(String(describing: error), privacy: .public)"
+            )
+        }
     }
 
     private func startLegacy(

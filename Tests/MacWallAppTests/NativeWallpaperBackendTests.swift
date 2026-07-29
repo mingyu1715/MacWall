@@ -127,6 +127,56 @@ final class NativeWallpaperBackendTests: XCTestCase {
         )
     }
 
+    func testUpdateDisplayModePublishesCommandForActiveGeneration() throws {
+        let now = Date(timeIntervalSince1970: 1_000)
+        let activeGeneration = UUID()
+        let commandID = UUID()
+        let harness = try makeHarness(now: now, statuses: [])
+        let playCommand = NativeRuntimeCommand.play(
+            generation: activeGeneration,
+            assetID: "video",
+            relativeSourcePath: "Generations/\(activeGeneration.uuidString)/source.mp4",
+            displayMode: .fit,
+            createdAt: now.addingTimeInterval(-1)
+        )
+        try harness.store.writeCommand(playCommand)
+
+        try harness.backend.updateDisplayMode(
+            .stretch,
+            activeGeneration: activeGeneration,
+            commandID: commandID
+        )
+
+        XCTAssertEqual(harness.notifier.postCount, 1)
+        let update = try XCTUnwrap(harness.store.readDisplayModeUpdate())
+        XCTAssertEqual(update.commandID, commandID)
+        XCTAssertEqual(update.targetGeneration, activeGeneration)
+        XCTAssertEqual(update.displayMode, .stretch)
+        XCTAssertEqual(try harness.store.readCommand(), playCommand)
+    }
+
+    func testUpdateDisplayModeDoesNotOverwriteStopCommand() throws {
+        let now = Date(timeIntervalSince1970: 1_000)
+        let harness = try makeHarness(now: now, statuses: [])
+        let stopCommand = NativeRuntimeCommand.stop(
+            generation: UUID(),
+            createdAt: now.addingTimeInterval(-1)
+        )
+        try harness.store.writeCommand(stopCommand)
+
+        try harness.backend.updateDisplayMode(
+            .fill,
+            activeGeneration: UUID(),
+            commandID: UUID()
+        )
+
+        XCTAssertEqual(try harness.store.readCommand(), stopCommand)
+        XCTAssertEqual(
+            try harness.store.readDisplayModeUpdate()?.displayMode,
+            .fill
+        )
+    }
+
     func testPlayRejectsExplicitFailureAndRemovesCandidateGeneration() async throws {
         let now = Date(timeIntervalSince1970: 1_000)
         let generation = UUID()

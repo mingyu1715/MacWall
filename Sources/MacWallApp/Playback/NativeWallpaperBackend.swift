@@ -49,6 +49,14 @@ final class UnavailableNativeWallpaperBackend: NativeWallpaperBackendManaging {
         throw NativeWallpaperBackendError.runtimeUnavailable
     }
 
+    func updateDisplayMode(
+        _ displayMode: WallpaperDisplayMode,
+        activeGeneration: UUID,
+        commandID: UUID
+    ) throws {
+        throw NativeWallpaperBackendError.runtimeUnavailable
+    }
+
     func stop(generation: UUID) async throws {}
 }
 
@@ -61,6 +69,11 @@ protocol NativeWallpaperBackendManaging: AnyObject {
         generation: UUID,
         timeout: Duration
     ) async throws -> NativePlaybackReceipt
+    func updateDisplayMode(
+        _ displayMode: WallpaperDisplayMode,
+        activeGeneration: UUID,
+        commandID: UUID
+    ) throws
     func stop(generation: UUID) async throws
 }
 
@@ -188,6 +201,24 @@ final class NativeWallpaperBackend: NativeWallpaperBackendManaging {
             generation: generation,
             assetID: asset.id,
             projectDirectory: asset.projectDirectory
+        )
+    }
+
+    func updateDisplayMode(
+        _ displayMode: WallpaperDisplayMode,
+        activeGeneration: UUID,
+        commandID: UUID
+    ) throws {
+        let update = NativeRuntimeDisplayModeUpdate(
+            commandID: commandID,
+            targetGeneration: activeGeneration,
+            displayMode: displayMode.nativeRuntimeDisplayMode,
+            createdAt: dateProvider.now()
+        )
+        try store.writeDisplayModeUpdate(update)
+        notifier.postChange()
+        Self.logger.info(
+            "nativeRuntime displayMode command=\(commandID.uuidString, privacy: .public) target=\(activeGeneration.uuidString, privacy: .public) mode=\(displayMode.rawValue, privacy: .public)"
         )
     }
 
