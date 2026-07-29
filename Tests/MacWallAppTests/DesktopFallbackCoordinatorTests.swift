@@ -357,6 +357,23 @@ final class DesktopFallbackCoordinatorTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: fixture.cacheURL), Data("newer".utf8))
     }
 
+    func testAbandonManagedSessionCancelsOwnershipWithoutDeletingFallbackCache() async throws {
+        let fixture = try makeFixture(existingCache: Data("cached".utf8))
+        let originalStore = MockOriginalDesktopWallpaperStore()
+        let coordinator = DesktopFallbackCoordinator(
+            generateFallback: { _, _ in },
+            applyDesktopImage: { _ in },
+            originalWallpaperStore: originalStore
+        )
+        coordinator.applyOrGenerate(asset: fixture.asset)
+        originalStore.events.removeAll()
+
+        coordinator.abandonManagedWallpaperSession()
+
+        XCTAssertEqual(originalStore.events, ["abandon"])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fixture.cacheURL.path))
+    }
+
     private func makeFixture(existingCache: Data? = nil) throws -> Fixture {
         let root = FileManager.default.temporaryDirectory
             .appending(path: "DesktopFallbackCoordinatorTests-\(UUID().uuidString)")
@@ -441,6 +458,10 @@ private final class MockOriginalDesktopWallpaperStore: OriginalDesktopWallpaperM
 
     func restoreOriginalWallpaperIfCurrentMatchesManagedFallback() {
         events.append("restore")
+    }
+
+    func abandonManagedWallpaperSession() {
+        events.append("abandon")
     }
 }
 

@@ -1,6 +1,6 @@
 # MacWall 개발 로드맵
 
-수정일: 2026-06-07
+수정일: 2026-07-27
 
 이 문서는 현재 활성 제품 개발 방향과 Scene 개발 방향을 정리합니다. 완료된 세부 구현 계획은 `docs/implemented/`에 기록하고, 과거 계획은 `docs/archive/`에 보관합니다.
 
@@ -177,12 +177,13 @@ Assets/
 - `AVSampleBufferDisplayLayer` 기반 generated frame과 실제 mp4 playback이 Desktop wallpaper surface에 출력되었습니다.
 - Fullscreen -> Desktop 복귀 시 기존 desktop-level `NSWindow` backend의 red-pill 문제가 native path에서 해결됨을 사용자 관측으로 확인했습니다.
 
-아직 production 기능이 아닙니다.
+Spike 자체는 production 기능이 아닙니다.
 
-- Main App 통합은 시작하지 않습니다.
+- 검증된 runtime은 P2.6에서 production target으로 승격됐으며, spike는 production runtime QA가 끝날 때까지 비교 기준으로 유지합니다.
 - 기존 `NSWindow` backend는 유지합니다.
 - snapshot/export gate는 별도 활성 작업으로 남아 있습니다.
-- asset mp4 playback timing 품질 개선은 별도 설계로 남겨둡니다.
+- asset mp4 playback timing은 bounded PTS pump, continuous loop PTS, `CMSampleBufferRenderSynchronizer` normal profile까지 구현하고 검증했습니다.
+- 4K60 H.264 sample에서 재생 품질과 timing은 안정적이었지만 BGRA decode path의 높은 IOSurface memory는 후속 최적화 대상으로 남아 있습니다.
 - Web, Scene, fallback PNG 정책 변경은 제외합니다.
 - SIP 비활성화, Dock/Finder injection, 시스템 wallpaper DB 직접 수정은 금지합니다.
 
@@ -191,6 +192,98 @@ Assets/
 - `docs/superpowers/specs/2026-06-15-native-wallpaper-snapshot-export-gate-design.md`
 - `docs/superpowers/plans/2026-06-15-native-wallpaper-snapshot-export-gate.md`
 - `docs/superpowers/specs/2026-06-19-native-wallpaper-playback-timing.md`
+- `docs/superpowers/plans/2026-07-20-native-wallpaper-playback-timing.md`
+
+### Phase P2.6: Native Wallpaper Backend Promotion
+
+상태: 구현 완료 / AdHocQA runtime 사용자 검증 대기 / production signing gate 유지
+
+목표:
+
+- 검증된 `MacWallNativeWallpaperSpike` runtime을 MacWall Main App의 production playback backend로 승격합니다.
+- 하나의 앱 안에서 Native와 Legacy backend를 분리합니다.
+- macOS 26+ Apple Silicon Video는 Native backend 대상으로 삼습니다.
+- macOS 25 이하, Intel, Native 미지원 format은 기존 Legacy backend를 유지합니다.
+
+핵심 결정:
+
+- Xcode app container가 containing app과 embedded wallpaper extension을 소유합니다.
+- 기존 Core/App/CLI와 테스트는 Swift Package로 유지합니다.
+- Main App과 extension은 App Group generation manifest와 ACK로 통신합니다.
+- Native wallpaper가 활성화되지 않은 Play 요청에는 `취소`, `기존 방식으로 재생`, `배경화면 설정 열기`를 제공합니다.
+- Native playback에서는 Desktop fallback과 original wallpaper restore state를 변경하지 않습니다.
+- 새 generation은 모든 active Desktop context에서 준비된 뒤에만 이전 generation을 교체합니다.
+- 구현 검증은 명령어, 정적 검사, 자동 테스트, 제공된 로그 분석 범위로 제한합니다.
+
+구현 결과:
+
+- `MacWallNativeRuntimeSupport`에 versioned command/status, atomic App Group store, immutable Video staging, generation state machine을 분리했습니다.
+- `MacWallHostApp`이 sandboxed `MacWallNativeWallpaperExtension`을 `Contents/Extensions`에 embed하며 Lock Screen saver target도 함께 소유합니다.
+- production extension에 검증된 `connect`, `provideSettingsViewModels`, `acquire`, remote `CAContext`, Video frame bridge를 승격했습니다.
+- extension은 heartbeat와 generation-aware ACK를 기록하고, 모든 Desktop context의 첫 frame이 준비된 경우에만 replacement를 commit합니다.
+- Main App은 Native/Legacy backend를 eligibility로 routing하며, 실패한 Native 전환은 기존 성공 playback을 유지합니다.
+- Native 미활성 Play에는 `취소`, `기존 방식으로 재생`, `배경화면 설정 열기` 3버튼 흐름을 연결했습니다.
+- Native Stop은 마지막 frame을 유지하며, Native 경로는 fallback PNG와 original wallpaper restore state를 변경하지 않습니다.
+- development-only `AdHocQA` configuration과 scheme은 Host/Extension이 POSIX account home 아래 `~/Library/Application Support/MacWall/NativeRuntimeAdHocQA`를 공유하도록 분리했습니다.
+- `AdHocQA` extension에만 위 디렉터리로 제한한 Sandbox temporary exception을 적용하며, Debug/Release는 기존 App Group transport를 유지합니다.
+- App Group 접근 실패 시 `development-home`으로 자동 fallback하지 않습니다.
+- `Scripts/native-wallpaper-adhoc-qa.sh`에 QA 전용 `reset`, `install`, `status`, `logs` 흐름을 추가했습니다.
+
+검증 결과:
+
+- 전체 `swift test`: 208 tests, 0 failures
+- AdHocQA transport/store/backend focused test: 22 tests, 0 failures
+- project structure guard 및 Bash syntax 검사 통과
+- Xcode target/scheme 목록 검사 통과
+- Host + `Contents/Extensions` embedded appex unsigned compile 통과
+- `AdHocQA` Host/Extension ad-hoc signed build와 `codesign --verify --deep --strict` 통과
+- 빌드 산출물의 Host/Extension transport 값이 모두 `development-home`임을 확인
+- Host에는 App Group entitlement가 없고, Extension에는 sandbox와 정확한 QA home-relative read/write 예외만 적용됨을 확인
+- production WallpaperAgent discovery/handshake는 통과했지만, ad-hoc App Group write는 `NSCocoaErrorDomain 513`으로 실패했습니다.
+- 이번 AdHocQA 구현 후 System Settings 선택, 실제 Desktop 출력, Host/Extension command round trip, Fullscreen/Space 전환은 실행하지 않았습니다.
+- proper Apple signing/provisioning 기반 App Group runtime QA가 통과하기 전에는 P2.6 완료 기록을 만들거나 승격 계획을 archive하지 않습니다.
+
+설계:
+
+- `docs/superpowers/specs/2026-07-27-native-wallpaper-backend-promotion-design.md`
+
+실행 계획:
+
+- `docs/superpowers/plans/2026-07-28-native-wallpaper-backend-promotion.md`
+
+이번 phase 제외:
+
+- snapshot/export 해결
+- Native Web/Scene
+- pixel format 및 IOSurface memory 최적화
+- GUI/System Settings 자동 검증
+- package, DMG, notarization, `dist` 작업
+
+### Phase P2.7: Native Auto-pause 및 Runtime Stability
+
+상태: 구현 및 정적 검증 완료 / 사용자 runtime QA 대기
+
+구현 결과:
+
+- Main App이 Desktop visibility를 감지해 active Native generation에 `playback-control.json`을 발행합니다.
+- Desktop covered/visible 상태는 각각 200ms debounce를 사용하고, sleep은 즉시 suspend, wake는 500ms 후 visibility를 재평가합니다.
+- Extension은 마지막 frame과 reader 상태를 유지한 채 playback clock과 decode/read/enqueue pump만 가역적으로 중단합니다.
+- 전환 중 candidate는 모든 Desktop context에서 first frame을 만든 뒤 최신 suspension 상태를 적용합니다.
+- active renderer 첫 실패는 기존 surface를 유지한 채 같은 generation의 replacement를 한 번만 준비합니다.
+- 같은 generation의 복구가 다시 실패하면 무한 재시작하지 않고 active bridge를 마지막 frame으로 freeze하며 failed status를 기록합니다.
+- Native Stop ACK 이후 generation staging과 transient display/playback control만 정리하고 runtime root와 QA transport는 보존합니다.
+- Legacy fallback, original wallpaper restore, snapshot/export, Web, Scene 동작은 변경하지 않았습니다.
+
+검증 결과:
+
+- 전체 `swift test`: 254 tests, 0 failures
+- Native focused test와 project structure guard 통과
+- Host + embedded Native extension unsigned AdHocQA compile 통과
+- 앱 실행, System Settings 조작, 실제 Desktop runtime QA는 수행하지 않았습니다.
+
+완료 기록:
+
+- `docs/implemented/2026-07-29-native-auto-pause-runtime-stability.md`
 
 ### Phase P3: Web Runtime Completion
 
@@ -482,6 +575,8 @@ Product work:
 P1 Desktop Fallback Cache (완료)
 -> P2 Playback Stability (완료)
 -> P2.5 macOS 26 Native Wallpaper Mode Spike (완료)
+-> P2.6 Native Wallpaper Backend Promotion (구현 완료 / runtime QA 대기)
+-> P2.7 Native Auto-pause 및 Runtime Stability (구현/정적 검증 완료, runtime QA 대기)
 -> Native Wallpaper follow-up gates (보류)
 -> P3 Web Runtime Completion
 ```
@@ -508,10 +603,10 @@ S0 Format Research and Fixture Catalog
 
 ## 11. 다음 Planning Session
 
-다음 product work:
+다음 planning:
 
-1. `docs/superpowers/plans/2026-07-20-native-wallpaper-playback-timing.md`의 Task 1부터 isolated branch/worktree에서 실행합니다.
-2. bounded pump, clock 비교, loop retiming, drop/reduced profile을 순서대로 검증합니다.
-3. snapshot/export는 playback timing과 섞지 않고 `docs/superpowers/plans/2026-06-15-native-wallpaper-snapshot-export-gate.md`의 별도 gate로 유지합니다.
-4. Main App 통합은 snapshot/export와 playback timing 안정화 전까지 시작하지 않습니다.
-5. P3 방향과 Scene runtime 우선순위가 확정되기 전에는 Scene S0를 시작하지 않습니다.
+1. 별도 사용자 gate에서 Native auto-pause, sleep/wake, 1회 recovery의 실제 Desktop 동작을 확인합니다.
+2. 다음 구현 작업은 Scene Engine의 `S0 Format Research and Fixture Catalog` 설계/spec과 실행 계획 작성입니다.
+3. S0 승인 전에는 Metal renderer, Scene fallback, Native Scene surface 구현을 시작하지 않습니다.
+4. snapshot/export는 `docs/superpowers/plans/2026-06-15-native-wallpaper-snapshot-export-gate.md`, BGRA IOSurface memory는 별도 최적화 작업으로 유지합니다.
+5. proper Apple signing/provisioning 기반 App Group runtime QA는 release 전 별도 gate로 유지합니다.

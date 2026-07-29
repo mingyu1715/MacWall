@@ -232,6 +232,41 @@ final class OriginalDesktopWallpaperStoreTests: XCTestCase {
         XCTAssertEqual(store.records, [:])
     }
 
+    func testAbandonManagedSessionRemovesStateWithoutRestoringWallpaper() throws {
+        let storageDirectory = try makeTempDirectory()
+        let original = storageDirectory.appending(path: "original.jpg")
+        try Data("original".utf8).write(to: original)
+        let fallback = storageDirectory
+            .appending(path: "Assets/id/Derived/desktop-fallback.png")
+        try FileManager.default.createDirectory(
+            at: fallback.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("fallback".utf8).write(to: fallback)
+        let source = SnapshotSource([
+            .staticImage(screenID: "main", wallpaperURL: original)
+        ])
+        var restored: [URL] = []
+        let store = makeStore(
+            storageDirectory: storageDirectory,
+            current: { source.snapshots },
+            restored: { url, _ in restored.append(url) }
+        )
+        store.restoreOnStopEnabled = true
+        _ = store.captureOriginalWallpaperIfNeeded(beforeApplyingFallback: fallback)
+        store.recordAppAppliedFallback(fallback)
+        let cachedOriginal = try XCTUnwrap(
+            store.records["main"]?.cachedOriginalWallpaperURL
+        )
+
+        store.abandonManagedWallpaperSession()
+
+        XCTAssertTrue(store.records.isEmpty)
+        XCTAssertTrue(restored.isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: cachedOriginal.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fallback.path))
+    }
+
     private func makeStore(
         storageDirectory: URL? = nil,
         current: @escaping @MainActor () -> [DesktopWallpaperSnapshot],

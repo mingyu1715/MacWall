@@ -32,6 +32,7 @@ MacWall is for people who already bought Wallpaper Engine on Windows and copied 
     - **Fit** keeps the full wallpaper visible and may show letterboxing.
     - **Fill** covers the screen like Wallpaper Engine's cover-style modes and may crop the edges.
     - **Stretch** fills the screen exactly and may distort the image.
+    - Changing the mode during playback updates the current video without restarting it.
 11. Use **Remove** to delete an imported item from the Mac library without touching the original copied folder or video.
 
 The app runs as a menu bar utility. It does not stay in the Dock or app switcher, and the settings window can be closed while animated wallpapers continue running on the desktop layer.
@@ -40,17 +41,25 @@ To animate the Lock Screen, turn on **Animate Lock Screen**, click **Screen Save
 
 ## Playback Behavior
 
-- **Auto-pause behind apps** is enabled by default.
+- MP4, MOV, and M4V videos on Apple Silicon Macs running macOS 26 or later are eligible for Native Video playback.
+- Before using Native Video for the first time, select MacWall once in macOS **Wallpaper** settings.
+- If Native is inactive when you click **Play on Desktop**, MacWall offers **Open Wallpaper Settings**, **Play Using Legacy Mode**, and **Cancel**. The Legacy choice applies only to that Play request.
+- macOS 25 and earlier, Intel Macs, and Native-unsupported formats continue to use the Legacy desktop layer.
+- **Stop Playback** in Native mode stops the playback clock while preserving the final frame and the MacWall selection in macOS. Native mode does not generate or apply `desktop-fallback.png`.
+- **Auto-pause behind apps** is enabled by default. Native Video pauses only its playback clock and decode/read/enqueue work after the desktop has remained covered for 200 ms, while preserving the last frame.
 - Minimizing or hiding the MacWall control window does not stop playback.
 - Closing the settings window does not quit the app. Use **Quit** from the menu bar icon when you want to fully stop the background utility.
 - When another app covers the desktop, the wallpaper layer stays in place. Standalone videos pause on their current frame. Web wallpapers pause CSS animations but keep embedded videos running to avoid a visible resume delay.
-- When you return to the desktop, playback resumes automatically.
-- After sleep/wake or monitor changes, the app recreates the wallpaper windows and resumes the selected wallpaper.
+- Playback resumes after the desktop has remained visible for 200 ms. Sleep suspends immediately, and wake re-evaluates visibility after 500 ms.
+- If a Native renderer fails, MacWall keeps the existing surface while attempting one transactional recovery for the same playback generation. A second failure preserves the last frame and failed state instead of restarting indefinitely.
+- After sleep/wake or monitor changes, the app restores the selected wallpaper's runtime state.
 - You can disable auto-pause from the menu bar icon or the settings window if you want continuous playback.
 - Turn on **Open at Login** if you want the menu bar utility to start automatically after logging in. The last played wallpaper is restored on app launch unless you press **Stop Playback** first.
 - Use **Remove** in the imported library list to delete copied Mac-library files you no longer want.
 
-To reduce flashes of the previous macOS wallpaper during Spaces and full-screen transitions, the app keeps a per-item `Derived/desktop-fallback.png`. Play/Apply starts the live desktop layer first. If the fallback already exists, the app then applies it as the macOS system wallpaper. When it is absent, Video, Image, and Web items generate it asynchronously from the real source or rendered Web output. Web snapshot failure does not stop live playback. Workshop previews and Scene thumbnails are never used as desktop fallback cache sources. Use the library item's menu commands **Show in Finder**, **Generate Desktop Fallback**, and **Regenerate Desktop Fallback** to inspect or rebuild the cache manually. When **Restore on Stop** is enabled, static image wallpapers are copied to `Application Support/MacWall/DesktopWallpaperRestore/Originals` before the app applies a fallback, and **Stop Playback** restores that copy only while the current macOS wallpaper is still the app-applied fallback. MacWall `desktop-fallback.png` files are not captured as original wallpapers. macOS built-in or dynamic wallpapers such as `Macintosh` cannot be restored reliably through public APIs, so the app warns and skips automatic restore for those sessions. After a different item successfully applies its new fallback, the previous item's `desktop-fallback.png` is deleted. **Stop Playback** preserves the current item's cache for later reuse.
+The Native production target has passed automated tests and static integration checks. Production runtime QA for actual Desktop output and Fullscreen/Space behavior remains pending.
+
+In Legacy mode, the app keeps a per-item `Derived/desktop-fallback.png` to reduce flashes of the previous macOS wallpaper during Spaces and full-screen transitions. Play/Apply starts the live desktop layer first. If the fallback already exists, the app then applies it as the macOS system wallpaper. When it is absent, Video, Image, and Web items generate it asynchronously from the real source or rendered Web output. Web snapshot failure does not stop live playback. Workshop previews and Scene thumbnails are never used as desktop fallback cache sources. Use the library item's menu commands **Show in Finder**, **Generate Desktop Fallback**, and **Regenerate Desktop Fallback** to inspect or rebuild the cache manually. When **Restore on Stop** is enabled, static image wallpapers are copied to `Application Support/MacWall/DesktopWallpaperRestore/Originals` before the app applies a fallback, and **Stop Playback** restores that copy only while the current macOS wallpaper is still the app-applied fallback. MacWall `desktop-fallback.png` files are not captured as original wallpapers. macOS built-in or dynamic wallpapers such as `Macintosh` cannot be restored reliably through public APIs, so the app warns and skips automatic restore for those sessions. After a different item successfully applies its new fallback, the previous item's `desktop-fallback.png` is deleted. **Stop Playback** preserves the current item's cache for later reuse.
 
 ## Performance Snapshot
 

@@ -1,0 +1,342 @@
+import Foundation
+import MacWallCore
+import MacWallNativeRuntimeSupport
+import os
+
+enum NativeWallpaperActivationStatus: Equatable {
+    case active(NativeRuntimeStatus)
+    case inactive
+}
+
+struct NativePlaybackReceipt: Equatable {
+    let generation: UUID
+    let assetID: WallpaperAsset.ID
+    let projectDirectory: String
+}
+
+enum NativeWallpaperBackendError: Error, Equatable, LocalizedError {
+    case runtimeUnavailable
+    case missingEntrypoint
+    case timedOut
+    case runtimeFailed(code: String, message: String)
+
+    var errorDescription: String? {
+        switch self {
+        case .runtimeUnavailable:
+            return "The Native wallpaper runtime is unavailable."
+        case .missingEntrypoint:
+            return "The Native wallpaper video source is missing."
+        case .timedOut:
+            return "The Native wallpaper runtime did not acknowledge the request in time."
+        case .runtimeFailed(_, let message):
+            return message
+        }
+    }
+}
+
+@MainActor
+final class UnavailableNativeWallpaperBackend: NativeWallpaperBackendManaging {
+    func activationStatus(timeout: Duration) async -> NativeWallpaperActivationStatus {
+        .inactive
+    }
+
+    func play(
+        asset: WallpaperAsset,
+        displayMode: WallpaperDisplayMode,
+        generation: UUID,
+        timeout: Duration
+    ) async throws -> NativePlaybackReceipt {
+        throw NativeWallpaperBackendError.runtimeUnavailable
+    }
+
+    func updateDisplayMode(
+        _ displayMode: WallpaperDisplayMode,
+        activeGeneration: UUID,
+        commandID: UUID
+    ) throws {
+        throw NativeWallpaperBackendError.runtimeUnavailable
+    }
+
+    func updatePlaybackSuspended(
+        _ isSuspended: Bool,
+        activeGeneration: UUID,
+        commandID: UUID
+    ) throws {
+        throw NativeWallpaperBackendError.runtimeUnavailable
+    }
+
+    func stop(generation: UUID) async throws {}
+}
+
+@MainActor
+protocol NativeWallpaperBackendManaging: AnyObject {
+    func activationStatus(timeout: Duration) async -> NativeWallpaperActivationStatus
+    func play(
+        asset: WallpaperAsset,
+        displayMode: WallpaperDisplayMode,
+        generation: UUID,
+        timeout: Duration
+    ) async throws -> NativePlaybackReceipt
+    func updateDisplayMode(
+        _ displayMode: WallpaperDisplayMode,
+        activeGeneration: UUID,
+        commandID: UUID
+    ) throws
+    func updatePlaybackSuspended(
+        _ isSuspended: Bool,
+        activeGeneration: UUID,
+        commandID: UUID
+    ) throws
+    func stop(generation: UUID) async throws
+}
+
+extension NativeWallpaperBackendManaging {
+    func activationStatus() async -> NativeWallpaperActivationStatus {
+        await activationStatus(timeout: .milliseconds(500))
+    }
+}
+
+@MainActor
+final class NativeWallpaperBackend: NativeWallpaperBackendManaging {
+    private static let logger = Logger(
+        subsystem: "io.github.mingyu1715.MacWall",
+        category: "NativeRuntime"
+    )
+
+    private let store: NativeRuntimeStore
+    private let notifier: any NativeRuntimeNotifying
+    private let waiter: NativeRuntimeWaiter
+    private let dateProvider: any NativeRuntimeDateProviding
+    private var operationRevision: UInt64 = 0
+
+    init(
+        store: NativeRuntimeStore,
+        notifier: any NativeRuntimeNotifying = NativeRuntimeDarwinNotifier(),
+        waiter: NativeRuntimeWaiter? = nil,
+        dateProvider: any NativeRuntimeDateProviding = SystemNativeRuntimeDateProvider()
+    ) {
+        self.store = store
+        self.notifier = notifier
+        self.dateProvider = dateProvider
+        self.waiter = waiter ?? NativeRuntimeWaiter(
+            readStatus: { try store.readStatus() },
+            dateProvider: dateProvider
+        )
+    }
+
+    convenience init() throws {
+        let mode = try NativeRuntimeTransportMode.configured()
+        let store = try NativeRuntimeStore.live(mode: mode)
+        Self.logger.info(
+            "nativeRuntime transportMode=\(mode.rawValue, privacy: .public) root=\(store.rootURL.path, privacy: .public)"
+        )
+        self.init(store: store)
+    }
+
+    func activationStatus(timeout: Duration) async -> NativeWallpaperActivationStatus {
+        let initialStatus = try? waiter.currentStatus()
+        if let initialStatus, isActive(initialStatus) {
+            return .active(initialStatus)
+        }
+
+        let previousHeartbeat = initialStatus?.heartbeatAt
+        notifier.postChange()
+        do {
+            let status = try await waiter.wait(timeout: timeout) { [waiter] status in
+                guard waiter.isFresh(status),
+                      status.activeDesktopContextCount > 0 else {
+                    return false
+                }
+                guard let previousHeartbeat else {
+                    return true
+                }
+                return status.heartbeatAt > previousHeartbeat
+            }
+            return .active(status)
+        } catch {
+            return .inactive
+        }
+    }
+
+    func play(
+        asset: WallpaperAsset,
+        displayMode: WallpaperDisplayMode,
+        generation: UUID,
+        timeout: Duration
+    ) async throws -> NativePlaybackReceipt {
+        guard let entrypoint = asset.entrypoint else {
+            throw NativeWallpaperBackendError.missingEntrypoint
+        }
+
+        let revision = beginOperation()
+        let sourceURL = URL(filePath: entrypoint)
+
+        do {
+            let relativeSourcePath = try await Task.detached(
+                priority: .userInitiated
+            ) { [store] in
+                try store.stageVideo(
+                    sourceURL: sourceURL,
+                    generation: generation
+                )
+            }.value
+            try Task.checkCancellation()
+            guard operationRevision == revision else {
+                throw CancellationError()
+            }
+
+            let createdAt = dateProvider.now()
+            let command = NativeRuntimeCommand.play(
+                generation: generation,
+                assetID: asset.id,
+                relativeSourcePath: relativeSourcePath,
+                displayMode: displayMode.nativeRuntimeDisplayMode,
+                createdAt: createdAt
+            )
+            try store.writeCommand(command)
+            notifier.postChange()
+            _ = try await waiter.wait(timeout: timeout) { [waiter] status in
+                guard waiter.isFresh(status),
+                      status.heartbeatAt >= createdAt,
+                      status.requestedGeneration == generation else {
+                    return false
+                }
+                if status.state == .failed {
+                    let failure = status.failure
+                    throw NativeWallpaperBackendError.runtimeFailed(
+                        code: failure?.code ?? "unknown",
+                        message: failure?.message ?? "Native wallpaper playback failed."
+                    )
+                }
+                return status.state == .playing
+                    && status.activeGeneration == generation
+                    && status.activeDesktopContextCount > 0
+            }
+            try Task.checkCancellation()
+            guard operationRevision == revision else {
+                throw CancellationError()
+            }
+        } catch is NativeRuntimeWaiterError {
+            await removeGeneration(generation)
+            throw NativeWallpaperBackendError.timedOut
+        } catch {
+            await removeGeneration(generation)
+            throw error
+        }
+
+        removeUnreferencedGenerations(keeping: [generation])
+        return NativePlaybackReceipt(
+            generation: generation,
+            assetID: asset.id,
+            projectDirectory: asset.projectDirectory
+        )
+    }
+
+    func updateDisplayMode(
+        _ displayMode: WallpaperDisplayMode,
+        activeGeneration: UUID,
+        commandID: UUID
+    ) throws {
+        let update = NativeRuntimeDisplayModeUpdate(
+            commandID: commandID,
+            targetGeneration: activeGeneration,
+            displayMode: displayMode.nativeRuntimeDisplayMode,
+            createdAt: dateProvider.now()
+        )
+        try store.writeDisplayModeUpdate(update)
+        notifier.postChange()
+        Self.logger.info(
+            "nativeRuntime displayMode command=\(commandID.uuidString, privacy: .public) target=\(activeGeneration.uuidString, privacy: .public) mode=\(displayMode.rawValue, privacy: .public)"
+        )
+    }
+
+    func updatePlaybackSuspended(
+        _ isSuspended: Bool,
+        activeGeneration: UUID,
+        commandID: UUID
+    ) throws {
+        let update = NativeRuntimePlaybackControlUpdate(
+            commandID: commandID,
+            targetGeneration: activeGeneration,
+            isSuspended: isSuspended,
+            createdAt: dateProvider.now()
+        )
+        try store.writePlaybackControlUpdate(update)
+        notifier.postChange()
+        Self.logger.info(
+            "nativeRuntime playbackControl command=\(commandID.uuidString, privacy: .public) target=\(activeGeneration.uuidString, privacy: .public) suspended=\(isSuspended, privacy: .public)"
+        )
+    }
+
+    func stop(generation: UUID) async throws {
+        let revision = beginOperation()
+        let createdAt = dateProvider.now()
+        try store.writeCommand(.stop(generation: generation, createdAt: createdAt))
+        notifier.postChange()
+        do {
+            _ = try await waiter.wait(timeout: .seconds(5)) { [waiter] status in
+                waiter.isFresh(status)
+                    && status.heartbeatAt >= createdAt
+                    && status.requestedGeneration == generation
+                    && status.state == .stopped
+            }
+        } catch is NativeRuntimeWaiterError {
+            throw NativeWallpaperBackendError.timedOut
+        }
+        guard operationRevision == revision else {
+            Self.logger.info(
+                "nativeRuntime stop cleanup skipped generation=\(generation.uuidString, privacy: .public) reason=newer-operation"
+            )
+            return
+        }
+        removeAllGenerationsAndTransientUpdates()
+    }
+
+    private func isActive(_ status: NativeRuntimeStatus) -> Bool {
+        waiter.isFresh(status) && status.activeDesktopContextCount > 0
+    }
+
+    private func removeGeneration(_ generation: UUID) async {
+        _ = try? await Task.detached(priority: .utility) { [store] in
+            try store.removeGeneration(generation)
+        }.value
+    }
+
+    private func removeUnreferencedGenerations(keeping generations: Set<UUID>) {
+        do {
+            try store.removeUnreferencedGenerations(keeping: generations)
+        } catch {
+            Self.logger.error(
+                "nativeRuntime generation cleanup failed error=\(String(describing: error), privacy: .public)"
+            )
+        }
+    }
+
+    private func removeAllGenerationsAndTransientUpdates() {
+        do {
+            try store.removeAllGenerationsAndTransientUpdates()
+        } catch {
+            Self.logger.error(
+                "nativeRuntime stop cleanup failed error=\(String(describing: error), privacy: .public)"
+            )
+        }
+    }
+
+    private func beginOperation() -> UInt64 {
+        operationRevision &+= 1
+        return operationRevision
+    }
+}
+
+private extension WallpaperDisplayMode {
+    var nativeRuntimeDisplayMode: NativeRuntimeDisplayMode {
+        switch self {
+        case .fit:
+            return .fit
+        case .fill:
+            return .fill
+        case .stretch:
+            return .stretch
+        }
+    }
+}

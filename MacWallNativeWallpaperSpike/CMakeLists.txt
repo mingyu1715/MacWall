@@ -5,7 +5,12 @@ project(MacWallNativeWallpaperSpike LANGUAGES Swift)
 set(CMAKE_XCODE_GENERATE_TOP_LEVEL_PROJECT_ONLY TRUE)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "26.0")
 
-set(MACWALL_NATIVE_SAMPLE_VIDEO_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/../test/3589742531/【哲风壁纸】夕阳花海-短发-等待.mp4")
+set(
+    MACWALL_NATIVE_SAMPLE_VIDEO_SOURCE
+    "${CMAKE_CURRENT_SOURCE_DIR}/../test/3589742531/【哲风壁纸】夕阳花海-短发-等待.mp4"
+    CACHE FILEPATH
+    "Local sample video copied into the native wallpaper spike build"
+)
 set(MACWALL_NATIVE_WALLPAPER_EXTENSION_RESOURCES)
 if(EXISTS "${MACWALL_NATIVE_SAMPLE_VIDEO_SOURCE}")
     set(MACWALL_NATIVE_SAMPLE_VIDEO_RESOURCE "${CMAKE_CURRENT_BINARY_DIR}/macwall-native-wallpaper-sample.mp4")
@@ -21,11 +26,16 @@ endif()
 add_executable(MacWallNativeWallpaperExtension MACOSX_BUNDLE
     MacWallNativeWallpaperExtension/MacWallNativeWallpaperExtension.swift
     MacWallNativeWallpaperExtension/MacWallNativeWallpaperRuntimeIdentity.swift
+    MacWallNativeWallpaperExtension/MacWallNativeWallpaperTimingMode.generated.swift
     MacWallNativeWallpaperExtension/MacWallNativeWallpaperVideoSource.swift
     MacWallNativeWallpaperExtension/MacWallNativeWallpaperVideoSourceMode.generated.swift
     MacWallNativeWallpaperExtension/MacWallRemoteContextProbe.swift
     MacWallNativeWallpaperExtension/MacWallSnapshotProbeMode.generated.swift
     MacWallNativeWallpaperExtension/NativeVideoFrameBridge.swift
+    MacWallNativeWallpaperExtension/NativeVideoPlaybackClock.swift
+    MacWallNativeWallpaperExtension/NativeVideoPlaybackTiming.swift
+    MacWallNativeWallpaperExtension/NativeVideoRendererAdapter.swift
+    MacWallNativeWallpaperExtension/NativeVideoSampleRetimer.swift
     MacWallNativeWallpaperExtension/MacWallWallpaperExtensionConfiguration.swift
     MacWallNativeWallpaperExtension/MacWallWallpaperSettingsViewModelStub.swift
     MacWallNativeWallpaperExtension/MacWallWallpaperXPCHandler.swift
@@ -73,7 +83,10 @@ set_target_properties(MacWallNativeWallpaperSpikeApp PROPERTIES
 add_executable(MacWallNativeWallpaperRuntimeIdentityTests
     MacWallNativeWallpaperExtension/MacWallNativeWallpaperRuntimeIdentity.swift
     MacWallNativeWallpaperExtension/MacWallNativeWallpaperVideoSource.swift
+    MacWallNativeWallpaperExtension/NativeVideoPlaybackTiming.swift
+    MacWallNativeWallpaperExtension/NativeVideoSampleRetimer.swift
     Tests/MacWallNativeWallpaperRuntimeIdentityTests.swift
+    Tests/NativeVideoPlaybackTimingTests.swift
 )
 
 set_target_properties(MacWallNativeWallpaperRuntimeIdentityTests PROPERTIES

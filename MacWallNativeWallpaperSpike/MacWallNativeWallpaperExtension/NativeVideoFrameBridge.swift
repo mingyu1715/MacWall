@@ -20,6 +20,10 @@ final class NativeVideoFrameBridge: @unchecked Sendable {
 
     private let bridgeID = UUID().uuidString.uppercased()
     private let displayLayer: AVSampleBufferDisplayLayer
+    private let rendererAdapter: NativeVideoRendererAdapter
+    private let playbackClock: NativeVideoPlaybackClock?
+    private let timingPolicy: NativeVideoPlaybackTimingPolicy
+    private let timingProfile: MacWallNativeWallpaperTimingProfile
     private let source: Source
     private let queue = DispatchQueue(label: "macwall.native-video-frame-bridge", qos: .userInitiated)
     private let width = 640
@@ -29,7 +33,15 @@ final class NativeVideoFrameBridge: @unchecked Sendable {
     private var timer: DispatchSourceTimer?
     private var assetReader: AVAssetReader?
     private var assetOutput: AVAssetReaderTrackOutput?
+    private var assetDuration: CMTime = .invalid
     private var assetLoopIndex: Int64 = 0
+    private var pendingAssetSampleBuffer: CMSampleBuffer?
+    private var assetPumpGeneration = NativeVideoAssetPumpGeneration()
+    private var queuedFrameCount: Int64 = 0
+    private var droppedFrameCount: Int64 = 0
+    private var lastEnqueuedPTSSeconds: Double?
+    private var hardResetTracker = NativeVideoHardResetTracker(windowSeconds: 5)
+    private var lastTimingLogHostTime: CFTimeInterval = 0
     private var isRunning = false
     private var didStop = false
 
@@ -41,7 +53,29 @@ final class NativeVideoFrameBridge: @unchecked Sendable {
         displayLayer.contentsScale = max(scale, 1)
         displayLayer.videoGravity = .resizeAspectFill
 
+        let rendererAdapter = NativeVideoRendererAdapter(displayLayer: displayLayer)
+        let timingProfile = MacWallNativeWallpaperTimingConfiguration.profile
+        let timingConfiguration: NativeVideoPlaybackTimingConfiguration = switch timingProfile {
+        case .normal:
+            .normal
+        case .reduced:
+            .reduced
+        }
+
         self.displayLayer = displayLayer
+        self.rendererAdapter = rendererAdapter
+        self.playbackClock = switch source {
+        case .generated:
+            nil
+        case .asset:
+            NativeVideoPlaybackClock(
+                mode: MacWallNativeWallpaperTimingConfiguration.clockMode,
+                displayLayer: displayLayer,
+                renderer: rendererAdapter.renderer
+            )
+        }
+        self.timingPolicy = NativeVideoPlaybackTimingPolicy(configuration: timingConfiguration)
+        self.timingProfile = timingProfile
         self.source = source
         rootLayer.addSublayer(displayLayer)
     }
@@ -121,9 +155,12 @@ final class NativeVideoFrameBridge: @unchecked Sendable {
             self.isRunning = false
             self.timer?.cancel()
             self.timer = nil
+            self.assetPumpGeneration.advance()
+            self.pendingAssetSampleBuffer = nil
+            self.rendererAdapter.stopRequestingMediaData()
+            self.playbackClock?.stop()
             self.resetAssetReader()
-            self.displayLayer.stopRequestingMediaData()
-            self.displayLayer.flushAndRemoveImage()
+            self.rendererAdapter.flush(removeDisplayedImage: true)
             self.displayLayer.removeFromSuperlayer()
             macWallNativeWallpaperLogger.info(
                 "nativeVideoBridge stopped bridgeID=\(self.bridgeID, privacy: .public) reason=\(reason, privacy: .public) lastFrame=\(self.frameIndex)"
@@ -164,10 +201,20 @@ final class NativeVideoFrameBridge: @unchecked Sendable {
             fallbackToGeneratedFrames(reason: "asset-reader-start-failed")
             return
         }
-
-        displayLayer.requestMediaDataWhenReady(on: queue) { [weak self] in
-            self?.enqueueAssetFrames(videoURL: videoURL)
+        guard let playbackClock else {
+            fallbackToGeneratedFrames(reason: "asset-playback-clock-missing")
+            return
         }
+
+        let generation = assetPumpGeneration.advance()
+        pendingAssetSampleBuffer = nil
+        queuedFrameCount = 0
+        droppedFrameCount = 0
+        assetLoopIndex = 0
+        lastEnqueuedPTSSeconds = nil
+        hardResetTracker = NativeVideoHardResetTracker(windowSeconds: 5)
+        playbackClock.start(at: .zero)
+        requestAssetPump(videoURL: videoURL, generation: generation)
     }
 
     private func enqueueNextGeneratedFrame() {
@@ -175,19 +222,19 @@ final class NativeVideoFrameBridge: @unchecked Sendable {
             return
         }
 
-        if displayLayer.status == .failed {
+        if rendererAdapter.status == .failed {
             macWallNativeWallpaperLogger.error(
-                "nativeVideoBridge displayLayer failed: \(String(describing: self.displayLayer.error), privacy: .public)"
+                "nativeVideoBridge displayLayer failed: \(String(describing: self.rendererAdapter.error), privacy: .public)"
             )
-            displayLayer.flush()
+            rendererAdapter.flush(removeDisplayedImage: false)
         }
 
-        guard displayLayer.isReadyForMoreMediaData,
+        guard rendererAdapter.isReadyForMoreMediaData,
               let sampleBuffer = makeSampleBuffer(frameIndex: frameIndex) else {
             return
         }
 
-        displayLayer.enqueue(sampleBuffer)
+        rendererAdapter.enqueue(sampleBuffer)
         if frameIndex % Int64(frameRate) == 0 {
             macWallNativeWallpaperLogger.info(
                 "nativeVideoBridge enqueued bridgeID=\(self.bridgeID, privacy: .public) generatedFrame=\(self.frameIndex)"
@@ -196,64 +243,294 @@ final class NativeVideoFrameBridge: @unchecked Sendable {
         frameIndex += 1
     }
 
-    private func enqueueAssetFrames(videoURL: URL) {
-        guard isRunning, !didStop else {
+    private func requestAssetPump(videoURL: URL, generation: UInt64) {
+        guard isRunning, !didStop, assetPumpGeneration.accepts(generation) else {
             return
         }
 
-        if displayLayer.status == .failed {
+        rendererAdapter.requestMediaDataWhenReady(on: queue) { [weak self] in
+            self?.pumpAssetFrames(videoURL: videoURL, generation: generation)
+        }
+    }
+
+    private func scheduleAssetPump(
+        videoURL: URL,
+        generation: UInt64,
+        transition: NativeVideoAssetPumpTransition
+    ) {
+        guard let delay = transition.retryDelaySeconds else {
+            return
+        }
+        let clampedDelay = min(max(delay, 0.005), 0.500)
+        let delayMilliseconds = Int((clampedDelay * 1_000).rounded(.up))
+        if transition.stopsRequestingMediaData {
+            rendererAdapter.stopRequestingMediaData()
+        }
+        queue.asyncAfter(deadline: .now() + .milliseconds(delayMilliseconds)) { [weak self] in
+            guard let self,
+                  self.isRunning,
+                  !self.didStop,
+                  self.assetPumpGeneration.accepts(generation) else {
+                return
+            }
+            self.requestAssetPump(videoURL: videoURL, generation: generation)
+        }
+    }
+
+    private func pumpAssetFrames(videoURL: URL, generation: UInt64) {
+        guard isRunning, !didStop, assetPumpGeneration.accepts(generation) else {
+            return
+        }
+        guard let playbackClock else {
+            fallbackToGeneratedFrames(reason: "asset-playback-clock-missing")
+            return
+        }
+
+        if rendererAdapter.status == .failed {
             macWallNativeWallpaperLogger.error(
-                "nativeVideoBridge asset displayLayer failed bridgeID=\(self.bridgeID, privacy: .public) error=\(String(describing: self.displayLayer.error), privacy: .public)"
+                "nativeVideoBridge asset renderer failed bridgeID=\(self.bridgeID, privacy: .public) error=\(String(describing: self.rendererAdapter.error), privacy: .public)"
             )
             fallbackToGeneratedFrames(reason: "asset-display-layer-failed")
             return
         }
 
-        while isRunning, !didStop, displayLayer.isReadyForMoreMediaData {
+        while isRunning, !didStop, assetPumpGeneration.accepts(generation) {
             guard let assetOutput else {
                 fallbackToGeneratedFrames(reason: "asset-output-missing")
                 return
             }
 
-            if let sampleBuffer = assetOutput.copyNextSampleBuffer() {
-                displayLayer.enqueue(sampleBuffer)
-                if frameIndex % Int64(frameRate) == 0 {
-                    macWallNativeWallpaperLogger.info(
-                        "nativeVideoBridge enqueued bridgeID=\(self.bridgeID, privacy: .public) assetFrame=\(self.frameIndex) loop=\(self.assetLoopIndex)"
-                    )
+            let sampleBuffer: CMSampleBuffer
+            if let pendingAssetSampleBuffer {
+                sampleBuffer = pendingAssetSampleBuffer
+            } else {
+                guard let sourceSampleBuffer = assetOutput.copyNextSampleBuffer() else {
+                    switch assetReader?.status {
+                    case .completed:
+                        assetLoopIndex += 1
+                        logAssetLoopTiming()
+                        macWallNativeWallpaperLogger.info(
+                            "nativeVideoBridge asset loop bridgeID=\(self.bridgeID, privacy: .public) loop=\(self.assetLoopIndex)"
+                        )
+                        resetAssetReader()
+                        guard startAssetReader(videoURL: videoURL) else {
+                            fallbackToGeneratedFrames(reason: "asset-loop-restart-failed")
+                            return
+                        }
+                        continue
+                    case .failed:
+                        macWallNativeWallpaperLogger.error(
+                            "nativeVideoBridge assetReader failed bridgeID=\(self.bridgeID, privacy: .public) error=\(String(describing: self.assetReader?.error), privacy: .public)"
+                        )
+                        fallbackToGeneratedFrames(reason: "asset-reader-failed")
+                        return
+                    case .cancelled:
+                        macWallNativeWallpaperLogger.warning(
+                            "nativeVideoBridge assetReader cancelled bridgeID=\(self.bridgeID, privacy: .public)"
+                        )
+                        fallbackToGeneratedFrames(reason: "asset-reader-cancelled")
+                        return
+                    default:
+                        return
+                    }
                 }
-                frameIndex += 1
-                continue
-            }
 
-            switch assetReader?.status {
-            case .completed:
-                assetLoopIndex += 1
-                macWallNativeWallpaperLogger.info(
-                    "nativeVideoBridge asset loop bridgeID=\(self.bridgeID, privacy: .public) loop=\(self.assetLoopIndex)"
+                let loopOffset = NativeVideoSampleRetimer.loopOffset(
+                    assetDuration: assetDuration,
+                    loopIndex: assetLoopIndex
                 )
-                displayLayer.flush()
-                resetAssetReader()
-                guard startAssetReader(videoURL: videoURL) else {
-                    fallbackToGeneratedFrames(reason: "asset-loop-restart-failed")
+                do {
+                    sampleBuffer = try NativeVideoSampleRetimer.retime(sourceSampleBuffer, by: loopOffset)
+                } catch let error as NativeVideoSampleRetimer.RetimingError {
+                    let osStatus: String
+                    if case .status(let status) = error {
+                        osStatus = String(status)
+                    } else {
+                        osStatus = "none"
+                    }
+                    macWallNativeWallpaperLogger.error(
+                        "nativeVideoBridge sample retiming failed bridgeID=\(self.bridgeID, privacy: .public) loop=\(self.assetLoopIndex) osStatus=\(osStatus, privacy: .public) error=\(String(describing: error), privacy: .public)"
+                    )
+                    fallbackToGeneratedFrames(reason: "asset-sample-retiming-failed")
+                    return
+                } catch {
+                    macWallNativeWallpaperLogger.error(
+                        "nativeVideoBridge sample retiming failed bridgeID=\(self.bridgeID, privacy: .public) loop=\(self.assetLoopIndex) osStatus=none error=\(String(describing: error), privacy: .public)"
+                    )
+                    fallbackToGeneratedFrames(reason: "asset-sample-retiming-failed")
                     return
                 }
-            case .failed:
-                macWallNativeWallpaperLogger.error(
-                    "nativeVideoBridge assetReader failed bridgeID=\(self.bridgeID, privacy: .public) error=\(String(describing: self.assetReader?.error), privacy: .public)"
+                pendingAssetSampleBuffer = sampleBuffer
+            }
+
+            let samplePTS = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+            let samplePTSSeconds = CMTimeGetSeconds(samplePTS)
+            let mediaNowSeconds = CMTimeGetSeconds(playbackClock.currentTime)
+            let rendererReady = rendererAdapter.isReadyForMoreMediaData
+            let evaluation = timingPolicy.evaluate(
+                samplePTSSeconds: samplePTSSeconds,
+                mediaTimeSeconds: mediaNowSeconds,
+                rendererReady: rendererReady,
+                lastEnqueuedPTSSeconds: lastEnqueuedPTSSeconds
+            )
+            let transition = NativeVideoAssetPumpTransition(decision: evaluation.decision)
+
+            switch evaluation.decision {
+            case .enqueue:
+                rendererAdapter.enqueue(sampleBuffer)
+                if transition.consumesPendingSample {
+                    pendingAssetSampleBuffer = nil
+                }
+                queuedFrameCount += 1
+                frameIndex += 1
+                lastEnqueuedPTSSeconds = samplePTSSeconds
+                logAssetTiming(
+                    samplePTSSeconds: samplePTSSeconds,
+                    mediaNowSeconds: mediaNowSeconds,
+                    evaluation: evaluation,
+                    rendererReady: rendererReady
                 )
-                fallbackToGeneratedFrames(reason: "asset-reader-failed")
-                return
-            case .cancelled:
-                macWallNativeWallpaperLogger.warning(
-                    "nativeVideoBridge assetReader cancelled bridgeID=\(self.bridgeID, privacy: .public)"
+            case .wait:
+                logAssetTiming(
+                    samplePTSSeconds: samplePTSSeconds,
+                    mediaNowSeconds: mediaNowSeconds,
+                    evaluation: evaluation,
+                    rendererReady: rendererReady
                 )
-                fallbackToGeneratedFrames(reason: "asset-reader-cancelled")
+                scheduleAssetPump(
+                    videoURL: videoURL,
+                    generation: generation,
+                    transition: transition
+                )
                 return
-            default:
+            case .waitForRenderer:
+                logAssetTiming(
+                    samplePTSSeconds: samplePTSSeconds,
+                    mediaNowSeconds: mediaNowSeconds,
+                    evaluation: evaluation,
+                    rendererReady: rendererReady
+                )
+                return
+            case .drop:
+                if transition.consumesPendingSample {
+                    pendingAssetSampleBuffer = nil
+                }
+                droppedFrameCount += 1
+                logAssetTiming(
+                    samplePTSSeconds: samplePTSSeconds,
+                    mediaNowSeconds: mediaNowSeconds,
+                    evaluation: evaluation,
+                    rendererReady: rendererReady
+                )
+            case .reset:
+                let hardResetAction = hardResetTracker.registerReset(at: CACurrentMediaTime())
+                if hardResetAction == .fallback {
+                    logAssetTiming(
+                        samplePTSSeconds: samplePTSSeconds,
+                        mediaNowSeconds: mediaNowSeconds,
+                        evaluation: evaluation,
+                        rendererReady: rendererReady,
+                        decisionName: "repeated-hard-reset",
+                        force: true
+                    )
+                    macWallNativeWallpaperLogger.warning(
+                        "nativeVideoBridge repeated hard reset bridgeID=\(self.bridgeID, privacy: .public) windowSeconds=5 fallback=generated"
+                    )
+                    fallbackToGeneratedFrames(reason: "asset-repeated-hard-reset")
+                    return
+                }
+                logAssetTiming(
+                    samplePTSSeconds: samplePTSSeconds,
+                    mediaNowSeconds: mediaNowSeconds,
+                    evaluation: evaluation,
+                    rendererReady: rendererReady,
+                    force: true
+                )
+                rendererAdapter.stopRequestingMediaData()
+                rendererAdapter.flush(removeDisplayedImage: false) { [weak self] in
+                    guard let self else {
+                        return
+                    }
+                    self.queue.async { [weak self] in
+                        guard let self,
+                              self.isRunning,
+                              !self.didStop,
+                              self.assetPumpGeneration.accepts(generation),
+                              let playbackClock = self.playbackClock else {
+                            return
+                        }
+                        self.lastEnqueuedPTSSeconds = nil
+                        playbackClock.seek(to: samplePTS)
+                        self.scheduleAssetPump(
+                            videoURL: videoURL,
+                            generation: generation,
+                            transition: transition
+                        )
+                    }
+                }
                 return
             }
         }
+    }
+
+    private func logAssetLoopTiming() {
+        guard let playbackClock else {
+            return
+        }
+        let mediaNowSeconds = CMTimeGetSeconds(playbackClock.currentTime)
+        let samplePTSSeconds = lastEnqueuedPTSSeconds ?? mediaNowSeconds
+        let leadSeconds = samplePTSSeconds - mediaNowSeconds
+        let evaluation = NativeVideoPlaybackEvaluation(
+            decision: .enqueue,
+            leadSeconds: leadSeconds,
+            bufferBand: bufferBand(for: leadSeconds)
+        )
+        logAssetTiming(
+            samplePTSSeconds: samplePTSSeconds,
+            mediaNowSeconds: mediaNowSeconds,
+            evaluation: evaluation,
+            rendererReady: rendererAdapter.isReadyForMoreMediaData,
+            decisionName: "loop",
+            force: true
+        )
+    }
+
+    private func logAssetTiming(
+        samplePTSSeconds: Double,
+        mediaNowSeconds: Double,
+        evaluation: NativeVideoPlaybackEvaluation,
+        rendererReady: Bool,
+        decisionName: String? = nil,
+        force: Bool = false
+    ) {
+        let hostTime = CACurrentMediaTime()
+        guard force || hostTime - lastTimingLogHostTime >= 1 else {
+            return
+        }
+        lastTimingLogHostTime = hostTime
+
+        let samplePTS = String(format: "%.6f", samplePTSSeconds)
+        let mediaNow = String(format: "%.6f", mediaNowSeconds)
+        let lead = String(format: "%.6f", evaluation.leadSeconds)
+        let lag = String(format: "%.6f", evaluation.lagSeconds)
+        let decision = decisionName ?? timingDecisionName(evaluation.decision)
+        let clockMode = playbackClock?.mode.rawValue ?? "none"
+        macWallNativeWallpaperLogger.info(
+            "nativeVideoTiming bridgeID=\(self.bridgeID, privacy: .public) samplePTS=\(samplePTS, privacy: .public) mediaNow=\(mediaNow, privacy: .public) lead=\(lead, privacy: .public) lag=\(lag, privacy: .public) bufferBand=\(evaluation.bufferBand.rawValue, privacy: .public) rendererReady=\(rendererReady) loopIndex=\(self.assetLoopIndex) droppedFrameCount=\(self.droppedFrameCount) queuedFrameCount=\(self.queuedFrameCount) decision=\(decision, privacy: .public) clockMode=\(clockMode, privacy: .public) profile=\(self.timingProfile.rawValue, privacy: .public)"
+        )
+    }
+
+    private func bufferBand(for lead: Double) -> NativeVideoBufferBand {
+        if lead < 0 {
+            return .late
+        }
+        if lead < timingPolicy.configuration.minBufferLeadSeconds {
+            return .belowMinimum
+        }
+        if lead > timingPolicy.configuration.maxBufferLeadSeconds {
+            return .aboveMaximum
+        }
+        return .target
     }
 
     private func startAssetReader(videoURL: URL) -> Bool {
@@ -263,6 +540,13 @@ final class NativeVideoFrameBridge: @unchecked Sendable {
         guard let videoTrack = asset.tracks(withMediaType: .video).first else {
             macWallNativeWallpaperLogger.error(
                 "nativeVideoBridge asset has no video track bridgeID=\(self.bridgeID, privacy: .public) url=\(videoURL.lastPathComponent, privacy: .public)"
+            )
+            return false
+        }
+        let videoDuration = videoTrack.timeRange.duration
+        guard videoDuration.isNumeric, CMTimeCompare(videoDuration, .zero) > 0 else {
+            macWallNativeWallpaperLogger.error(
+                "nativeVideoBridge asset has invalid duration bridgeID=\(self.bridgeID, privacy: .public) url=\(videoURL.lastPathComponent, privacy: .public)"
             )
             return false
         }
@@ -294,6 +578,7 @@ final class NativeVideoFrameBridge: @unchecked Sendable {
 
             assetReader = reader
             assetOutput = output
+            assetDuration = videoDuration
             macWallNativeWallpaperLogger.info(
                 "nativeVideoBridge assetReader started bridgeID=\(self.bridgeID, privacy: .public) url=\(videoURL.lastPathComponent, privacy: .public) naturalSize=\(formatBridgeSize(videoTrack.naturalSize), privacy: .public)"
             )
@@ -317,11 +602,31 @@ final class NativeVideoFrameBridge: @unchecked Sendable {
             return
         }
 
+        let generation = assetPumpGeneration.advance()
+        pendingAssetSampleBuffer = nil
+        rendererAdapter.stopRequestingMediaData()
         resetAssetReader()
-        displayLayer.stopRequestingMediaData()
-        displayLayer.flush()
         frameIndex = 0
-        startGeneratedFrames(reason: reason)
+        let finishFallback: @Sendable () -> Void = { [weak self] in
+            guard let self else {
+                return
+            }
+            self.queue.async { [weak self] in
+                guard let self,
+                      self.isRunning,
+                      !self.didStop,
+                      self.assetPumpGeneration.accepts(generation) else {
+                    return
+                }
+                self.rendererAdapter.flush(removeDisplayedImage: false)
+                self.startGeneratedFrames(reason: reason)
+            }
+        }
+        if let playbackClock {
+            playbackClock.stop(completion: finishFallback)
+        } else {
+            finishFallback()
+        }
     }
 
     private func makeSampleBuffer(frameIndex: Int64) -> CMSampleBuffer? {
@@ -425,6 +730,26 @@ final class NativeVideoFrameBridge: @unchecked Sendable {
                 row.storeBytes(of: UInt8(255), toByteOffset: offset + 3, as: UInt8.self)
             }
         }
+    }
+}
+
+private func timingDecisionName(_ decision: NativeVideoPlaybackDecision) -> String {
+    switch decision {
+    case .enqueue:
+        "enqueue"
+    case .wait:
+        "wait"
+    case .waitForRenderer:
+        "wait-for-renderer"
+    case .drop(let reason):
+        switch reason {
+        case .late:
+            "drop-late"
+        case .cadence:
+            "drop-cadence"
+        }
+    case .reset:
+        "reset"
     }
 }
 

@@ -179,6 +179,8 @@ private final class MockSpaceRefreshOriginalDesktopWallpaperStore: OriginalDeskt
     func discardUnappliedFallbackCapture(_ token: OriginalDesktopWallpaperCaptureToken) {}
     func synchronizeRestoreSessionWithCurrentWallpaper() {}
     func restoreOriginalWallpaperIfCurrentMatchesManagedFallback() {}
+
+    func abandonManagedWallpaperSession() {}
 }
 
 private actor SpaceRefreshAsyncGate {

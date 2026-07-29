@@ -10,6 +10,8 @@
 - Xcode 16+
 - Swift 6
 
+macOS 26 Native Wallpaper extension을 컴파일하려면 macOS 26 SDK를 포함한 Xcode와 Apple Silicon Mac이 필요합니다.
+
 ## 아키텍처
 
 - `MacWallCore`
@@ -22,6 +24,15 @@
   - Playback
   - Menu Bar
   - Desktop fallback
+- `MacWallNativeRuntimeSupport`
+  - Foundation-only command/status model
+  - App Group atomic store
+  - Native generation state machine
+- `MacWall.xcodeproj`
+  - `MacWallHostApp`: macOS 14+ containing app, 현재 unsandboxed
+  - `MacWallNativeWallpaperExtension`: macOS 26+ Apple Silicon, sandboxed
+  - `MacWallLockScreenSaver`: 기존 Lock Screen saver
+  - Host와 extension은 같은 App Group을 사용하며 extension은 `Contents/Extensions`에 embed
 - `macwallctl`
   - 진단
   - scan/import 테스트
@@ -138,6 +149,50 @@ runner 명령:
 - 재테스트 전에는 항상 `dev reset`을 먼저 수행합니다.
 - 화면 상태 확인, System Settings 조작, Fullscreen -> Desktop 검증은 사용자가 직접 수행합니다.
 - agent는 사용자 관측을 받은 뒤 `WallpaperAgent` 로그와 extension 로그를 먼저 대조하고, 바로 다음 구현으로 넘어가지 않습니다.
+
+## Production Native Backend 검증 규칙
+
+Main App의 Native/Legacy 통합은 별도 승인이 없으면 명령어, 정적 검사, 자동 테스트, unsigned compile, 사용자가 제공한 로그 분석까지만 검증합니다.
+
+- Host app은 macOS 14+를 유지하고 Native extension만 macOS 26+ Apple Silicon으로 제한합니다.
+- Native playback은 Desktop fallback 생성/적용과 original wallpaper restore state를 건드리지 않습니다.
+- Legacy playback만 기존 `DesktopFallbackCoordinator`, Space refresh, original wallpaper restore를 소유합니다.
+- production runtime QA 전까지 `MacWallNativeWallpaperSpike`를 삭제하거나 production 구현으로 대체하지 않습니다.
+- 실제 System Settings 선택, Desktop 출력, Fullscreen/Space 전환 확인은 사용자가 직접 수행하며 별도 승인 없는 자동 UI 조작은 금지합니다.
+
+### Production Native AdHocQA 실행 규칙
+
+Apple development signing identity와 provisioning profile이 준비되지 않은 로컬 환경에서는 production target의 `AdHocQA` configuration만 사용합니다.
+
+```text
+1. ./Scripts/native-wallpaper-adhoc-qa.sh reset
+2. ./Scripts/native-wallpaper-adhoc-qa.sh install
+3. 사용자가 System Settings에서 MacWall 선택
+4. ./Scripts/native-wallpaper-adhoc-qa.sh status
+5. ./Scripts/native-wallpaper-adhoc-qa.sh logs 3m
+6. 사용자가 Desktop 출력과 Fullscreen 전환 확인
+```
+
+규칙:
+
+- `AdHocQA`는 proper App Group signing/provisioning 검증을 대체하지 않습니다.
+- runner는 앱이나 System Settings를 자동으로 열지 않습니다.
+- `Debug`와 `Release`는 App Group 실패 후 `development-home`으로 fallback하지 않습니다.
+- 재검증은 항상 `reset` 후 `install` 순서로 시작합니다.
+- `reset`은 production QA app 경로의 Extension과 QA runtime root만 정리하며 `WallpaperAgent`와 Spike를 종료하지 않습니다.
+- 화면 상태 확인과 System Settings 선택은 사용자가 직접 수행합니다.
+
+기본 정적 검증:
+
+```bash
+swift test
+bash -n Tests/ProjectStructure/native_wallpaper_project_tests.sh
+bash Tests/ProjectStructure/native_wallpaper_project_tests.sh
+xcodebuild -project MacWall.xcodeproj -list
+xcodebuild -project MacWall.xcodeproj -scheme MacWallHostApp \
+  -configuration Debug -derivedDataPath /tmp/macwall-native-backend-dd \
+  CODE_SIGNING_ALLOWED=NO build
+```
 
 ## GitHub 운영 기준
 

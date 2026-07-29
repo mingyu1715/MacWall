@@ -1,37 +1,26 @@
 import XCTest
 
 final class DesktopFallbackMenuTests: XCTestCase {
-    func testExperimentBranchKeepsFallbackSideEffectsBehindDisabledRuntimeFlag() throws {
-        let source = try SourceFixture.contents(
-            of: "Sources/MacWallApp/App/AppViewModel.swift"
+    func testNativeBackendDoesNotReferenceDesktopFallback() throws {
+        let native = try SourceFixture.contents(
+            of: "Sources/MacWallApp/Playback/NativeWallpaperBackend.swift"
         )
-        let methodStart = try XCTUnwrap(source.range(of: "private func play(asset:"))
-        let methodEnd = try XCTUnwrap(
-            source.range(
-                of: "private func refreshLockScreenAnimationConfiguration",
-                range: methodStart.lowerBound..<source.endIndex
-            )
+        let legacy = try SourceFixture.contents(
+            of: "Sources/MacWallApp/Playback/LegacyWallpaperBackend.swift"
         )
-        let body = String(source[methodStart.lowerBound..<methodEnd.lowerBound])
-        let play = try XCTUnwrap(body.range(of: "wallpaperPlayer.play"))
-        let applyOrGenerate = try XCTUnwrap(body.range(of: "desktopFallbackCoordinator.applyOrGenerate"))
 
-        XCTAssertTrue(source.contains("static let isEnabled = false"))
-        XCTAssertTrue(body.contains("if DesktopFallbackRuntime.isEnabled"))
-        XCTAssertFalse(body.contains("desktopFallbackCoordinator.prepareForPlayback"))
-        XCTAssertLessThan(play.lowerBound, applyOrGenerate.lowerBound)
+        XCTAssertFalse(native.contains("DesktopFallback"))
+        XCTAssertTrue(legacy.contains("fallbackCoordinator.applyOrGenerate"))
+        XCTAssertTrue(legacy.contains("fallbackCoordinator.abandonManagedWallpaperSession"))
     }
 
-    func testFallbackCleanupIsGuardedBehindRuntimeFlag() throws {
+    func testAppViewModelHasNoExperimentWideFallbackDisableFlag() throws {
         let source = try SourceFixture.contents(
             of: "Sources/MacWallApp/App/AppViewModel.swift"
         )
 
-        XCTAssertTrue(source.contains("if DesktopFallbackRuntime.isEnabled"))
-        XCTAssertGreaterThanOrEqual(
-            source.components(separatedBy: "desktopFallbackCoordinator.clearActiveAsset()").count - 1,
-            2
-        )
+        XCTAssertFalse(source.contains("DesktopFallbackRuntime"))
+        XCTAssertTrue(source.contains("desktopFallbackControlsEnabled"))
     }
 
     func testRemoveAndReimportInvalidateOlderFallbackGeneration() throws {
@@ -45,7 +34,7 @@ final class DesktopFallbackMenuTests: XCTestCase {
         )
     }
 
-    func testLibraryItemMenuKeepsFallbackControlsBehindExperimentFlag() throws {
+    func testLibraryItemMenuKeepsFallbackControls() throws {
         let source = try SourceFixture.contents(
             of: "Sources/MacWallApp/UI/ContentView.swift"
         )

@@ -4,8 +4,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SPIKE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 DEV_RUNNER="$SPIKE_DIR/dev.sh"
+CMAKE_SOURCE="$SPIKE_DIR/CMakeLists.txt"
 REMOTE_CONTEXT_SOURCE="$SPIKE_DIR/MacWallNativeWallpaperExtension/MacWallRemoteContextProbe.swift"
 VIDEO_BRIDGE_SOURCE="$SPIKE_DIR/MacWallNativeWallpaperExtension/NativeVideoFrameBridge.swift"
+RENDERER_ADAPTER_SOURCE="$SPIKE_DIR/MacWallNativeWallpaperExtension/NativeVideoRendererAdapter.swift"
+PLAYBACK_CLOCK_SOURCE="$SPIKE_DIR/MacWallNativeWallpaperExtension/NativeVideoPlaybackClock.swift"
+SAMPLE_RETIMER_SOURCE="$SPIKE_DIR/MacWallNativeWallpaperExtension/NativeVideoSampleRetimer.swift"
+TIMING_MODE_SOURCE="$SPIKE_DIR/MacWallNativeWallpaperExtension/MacWallNativeWallpaperTimingMode.generated.swift"
 XPC_CONFIGURATION_SOURCE="$SPIKE_DIR/MacWallNativeWallpaperExtension/MacWallWallpaperExtensionConfiguration.swift"
 EXTENSION_SOURCE="$SPIKE_DIR/MacWallNativeWallpaperExtension/MacWallNativeWallpaperExtension.swift"
 XPC_HANDLER_SOURCE="$SPIKE_DIR/MacWallNativeWallpaperExtension/MacWallWallpaperXPCHandler.swift"
@@ -26,6 +31,14 @@ assert_contains() {
     fi
 }
 
+assert_not_contains() {
+    local haystack="$1"
+    local needle="$2"
+    if [[ "$haystack" == *"$needle"* ]]; then
+        fail "expected output not to contain: $needle"
+    fi
+}
+
 [[ -x "$DEV_RUNNER" ]] || fail "dev runner is not executable: $DEV_RUNNER"
 
 help_output="$("$DEV_RUNNER" help)"
@@ -35,12 +48,45 @@ assert_contains "$help_output" "status"
 assert_contains "$help_output" "logs"
 assert_contains "$help_output" "--allow-unsafe-snapshot-xpc"
 assert_contains "$help_output" "--video-source MODE"
+assert_contains "$help_output" "--video-path PATH"
+assert_contains "$help_output" "--timing-clock MODE"
+assert_contains "$help_output" "--timing-profile PROFILE"
 
 install_output="$(MACWALL_NATIVE_DRY_RUN=1 "$DEV_RUNNER" install)"
 assert_contains "$install_output" "cmake -S"
+assert_contains "$install_output" "-U MACWALL_NATIVE_SAMPLE_VIDEO_SOURCE"
 assert_contains "$install_output" "xcodebuild -project"
 assert_contains "$install_output" "codesign --verify --deep --strict"
 assert_contains "$install_output" "lsregister -f -R -trusted"
+assert_contains "$install_output" "snapshot mode: disabled"
+assert_contains "$install_output" "video source: asset"
+assert_contains "$install_output" "timing clock: synchronizer"
+assert_contains "$install_output" "timing profile: normal"
+
+synchronizer_install_output="$(MACWALL_NATIVE_DRY_RUN=1 "$DEV_RUNNER" install --timing-clock synchronizer --timing-profile normal)"
+assert_contains "$synchronizer_install_output" "timing clock: synchronizer"
+assert_contains "$synchronizer_install_output" "timing profile: normal"
+
+timing_install_output="$(MACWALL_NATIVE_DRY_RUN=1 "$DEV_RUNNER" install --timing-clock control-timebase)"
+assert_contains "$timing_install_output" "MacWallNativeWallpaperTimingMode.generated.swift"
+assert_contains "$timing_install_output" "timing clock: control-timebase"
+
+reduced_timing_output="$(MACWALL_NATIVE_DRY_RUN=1 "$DEV_RUNNER" install --timing-profile reduced)"
+assert_contains "$reduced_timing_output" "timing profile: reduced"
+
+set +e
+invalid_timing_output="$(MACWALL_NATIVE_DRY_RUN=1 "$DEV_RUNNER" install --timing-clock invalid 2>&1)"
+invalid_timing_status=$?
+set -e
+[[ "$invalid_timing_status" -eq 2 ]] || fail "invalid timing clock should exit 2, got $invalid_timing_status"
+assert_contains "$invalid_timing_output" "Unknown timing clock: invalid"
+
+set +e
+invalid_profile_output="$(MACWALL_NATIVE_DRY_RUN=1 "$DEV_RUNNER" install --timing-profile invalid 2>&1)"
+invalid_profile_status=$?
+set -e
+[[ "$invalid_profile_status" -eq 2 ]] || fail "invalid timing profile should exit 2, got $invalid_profile_status"
+assert_contains "$invalid_profile_output" "Unknown timing profile: invalid"
 
 snapshot_install_output="$(MACWALL_NATIVE_DRY_RUN=1 "$DEV_RUNNER" install --snapshot-mode error)"
 assert_contains "$snapshot_install_output" "MacWallSnapshotProbeMode.generated.swift"
@@ -52,6 +98,30 @@ assert_contains "$generated_video_install_output" "video source: generated"
 
 asset_video_install_output="$(MACWALL_NATIVE_DRY_RUN=1 "$DEV_RUNNER" install --video-source asset)"
 assert_contains "$asset_video_install_output" "video source: asset"
+
+video_fixture_dir="$(mktemp -d)"
+trap 'rm -rf "$video_fixture_dir"' EXIT
+video_fixture="$video_fixture_dir/local-test-video.mp4"
+touch "$video_fixture"
+
+video_path_install_output="$(MACWALL_NATIVE_DRY_RUN=1 "$DEV_RUNNER" install --video-source asset --video-path "$video_fixture")"
+assert_contains "$video_path_install_output" "video path: $video_fixture"
+assert_contains "$video_path_install_output" "-DMACWALL_NATIVE_SAMPLE_VIDEO_SOURCE=$video_fixture"
+
+set +e
+relative_video_path_output="$(MACWALL_NATIVE_DRY_RUN=1 "$DEV_RUNNER" install --video-path relative-video.mp4 2>&1)"
+relative_video_path_status=$?
+set -e
+[[ "$relative_video_path_status" -eq 2 ]] || fail "relative video path should exit 2, got $relative_video_path_status"
+assert_contains "$relative_video_path_output" "install --video-path requires an absolute path"
+
+missing_video_path="$video_fixture_dir/missing-video.mp4"
+set +e
+missing_video_path_output="$(MACWALL_NATIVE_DRY_RUN=1 "$DEV_RUNNER" install --video-path "$missing_video_path" 2>&1)"
+missing_video_path_status=$?
+set -e
+[[ "$missing_video_path_status" -eq 2 ]] || fail "missing video path should exit 2, got $missing_video_path_status"
+assert_contains "$missing_video_path_output" "Video path is not an existing regular file: $missing_video_path"
 
 invalid_video_source_output="$(
     MACWALL_NATIVE_DRY_RUN=1 "$DEV_RUNNER" install --video-source invalid-source 2>&1 || true
@@ -135,6 +205,69 @@ assert_contains "$video_bridge_source" "MacWallNativeWallpaperVideoSourceModeCon
 assert_contains "$video_bridge_source" "case .generated"
 assert_contains "$video_bridge_source" "case .asset"
 assert_contains "$video_bridge_source" "videoSourceMode="
+assert_contains "$video_bridge_source" "pendingAssetSampleBuffer"
+assert_contains "$video_bridge_source" "scheduleAssetPump"
+assert_contains "$video_bridge_source" "assetPumpGeneration"
+assert_contains "$video_bridge_source" "NativeVideoAssetPumpTransition"
+assert_contains "$video_bridge_source" "min(max(delay, 0.005), 0.500)"
+assert_contains "$video_bridge_source" "playbackClock.start(at: .zero)"
+assert_contains "$video_bridge_source" "playbackClock?.stop()"
+assert_contains "$video_bridge_source" "playbackClock.stop(completion: finishFallback)"
+assert_contains "$video_bridge_source" "rendererAdapter.stopRequestingMediaData()"
+assert_contains "$video_bridge_source" "NativeVideoPlaybackTimingPolicy"
+assert_contains "$video_bridge_source" "NativeVideoRendererAdapter"
+assert_contains "$video_bridge_source" "NativeVideoPlaybackClock"
+assert_contains "$video_bridge_source" "nativeVideoTiming"
+assert_contains "$video_bridge_source" "samplePTS="
+assert_contains "$video_bridge_source" "mediaNow="
+assert_contains "$video_bridge_source" "lead="
+assert_contains "$video_bridge_source" "lag="
+assert_contains "$video_bridge_source" "bufferBand="
+assert_contains "$video_bridge_source" "rendererReady="
+assert_contains "$video_bridge_source" "loopIndex="
+assert_contains "$video_bridge_source" "droppedFrameCount="
+assert_contains "$video_bridge_source" "queuedFrameCount="
+assert_contains "$video_bridge_source" "decision="
+assert_contains "$video_bridge_source" "clockMode="
+assert_contains "$video_bridge_source" "profile="
+assert_contains "$video_bridge_source" "NativeVideoSampleRetimer.loopOffset"
+assert_contains "$video_bridge_source" "NativeVideoSampleRetimer.retime"
+assert_contains "$video_bridge_source" "asset-repeated-hard-reset"
+assert_contains "$video_bridge_source" "asset-sample-retiming-failed"
+assert_contains "$video_bridge_source" "rendererAdapter.flush(removeDisplayedImage: false) {"
+assert_contains "$video_bridge_source" "assetPumpGeneration.accepts(generation)"
+assert_contains "$video_bridge_source" "osStatus="
+assert_not_contains "$video_bridge_source" "scheduleAssetLoopRestart"
+assert_not_contains "$video_bridge_source" "playbackClock.seek(to: .zero)"
+assert_not_contains "$video_bridge_source" "while isRunning, !didStop, displayLayer.isReadyForMoreMediaData"
+assert_not_contains "$video_bridge_source" "displayLayer.enqueue("
+
+renderer_adapter_source="$(cat "$RENDERER_ADAPTER_SOURCE")"
+assert_contains "$renderer_adapter_source" "sampleBufferRenderer"
+assert_contains "$renderer_adapter_source" "requestMediaDataWhenReady"
+
+playback_clock_source="$(cat "$PLAYBACK_CLOCK_SOURCE")"
+assert_contains "$playback_clock_source" "AVSampleBufferRenderSynchronizer"
+assert_contains "$playback_clock_source" "CMTimebaseCreateWithSourceClock"
+assert_contains "$playback_clock_source" "delaysRateChangeUntilHasSufficientMediaData = false"
+assert_contains "$playback_clock_source" "case .synchronizer"
+assert_contains "$playback_clock_source" "case .controlTimebase"
+
+sample_retimer_source="$(cat "$SAMPLE_RETIMER_SOURCE")"
+assert_contains "$sample_retimer_source" "CMSampleBufferCreateCopyWithNewTiming"
+assert_contains "$sample_retimer_source" "loopOffset(assetDuration:"
+assert_contains "$sample_retimer_source" "CMTimeMultiplyByFloat64"
+assert_contains "$sample_retimer_source" "nonnumericPresentationTime"
+assert_contains "$sample_retimer_source" "timing.duration.isValid, !timing.duration.isNumeric"
+
+timing_mode_source="$(cat "$TIMING_MODE_SOURCE")"
+assert_contains "$timing_mode_source" "clockMode"
+assert_contains "$timing_mode_source" "case controlTimebase"
+assert_contains "$timing_mode_source" "case synchronizer"
+
+cmake_source="$(cat "$CMAKE_SOURCE")"
+assert_contains "$cmake_source" "CACHE FILEPATH"
+assert_contains "$cmake_source" "configure_file"
 
 extension_source="$(cat "$EXTENSION_SOURCE")"
 assert_contains "$extension_source" "requiresSnapshotEncodeSwizzle"
@@ -171,7 +304,7 @@ assert_contains "$extension_info_plist" "NSAppDataUsageDescription"
 assert_contains "$extension_info_plist" "WallpaperAgent"
 
 fake_ps="$(mktemp)"
-trap 'rm -f "$fake_ps"' EXIT
+trap 'rm -rf "$video_fixture_dir"; rm -f "$fake_ps"' EXIT
 cat >"$fake_ps" <<'EOF'
  123 /tmp/MacWallNativeWallpaperSpikeApp.app/Contents/Extensions/MacWallNativeWallpaperExtension.appex/Contents/MacOS/MacWallNativeWallpaperExtension
  456 /System/Library/CoreServices/WallpaperAgent.app/Contents/MacOS/WallpaperAgent

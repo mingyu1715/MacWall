@@ -83,6 +83,7 @@ protocol OriginalDesktopWallpaperManaging: AnyObject {
     func discardUnappliedFallbackCapture(_ token: OriginalDesktopWallpaperCaptureToken)
     func synchronizeRestoreSessionWithCurrentWallpaper()
     func restoreOriginalWallpaperIfCurrentMatchesManagedFallback()
+    func abandonManagedWallpaperSession()
 }
 
 @MainActor
@@ -250,6 +251,20 @@ final class OriginalDesktopWallpaperStore: OriginalDesktopWallpaperManaging {
             }
         }
         saveRecords(records)
+    }
+
+    func abandonManagedWallpaperSession() {
+        let records = loadRecords()
+        for record in records.values where record.isManagedWallpaperSession {
+            removeCachedOriginalIfPresent(record)
+        }
+        saveRecords([:])
+        if let contents = try? fileManager.contentsOfDirectory(
+            at: originalsDirectoryURL,
+            includingPropertiesForKeys: nil
+        ), contents.isEmpty {
+            try? fileManager.removeItem(at: originalsDirectoryURL)
+        }
     }
 
     private func loadRecords() -> [String: OriginalDesktopWallpaperRecord] {

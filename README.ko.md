@@ -32,6 +32,7 @@ MacWall은 Windows에서 Wallpaper Engine을 구매해 사용하던 사람이, �
     - **Fit**: 전체 월페이퍼를 다 보여줍니다. 화면 비율이 다르면 검은 여백이 생길 수 있습니다.
     - **Fill**: Wallpaper Engine의 cover 방식처럼 화면을 꽉 채웁니다. 가장자리가 잘릴 수 있습니다.
     - **Stretch**: 화면에 정확히 맞게 늘립니다. 이미지가 왜곡될 수 있습니다.
+    - 재생 중 모드를 바꾸면 현재 영상에 즉시 반영되며 재생 위치는 유지됩니다.
 11. 더 이상 필요 없는 항목은 **Remove**로 Mac 로컬 라이브러리에서 지울 수 있습니다. 원본 복사 폴더나 원본 영상은 건드리지 않습니다.
 
 앱은 메뉴바 유틸리티로 실행됩니다. Dock이나 앱 전환기에 계속 뜨지 않고, 설정창을 닫아도 데스크톱 레이어의 움직이는 배경화면은 계속 재생됩니다.
@@ -40,17 +41,25 @@ MacWall은 Windows에서 Wallpaper Engine을 구매해 사용하던 사람이, �
 
 ## 재생 방식
 
-- **Auto-pause behind apps**가 기본으로 켜져 있습니다.
+- macOS 26 이상 Apple Silicon Mac의 MP4, MOV, M4V 동영상은 Native Video 재생 대상입니다.
+- Native Video를 처음 사용할 때는 macOS **배경화면** 설정에서 MacWall을 한 번 선택해야 합니다.
+- Native가 활성화되지 않은 상태에서 **Play on Desktop**을 누르면 **배경화면 설정 열기**, **기존 방식으로 재생**, **취소** 중에서 선택할 수 있습니다. 기존 방식 선택은 해당 Play 요청에만 적용됩니다.
+- macOS 25 이하, Intel Mac, Native 미지원 형식은 기존 Legacy 데스크톱 레이어로 재생합니다.
+- Native 재생에서 **Stop Playback**을 누르면 재생 시계만 멈추고 마지막 프레임과 macOS의 MacWall 배경화면 선택은 유지합니다. Native 모드는 `desktop-fallback.png`를 생성하거나 적용하지 않습니다.
+- **Auto-pause behind apps**가 기본으로 켜져 있습니다. Native Video는 다른 앱이 데스크톱을 가린 상태가 200ms 유지되면 재생 시계와 decode/read/enqueue만 멈추고 마지막 프레임은 그대로 유지합니다.
 - MacWall 컨트롤 창을 최소화하거나 숨겨도 재생은 멈추지 않습니다.
 - 설정창을 닫아도 앱은 종료되지 않습니다. 완전히 끄려면 메뉴바 아이콘에서 **Quit**을 누릅니다.
 - 다른 앱이 데스크톱을 가리면 월페이퍼 레이어는 그대로 둡니다. 일반 동영상은 현재 프레임에서 멈추고, 웹 월페이퍼는 CSS 애니메이션만 정지하며 내부 동영상은 재개 지연을 줄이기 위해 계속 재생합니다.
-- 다시 바탕화면으로 돌아오면 자동으로 재생을 이어갑니다.
-- 노트북이 잠자기에서 깨어나거나 모니터 구성이 바뀌면 월페이퍼 창을 다시 만들고 선택한 월페이퍼를 복구합니다.
+- 다시 바탕화면으로 돌아온 상태가 200ms 유지되면 자동으로 재생을 이어갑니다. 잠자기 직전에는 즉시 멈추고, 깨어난 뒤에는 500ms 후 현재 화면 상태를 다시 확인합니다.
+- Native renderer가 실패하면 기존 화면을 유지한 채 같은 재생 generation을 한 번만 자동 복구합니다. 복구가 다시 실패하면 무한 재시작하지 않고 마지막 프레임과 실패 상태를 유지합니다.
+- 노트북이 잠자기에서 깨어나거나 모니터 구성이 바뀌면 선택한 월페이퍼의 runtime 상태를 복구합니다.
 - 계속 재생하고 싶으면 메뉴바 아이콘이나 설정창에서 **Auto-pause behind apps**를 끄면 됩니다.
 - 로그인 후 자동으로 켜지게 하려면 **Open at Login**을 켭니다. **Stop Playback**을 누르지 않았다면 앱 실행 시 마지막으로 재생한 월페이퍼를 다시 복구합니다.
 - 가져온 항목이 필요 없어지면 imported library 목록에서 **Remove**를 눌러 Mac 라이브러리 복사본을 삭제합니다.
 
-Spaces 전환이나 전체화면 전환 중 기존 macOS 배경화면이 잠깐 보이는 현상을 줄이기 위해 항목별 `Derived/desktop-fallback.png`를 유지합니다. Play/Apply는 먼저 라이브 데스크톱 레이어를 시작하고, 파일이 이미 있으면 이어서 macOS system wallpaper에 적용합니다. 파일이 없으면 Video, Image, Web 항목에 한해 실제 원본이나 렌더링된 Web 출력에서 비동기로 생성합니다. Web snapshot이 실패해도 라이브 재생은 계속됩니다. Workshop 썸네일과 Scene 썸네일은 데스크톱 fallback cache 원본으로 사용하지 않습니다. 라이브러리 항목 메뉴의 **Show in Finder**, **Generate Desktop Fallback**, **Regenerate Desktop Fallback**으로 폴더를 열거나 cache를 수동으로 다시 생성할 수 있습니다. **Restore on Stop**을 켜면 정적 이미지 배경화면에 한해 fallback 적용 전 원본 이미지를 `Application Support/MacWall/DesktopWallpaperRestore/Originals`에 복사하고, **Stop Playback** 시 현재 macOS 배경화면이 앱이 적용한 fallback일 때 그 복사본으로 자동 복원합니다. MacWall의 `desktop-fallback.png`는 원본 배경화면으로 저장하지 않습니다. `Macintosh` 같은 macOS 기본/동적 배경화면은 공개 API로 안정적으로 복원할 수 없어 경고를 표시하고 자동 복원을 건너뜁니다. 다른 항목으로 전환해 새 fallback 적용이 성공하면 이전 항목의 `desktop-fallback.png`는 삭제되며, **Stop Playback**은 현재 항목 cache 파일을 유지합니다.
+현재 Native production target은 자동 테스트와 정적 통합 검증까지 완료됐으며, 실제 Desktop 출력과 Fullscreen/Space 동작에 대한 production runtime QA는 후속 검증으로 남아 있습니다.
+
+Legacy 재생에서는 Spaces 전환이나 전체화면 전환 중 기존 macOS 배경화면이 잠깐 보이는 현상을 줄이기 위해 항목별 `Derived/desktop-fallback.png`를 유지합니다. Play/Apply는 먼저 라이브 데스크톱 레이어를 시작하고, 파일이 이미 있으면 이어서 macOS system wallpaper에 적용합니다. 파일이 없으면 Video, Image, Web 항목에 한해 실제 원본이나 렌더링된 Web 출력에서 비동기로 생성합니다. Web snapshot이 실패해도 라이브 재생은 계속됩니다. Workshop 썸네일과 Scene 썸네일은 데스크톱 fallback cache 원본으로 사용하지 않습니다. 라이브러리 항목 메뉴의 **Show in Finder**, **Generate Desktop Fallback**, **Regenerate Desktop Fallback**으로 폴더를 열거나 cache를 수동으로 다시 생성할 수 있습니다. **Restore on Stop**을 켜면 정적 이미지 배경화면에 한해 fallback 적용 전 원본 이미지를 `Application Support/MacWall/DesktopWallpaperRestore/Originals`에 복사하고, **Stop Playback** 시 현재 macOS 배경화면이 앱이 적용한 fallback일 때 그 복사본으로 자동 복원합니다. MacWall의 `desktop-fallback.png`는 원본 배경화면으로 저장하지 않습니다. `Macintosh` 같은 macOS 기본/동적 배경화면은 공개 API로 안정적으로 복원할 수 없어 경고를 표시하고 자동 복원을 건너뜁니다. 다른 항목으로 전환해 새 fallback 적용이 성공하면 이전 항목의 `desktop-fallback.png`는 삭제되며, **Stop Playback**은 현재 항목 cache 파일을 유지합니다.
 
 ## 성능 스냅샷
 

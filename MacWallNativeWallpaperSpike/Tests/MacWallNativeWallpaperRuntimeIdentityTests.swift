@@ -6,6 +6,7 @@ struct MacWallNativeWallpaperRuntimeIdentityTests {
         testRuntimeIdentityLogDescription()
         testVideoSourceResolverChoosesFirstExistingFile()
         testVideoSourceResolverIgnoresMissingFiles()
+        NativeVideoPlaybackTimingTests.runAll()
     }
 
     private static func testRuntimeIdentityLogDescription() {
