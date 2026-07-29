@@ -1,96 +1,66 @@
 # License Policy
 
-이 문서는 현재 라이선스 방향에 대한 작업 기준입니다. 최종 라이선스 결정 문서가 아니며, 기능 안정화와 구조 정리 이후 다시 확정합니다.
+이 문서는 MacWall repository의 확정 라이선스 정책을 기록합니다.
 
 ## 현재 결정
 
-라이선스 결정은 아직 확정하지 않습니다.
+MacWall의 project-authored code 전체는 MIT license를 적용합니다.
 
-현재 우선순위는 다음 순서를 유지합니다.
-
-1. 기능 안정화
-2. 구조 정리
-3. 모듈 분리
-4. 라이선스 결정
-
-지금 당장 라이선스 때문에 코드 구조를 바꾸지 않습니다.
-
-## 기본 철학
-
-허용하고 싶은 것:
-
-- 사용 가능
-- 수정 가능
-- 포크 가능
-- 공부 가능
-- 재구현 가능
-
-허용 범위:
-
-- 개인 사용
-- 비상업적 사용
-- 코드 참고
-- 아이디어 차용
-- 새로운 구현
-
-원하지 않는 것:
-
-- 단순 복사 후 이름만 변경하여 판매
-- 그대로 가져가서 상업 제품으로 재판매
-
-재구현 자체는 정상적인 개발 활동으로 간주하며 제한 대상으로 보지 않습니다.
-
-## 예상 라이선스 구조
-
-### MIT 유지 가능 영역
-
-다음 영역은 MIT 유지가 가능합니다.
+별도 제한 license로 분리하지 않는 영역:
 
 - Core
-- UI
-- Settings
+- UI와 Settings
 - Legacy Backend
-- 공용 인터페이스
-- 연결 코드
-
-이 영역의 가치는 상대적으로 낮으며, MIT 유지에 큰 문제가 없습니다.
-
-### 별도 라이선스 검토 영역
-
-다음 영역은 별도 라이선스로 분리할 수 있습니다.
-
 - NativeWallpaperBackend
 - WallpaperAgent Integration
 - Native Pipeline
 - Renderer Pipeline
-- 향후 Scene Engine
+- Scene Engine
+- 향후 공용 module과 연결 코드
 
-핵심 가치는 이 영역에 있습니다.
+라이선스 전문과 저작권 notice는 repository root의
+[`LICENSE`](../LICENSE)에서 관리합니다.
 
-현재는 테스트 브랜치와 `MacWallNativeWallpaperSpike` 내부에서 개발 중이며, 나중에 파일 및 모듈 단위로 분리할 수 있습니다.
+## MIT가 허용하는 범위
 
-기능 안정화 후 승격 흐름은 다음과 같습니다.
+MIT license는 다음 행위를 허용합니다.
 
-```text
-MacWallNativeWallpaperSpike
--> NativeWallpaperBackend
-```
+- 개인 및 상업적 사용
+- 수정과 재구현
+- 복사와 배포
+- fork와 sublicense
+- 판매
 
-이 승격 과정에서 파일과 모듈을 분리한 뒤 라이선스를 결정합니다.
+따라서 과거 검토했던 "사용과 수정은 허용하지만 단순 복사 후 판매는 금지"
+조건은 적용하지 않습니다. 해당 제한은 MIT 조건과 함께 둘 수 없습니다.
 
-## 별도 라이선스의 의도
+## Attribution
 
-별도 라이선스 영역의 목표는 독점이 아닙니다.
+`LICENSE`에는 다음 내용을 유지합니다.
 
-목표는 다음 철학을 반영하는 것입니다.
+- 원작 Workshop Wallpaper Bridge 저작권 notice
+- 현재 작업자 저작권 notice
+- 원작에서 파생된 범위에 대한 짧은 설명
+- MIT license 전문
 
-```text
-사용, 수정, 공부, 재구현은 허용하되,
-단순 복사 후 판매는 원하지 않는다.
-```
+기여나 문서 정리 과정에서 원작 notice와 attribution을 제거하거나 축소하지
+않습니다.
 
-## 현재 주의사항
+## Third-party code와 asset
 
-- `LICENSE` 파일은 이 문서만으로 변경하지 않습니다.
-- Native wallpaper spike를 Main App에 통합하기 전까지 라이선스 경계는 확정하지 않습니다.
-- 파일/모듈 경계가 정리되기 전에는 소스 파일별 license header를 추가하지 않습니다.
+Repository 전체가 MIT라는 결정은 third-party code의 기존 license를
+무시하거나 GPL code를 MIT로 재라이선스한다는 뜻이 아닙니다.
+
+- MIT-compatible dependency는 원래 license와 notice를 보존합니다.
+- GPL implementation code를 MacWall source에 복사하지 않습니다.
+- GPL project는 동작 비교와 format 연구에만 사용할 수 있습니다.
+- Wallpaper Engine built-in asset, shader, texture를 app bundle이나
+  repository에 포함하지 않습니다.
+- 사용자가 합법적으로 보유한 local asset을 선택적으로 읽는 기능은
+  MacWall source license와 별개로 취급합니다.
+
+## Source header
+
+Repository root `LICENSE`를 기본 license source로 사용합니다. 법적 또는
+배포상 필요가 확인되지 않는 한 모든 source file에 반복적인 MIT header를
+추가하지 않습니다.

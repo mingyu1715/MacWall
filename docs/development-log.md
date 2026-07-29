@@ -4,6 +4,40 @@
 
 ## 2026-07-29
 
+### 22:21 KST
+
+- 완료: Scene Engine 전체 구조 설계 및 local fixture 기반 format 재검증
+- 설계:
+  - [Scene Engine 설계](superpowers/specs/2026-07-29-scene-engine-design.md)
+  - random-access PKG/TEX format layer, layered asset resolver, typed SceneGraph,
+    deterministic runtime, headless Metal render graph으로 책임 분리
+  - Native Scene renderer는 Main App이 아니라 WallpaperAgent가 실행한 extension
+    프로세스 안에서 동작하도록 process boundary 확정
+  - IOSurface-backed `CVPixelBuffer`를 Metal render target으로 사용하고 기존
+    `AVSampleBufferDisplayLayer` native surface 경로로 frame을 공급
+  - 모든 target Desktop context의 first frame 이후에만 candidate generation을
+    commit하는 multi-display transaction 유지
+  - 실제 Workshop fixture는 local-only, Git에는 synthetic fixture와 aggregate
+    audit metadata만 저장
+  - Scene audit은 internal API/test support로 두며 새 CLI command는 추가하지 않음
+- 라이선스:
+  - project-authored code 전체를 MIT로 확정
+  - Native Wallpaper Backend와 Scene Engine의 별도 제한 license 검토 종료
+  - MIT가 상업적 사용, 배포, sublicense, 판매를 허용한다는 점을 정책에 명시
+  - 원작 notice와 현재 작업자 notice는 기존 `LICENSE`에서 유지
+  - GPL code와 Wallpaper Engine built-in asset은 repository/app bundle에 포함하지 않음
+- 검증:
+  - 세 local Scene fixture의 PKG/TEX/object/effect/script 구조와 기존 parser 한계 재확인
+  - Native runtime staging 및 extension-side video frame path와 Scene process 설계 대조
+  - Wallpaper Engine 공식 SceneScript/effect/shader 문서와 Apple Metal/Core Video/
+    AVSampleBufferDisplayLayer 문서를 기준으로 설계 보강
+  - 활성 문서의 구식 라이선스/Scene 단계/CLI 표현 검색 결과 없음
+  - 변경 문서의 local Markdown link 검사와 `git diff --check` 통과
+- 미실행:
+  - 코드 구현 및 test 실행
+  - 앱/GUI/System Settings 실행
+  - package, DMG, notarization, `dist` 작업
+
 ### 21:55 KST
 
 - 완료: Native Playback Timing/Backend feature 브랜치를 Branding 변경이 반영된 현재 브랜치에 통합

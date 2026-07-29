@@ -1,6 +1,6 @@
 # MacWall 개발 로드맵
 
-수정일: 2026-07-27
+수정일: 2026-07-29
 
 이 문서는 현재 활성 제품 개발 방향과 Scene 개발 방향을 정리합니다. 완료된 세부 구현 계획은 `docs/implemented/`에 기록하고, 과거 계획은 `docs/archive/`에 보관합니다.
 
@@ -340,25 +340,37 @@ Wallpaper Engine Scene은 단순 flat image layer보다 넓은 기능을 갖습�
 scene.pkg
    |
    v
-PKG / TEX decoding layer
-   |
-   +------ optional user-copied Wallpaper Engine assets folder
+versioned PKG / TEX format layer
    |
    v
-Asset resolver
+layered asset resolver
+   |
+   +------ MacWall clean-room built-ins
+   |
+   +------ optional explicitly staged compatibility assets
    |
    v
-Typed scene graph
+typed scene graph
    |
-   +------ timeline / properties / script runtime
+   +------ deterministic clock / properties / input / script runtime
    |
    v
-Metal render graph
+headless Metal render graph
    |
-   +------ MTKView desktop output
+   +------ offscreen test / snapshot adapter
    |
-   +------ desktop-fallback.png snapshot
+   +------ legacy view adapter
+   |
+   +------ extension-side IOSurface/CVPixelBuffer adapter
+   |
+   v
+AVSampleBufferDisplayLayer -> WallpaperAgent
 ```
+
+Native Wallpaper extension은 Main App과 다른 프로세스입니다. Native Scene
+mode에서는 extension이 generation에 stage된 Scene source를 직접
+parse/render합니다. Main App이 만든 `MTLTexture`를 extension으로 전달하지
+않습니다.
 
 ### Module boundary
 
@@ -370,9 +382,12 @@ Metal render graph
 | `SceneGraph` | JSON을 typed layer, composition, material, effect, animation track으로 변환 |
 | `SceneMetal` | GPU resource upload 및 Metal frame render |
 | `SceneRuntime` | time, pause state, user property, input, 이후 SceneScript 구동 |
+| `SceneNativeAdapter` | extension 내부 Metal output을 IOSurface-backed sample buffer로 변환 |
 | `SceneSnapshot` | desktop fallback cache용 대표 Scene frame 캡처 |
 
-최종 Metal runtime logic은 `MacWallCore`에 넣지 않습니다. core package는 desktop rendering 없이 CLI에서도 사용할 수 있어야 합니다.
+최종 Metal runtime logic은 `MacWallCore`에 넣지 않습니다. Format과 audit
+module은 AppKit/Metal desktop rendering 없이 test와 non-GUI code에서 사용할
+수 있어야 합니다.
 
 ## 5. Scene 개발 단계
 
@@ -380,7 +395,8 @@ Metal render graph
 
 목표: 최종 renderer를 만들기 전에 input surface를 이해합니다.
 
-- `macwallctl scene-audit <scene.pkg>`의 stable JSON output을 설계합니다.
+- 새 CLI command 없이 internal `SceneAudit` API와 test support의 stable
+  report contract를 설계합니다.
 - PKG version, TEX container, TEX pixel format, flag, object type, material, effect, shader, font, audio, video texture, script, unresolved path를 기록합니다.
 - Scene이 `scene.pkg` 외부 shared Wallpaper Engine asset에 의존하는지 기록합니다.
 - local test fixture별 audit snapshot을 저장합니다.
@@ -401,38 +417,50 @@ Metal render graph
 - TEX container와 format metadata를 보존합니다.
 - software decode는 test와 screenshot fallback으로 유지합니다.
 
-### S2: Minimal Metal Renderer
+### S2: Asset Resolver and Typed Scene Graph
 
-- `MTKView` 기반 Scene view를 추가합니다.
-- Metal device, command queue, render pipeline, quad geometry, orthographic camera, alpha blending을 추가합니다.
-- image layer를 stable Z order로 render합니다.
-- `Fit`, `Fill`, `Stretch`를 구현합니다.
-- covered 상태에서는 draw loop를 pause하고 마지막 rendered frame을 유지합니다.
-- 같은 rendered output에서 snapshot을 캡처합니다.
+- package-local, clean-room built-in, optional staged compatibility asset
+  순서의 resolver를 추가합니다.
+- canonical virtual path와 asset provenance를 기록합니다.
+- model, material, pass, texture dependency를 graph로 만듭니다.
+- image, text, particle, sound, unknown node를 모두 보존합니다.
+- parent cycle을 검증하고 instance/override를 reference로 표현합니다.
 
 ### S3: GPU Texture Pipeline
 
 - mipmap과 texture padding metadata를 지원합니다.
-- Metal pixel format이 허용하는 경우 compressed texture를 직접 upload합니다.
+- Metal device capability가 허용하는 경우 compressed texture를 직접 upload합니다.
 - software decompression은 fallback으로만 둡니다.
 - repeated texture reference를 dedupe합니다.
 - async loading과 bounded cache를 추가합니다.
 - active texture memory를 diagnostics에 표시합니다.
 
-### S4: 2D Scene Graph and Timeline
+### S4: Headless 2D Metal Renderer
 
-- layer transform, anchor, origin, size, scale, angle, alpha, visibility, Z ordering을 구현합니다.
-- parent-child transform, composition layer, fullscreen layer, clipping mask를 추가합니다.
-- loop, mirror, easing, start delay, relative timeline behavior를 구현합니다.
-- static composition이 맞은 뒤 basic mouse parallax를 추가합니다.
+- `MTKView`에 종속되지 않는 headless Scene renderer를 추가합니다.
+- Metal device, command queue, render pipeline, quad geometry, orthographic camera, alpha blending을 추가합니다.
+- image layer를 stable Z order로 render합니다.
+- parent-child transform, instance, opacity, timeline을 평가합니다.
+- `Fit`, `Fill`, `Stretch`를 구현합니다.
+- 같은 rendered output에서 snapshot을 캡처합니다.
 
 완료 기준:
 
 - `2174863503`이 합리적인 static composition으로 보입니다.
-- `2834933421`이 prototype의 fixed 16-layer cap 때문에 대부분의 layer를 잃지 않습니다.
-- Scene fallback snapshot은 실제 Metal output에서 생성할 수 있습니다.
+- `2834933421`, `3516106265`가 fixed layer cap 없이 graph로 load됩니다.
+- 같은 time/input/property에서 deterministic offscreen frame을 생성합니다.
+- Scene snapshot은 실제 Metal output에서 생성할 수 있습니다.
 
-### S5: Effects Render Graph
+### S5: Native Scene Frame Adapter
+
+- Scene generation manifest와 immutable staging을 추가합니다.
+- extension 프로세스 안에서 Scene renderer session을 생성합니다.
+- IOSurface-backed `CVPixelBuffer`를 Metal render target으로 사용합니다.
+- completed frame을 `AVSampleBufferVideoRenderer`에 enqueue합니다.
+- 모든 target Desktop context의 first frame 이후에만 candidate를 commit합니다.
+- covered 상태에서는 clock과 renderer를 pause하고 마지막 frame을 유지합니다.
+
+### S6: Effects Render Graph
 
 - offscreen render target과 chained render pass를 추가합니다.
 - color adjustment, blur, bloom, blend, shake 계열 effect부터 시작합니다.
@@ -440,33 +468,33 @@ Metal render graph
 - effect 하나가 실패해도 전체 Scene을 깨지 않게 skip합니다.
 - compatible custom shader에 대한 안전한 translation 전략을 조사합니다.
 
-### S6: Text Layers
+### S7: Text Layers
 
 - packaged font를 안전하게 load합니다.
 - alignment, color, alpha, scale, basic timeline을 가진 text layer를 render합니다.
 - missing font fallback behavior를 추가합니다.
 
-### S7: GPU Particle Systems
+### S8: GPU Particle Systems
 
 - GPU-instanced particle을 추가합니다.
 - rain, snow, dust, leaf 계열 common system부터 시작합니다.
 - renderer, emitter, initializer, operator subset을 점진적으로 구현합니다.
 - child system과 cursor control point는 이후 추가합니다.
 
-### S8: Animated Textures, Video, Audio
+### S9: Animated Textures, Video, Audio
 
 - GIF 또는 sprite-sheet texture animation을 추가합니다.
 - compatible한 경우 AVFoundation 기반 video texture를 추가합니다.
 - sound layer와 mute control을 추가합니다.
 - audio spectrum input은 ordinary audio playback이 안정화된 뒤 추가합니다.
 
-### S9: Puppet Warp
+### S10: Puppet Warp
 
 - mesh geometry, skeleton, weight, animation track을 parse합니다.
 - Metal에서 vertex skinning을 구현합니다.
 - advanced physics와 inverse kinematics는 basic weighted animation 이후에 다룹니다.
 
-### S10: User Properties and Sandboxed SceneScript
+### S11: User Properties and Sandboxed SceneScript
 
 - `project.json`의 item property를 parse합니다.
 - 지원 가능한 property type으로 per-item control을 구성합니다.
@@ -476,13 +504,11 @@ Metal render graph
 
 SceneScript는 execution boundary입니다. 임의 filesystem, process, network access를 얻으면 안 됩니다.
 
-### S11: 3D Models, Lighting, Advanced Shaders
+### S12: 3D Models, Lighting, Advanced Shaders and Regression Hardening
 
 - 3D는 별도 renderer capability로 취급합니다.
 - model, camera, light, reflection을 점진적으로 추가합니다.
 - 흔치 않은 custom shader variant는 unsupported로 둘지 결정합니다.
-
-### S12: Integration and Regression Hardening
 
 - 실제 Scene output에서 desktop fallback cache를 생성합니다.
 - Spaces swipe transition과 full-screen transition을 검증합니다.
@@ -560,10 +586,12 @@ local fixture는 `test/` 아래에 있습니다. 사용자가 직접 복사한 l
 
 ## 9. License 및 Asset Guardrail
 
-- project는 MIT-compatible하게 유지합니다.
+- MacWall의 project-authored code 전체는 MIT license를 적용합니다.
+- Native Wallpaper Backend와 Scene Engine을 별도 제한 license로 분리하지 않습니다.
 - GPL implementation code를 project에 복사하지 않습니다.
 - GPL project는 behavior reference와 comparison target으로만 사용합니다.
 - MIT-licensed implementation detail을 참고해 적용한 경우 origin을 기록합니다.
+- compatible third-party dependency는 원래 license와 notice를 보존합니다.
 - Wallpaper Engine shared asset을 bundle하지 않습니다.
 - shared asset이 필요하면 사용자가 합법적으로 보유한 local `assets` folder를 직접 복사하고 명시적으로 선택하게 합니다.
 
@@ -586,27 +614,29 @@ Scene runtime work:
 ```text
 S0 Format Research and Fixture Catalog
 -> S1 Format Layer Hardening
--> S2 Minimal Metal Renderer
+-> S2 Asset Resolver and Typed Scene Graph
 -> S3 GPU Texture Pipeline
--> S4 2D Scene Graph and Timeline
--> S5 Effects
--> S6 Text
--> S7 Particles
--> S8 Animated Textures, Video, Audio
--> S9 Puppet Warp
--> S10 Properties and SceneScript
--> S11 3D and Advanced Shaders
--> S12 Integration Hardening
+-> S4 Headless 2D Metal Renderer
+-> S5 Native Scene Frame Adapter
+-> S6 Effects
+-> S7 Text
+-> S8 Particles
+-> S9 Animated Textures, Video, Audio
+-> S10 Puppet Warp
+-> S11 Properties and SceneScript
+-> S12 3D, Advanced Shaders, Regression Hardening
 ```
 
-첫 useful Scene milestone은 S4입니다. 그 시점에 common 2D Scene은 실제 asset에서 render되고, desktop fallback snapshot도 실제 renderer output에서 생성되어야 하며, normal playback이 Workshop thumbnail에 기대면 안 됩니다.
+첫 offscreen Scene milestone은 S4이고 첫 실제 Desktop milestone은 S5입니다.
+S5에서 common 2D Scene은 extension 내부의 실제 Metal output으로 재생되어야
+하며 normal playback과 snapshot이 Workshop thumbnail에 기대면 안 됩니다.
 
 ## 11. 다음 Planning Session
 
 다음 planning:
 
 1. 별도 사용자 gate에서 Native auto-pause, sleep/wake, 1회 recovery의 실제 Desktop 동작을 확인합니다.
-2. 다음 구현 작업은 Scene Engine의 `S0 Format Research and Fixture Catalog` 설계/spec과 실행 계획 작성입니다.
-3. S0 승인 전에는 Metal renderer, Scene fallback, Native Scene surface 구현을 시작하지 않습니다.
+2. 승인된 [Scene Engine 설계](superpowers/specs/2026-07-29-scene-engine-design.md)를 기준으로 `S0 Format Research and Fixture Catalog` 실행 계획을 작성합니다.
+3. S0/S1/S2 format과 graph contract가 검증되기 전에는 Metal renderer, Scene fallback, Native Scene surface 구현을 시작하지 않습니다.
 4. snapshot/export는 `docs/superpowers/plans/2026-06-15-native-wallpaper-snapshot-export-gate.md`, BGRA IOSurface memory는 별도 최적화 작업으로 유지합니다.
 5. proper Apple signing/provisioning 기반 App Group runtime QA는 release 전 별도 gate로 유지합니다.
