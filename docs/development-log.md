@@ -4,6 +4,27 @@
 
 ## 2026-07-29
 
+### 16:23 KST
+
+- 완료: Native Wallpaper `AdHocQA` development-only transport 설계 승인 및 문서화
+- 설계: [Native Wallpaper AdHocQA Transport 설계](superpowers/specs/2026-07-29-native-wallpaper-adhoc-qa-transport-design.md)
+- 결정:
+  - `AdHocQA`에서만 `~/Library/Application Support/MacWall/NativeRuntimeAdHocQA` 공유 경로 사용
+  - Extension에는 해당 디렉터리 하나로 제한한 Sandbox temporary exception 적용
+  - 일반 Debug/Release는 기존 App Group transport 유지
+  - App Group 실패 시 development transport로 자동 fallback하지 않음
+  - command/status/generation protocol과 Native renderer/lifecycle은 변경하지 않음
+  - proper Apple signing/provisioning은 후속 production gate로 유지
+- 검증 범위:
+  - transport root와 command/status round trip 단위 테스트
+  - build configuration 및 entitlement 분리 정적 검사
+  - `AdHocQA` compile/signature/로그 검증
+  - 실제 System Settings 및 Desktop 화면은 사용자 검증 gate로 분리
+- 제한:
+  - 코드 구현, GUI 실행, package, DMG, notarization, `dist` 작업 없음
+- 다음:
+  - 문서 검토 승인 후 executable implementation plan 작성
+
 ### 16:16 KST
 
 - 완료: 실패한 ad-hoc production Native Wallpaper QA 환경 정리

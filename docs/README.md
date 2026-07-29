@@ -43,6 +43,7 @@ repository root에는 사용자와 외부 기여자가 바로 확인해야 하�
 - [macOS 26 Native Wallpaper Playback Timing 실행 계획](superpowers/plans/2026-07-20-native-wallpaper-playback-timing.md)
 - [macOS 26 Native Wallpaper Backend 승격 설계](superpowers/specs/2026-07-27-native-wallpaper-backend-promotion-design.md)
 - [macOS 26 Native Wallpaper Backend 승격 실행 계획](superpowers/plans/2026-07-28-native-wallpaper-backend-promotion.md): 구현 및 정적 검증 완료, production runtime QA 대기
+- [macOS 26 Native Wallpaper AdHocQA Transport 설계](superpowers/specs/2026-07-29-native-wallpaper-adhoc-qa-transport-design.md): provisioning 전 개발용 runtime transport
 
 ## 재사용 템플릿
 
