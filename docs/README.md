@@ -30,6 +30,7 @@ repository root에는 사용자와 외부 기여자가 바로 확인해야 하�
 - [P1 Desktop Fallback Cache 및 Space Refresh 구현 기록](implemented/2026-06-03-p1-desktop-fallback-cache-and-space-refresh.md)
 - [P2 Playback Stability 구현 기록](implemented/2026-06-04-p2-playback-stability.md)
 - [macOS 26 Native Wallpaper Spike 구현 기록](implemented/2026-06-15-macos-26-native-wallpaper-spike.md)
+- [macOS 26 Native Auto-pause 및 Runtime Stability 구현 기록](implemented/2026-07-29-native-auto-pause-runtime-stability.md)
 
 작은 버그 수정이나 판단은 [개발 로그](development-log.md)에만 남겨도 됩니다. 큰 기능은 구현 기록을 만들고 개발 로그에서 링크합니다.
 
@@ -45,8 +46,6 @@ repository root에는 사용자와 외부 기여자가 바로 확인해야 하�
 - [macOS 26 Native Wallpaper Backend 승격 실행 계획](superpowers/plans/2026-07-28-native-wallpaper-backend-promotion.md): 구현 및 정적 검증 완료, production runtime QA 대기
 - [macOS 26 Native Wallpaper AdHocQA Transport 설계](superpowers/specs/2026-07-29-native-wallpaper-adhoc-qa-transport-design.md): provisioning 전 개발용 runtime transport
 - [macOS 26 Native Wallpaper AdHocQA Transport 실행 계획](superpowers/plans/2026-07-29-native-wallpaper-adhoc-qa-transport.md)
-- [macOS 26 Native Auto-pause 및 Runtime Stability 설계](superpowers/specs/2026-07-29-native-auto-pause-runtime-stability-design.md)
-- [macOS 26 Native Auto-pause 및 Runtime Stability 실행 계획](superpowers/plans/2026-07-29-native-auto-pause-runtime-stability.md)
 
 ## 재사용 템플릿
 

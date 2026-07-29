@@ -40,12 +40,13 @@ To animate the Lock Screen, turn on **Animate Lock Screen**, click **Screen Save
 - If Native is inactive when you click **Play on Desktop**, MacWall offers **Open Wallpaper Settings**, **Play Using Legacy Mode**, and **Cancel**. The Legacy choice applies only to that Play request.
 - macOS 25 and earlier, Intel Macs, and Native-unsupported formats continue to use the Legacy desktop layer.
 - **Stop Playback** in Native mode stops the playback clock while preserving the final frame and the MacWall selection in macOS. Native mode does not generate or apply `desktop-fallback.png`.
-- **Auto-pause behind apps** is enabled by default.
+- **Auto-pause behind apps** is enabled by default. Native Video pauses only its playback clock and decode/read/enqueue work after the desktop has remained covered for 200 ms, while preserving the last frame.
 - Minimizing or hiding the MacWall control window does not stop playback.
 - Closing the settings window does not quit the app. Use **Quit** from the menu bar icon when you want to fully stop the background utility.
 - When another app covers the desktop, the wallpaper layer stays in place. Standalone videos pause on their current frame. Web wallpapers pause CSS animations but keep embedded videos running to avoid a visible resume delay.
-- When you return to the desktop, playback resumes automatically.
-- After sleep/wake or monitor changes, the app recreates the wallpaper windows and resumes the selected wallpaper.
+- Playback resumes after the desktop has remained visible for 200 ms. Sleep suspends immediately, and wake re-evaluates visibility after 500 ms.
+- If a Native renderer fails, MacWall keeps the existing surface while attempting one transactional recovery for the same playback generation. A second failure preserves the last frame and failed state instead of restarting indefinitely.
+- After sleep/wake or monitor changes, the app restores the selected wallpaper's runtime state.
 - You can disable auto-pause from the menu bar icon or the settings window if you want continuous playback.
 - Turn on **Open at Login** if you want the menu bar utility to start automatically after logging in. The last played wallpaper is restored on app launch unless you press **Stop Playback** first.
 - Use **Remove** in the imported library list to delete copied Mac-library files you no longer want.

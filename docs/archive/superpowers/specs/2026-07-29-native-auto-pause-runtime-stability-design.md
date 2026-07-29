@@ -2,7 +2,7 @@
 
 작성일: 2026-07-29
 
-상태: 설계 승인 / 구현 대기
+상태: 구현 및 정적 검증 완료 / 사용자 runtime QA 대기
 
 ## 목적
 
@@ -219,6 +219,8 @@ zero-context 후 monitor topology가 다시 생긴 경우도 같은 순서를 �
 - candidate instance ID가 일치할 때만 처리한다.
 - replacement set만 cleanup한다.
 - 기존 active playback과 active generation은 유지한다.
+
+이 규칙은 정상 A -> B 전환 candidate 실패에 적용한다. active renderer failure 이후 시작한 recovery candidate 자체가 실패한 경우에는 원래 active bridge가 이미 terminal 상태이므로 같은 generation의 두 번째 failure로 분류해 recovery를 exhaust한다.
 
 ### Active failure
 

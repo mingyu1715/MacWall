@@ -259,6 +259,32 @@ Spike 자체는 production 기능이 아닙니다.
 - GUI/System Settings 자동 검증
 - package, DMG, notarization, `dist` 작업
 
+### Phase P2.7: Native Auto-pause 및 Runtime Stability
+
+상태: 구현 및 정적 검증 완료 / 사용자 runtime QA 대기
+
+구현 결과:
+
+- Main App이 Desktop visibility를 감지해 active Native generation에 `playback-control.json`을 발행합니다.
+- Desktop covered/visible 상태는 각각 200ms debounce를 사용하고, sleep은 즉시 suspend, wake는 500ms 후 visibility를 재평가합니다.
+- Extension은 마지막 frame과 reader 상태를 유지한 채 playback clock과 decode/read/enqueue pump만 가역적으로 중단합니다.
+- 전환 중 candidate는 모든 Desktop context에서 first frame을 만든 뒤 최신 suspension 상태를 적용합니다.
+- active renderer 첫 실패는 기존 surface를 유지한 채 같은 generation의 replacement를 한 번만 준비합니다.
+- 같은 generation의 복구가 다시 실패하면 무한 재시작하지 않고 active bridge를 마지막 frame으로 freeze하며 failed status를 기록합니다.
+- Native Stop ACK 이후 generation staging과 transient display/playback control만 정리하고 runtime root와 QA transport는 보존합니다.
+- Legacy fallback, original wallpaper restore, snapshot/export, Web, Scene 동작은 변경하지 않았습니다.
+
+검증 결과:
+
+- 전체 `swift test`: 254 tests, 0 failures
+- Native focused test와 project structure guard 통과
+- Host + embedded Native extension unsigned AdHocQA compile 통과
+- 앱 실행, System Settings 조작, 실제 Desktop runtime QA는 수행하지 않았습니다.
+
+완료 기록:
+
+- `docs/implemented/2026-07-29-native-auto-pause-runtime-stability.md`
+
 ### Phase P3: Web Runtime Completion
 
 - `wallpaperPropertyListener`를 통한 Wallpaper Engine Web property default를 지원합니다.
@@ -550,6 +576,7 @@ P1 Desktop Fallback Cache (완료)
 -> P2 Playback Stability (완료)
 -> P2.5 macOS 26 Native Wallpaper Mode Spike (완료)
 -> P2.6 Native Wallpaper Backend Promotion (구현 완료 / runtime QA 대기)
+-> P2.7 Native Auto-pause 및 Runtime Stability (구현/정적 검증 완료, runtime QA 대기)
 -> Native Wallpaper follow-up gates (보류)
 -> P3 Web Runtime Completion
 ```
@@ -576,11 +603,10 @@ S0 Format Research and Fixture Catalog
 
 ## 11. 다음 Planning Session
 
-다음 product work:
+다음 planning:
 
-1. 별도 승인 후 `AdHocQA` runner의 `reset -> install` 순서로 등록하고 사용자가 System Settings에서 MacWall을 선택합니다.
-2. 사용자 관측과 `WallpaperAgent`/extension 로그를 대조해 development-home command, heartbeat, generation ACK, all-or-nothing replacement를 확인합니다.
-3. AdHocQA runtime gate 통과 후 proper Apple signing/provisioning을 준비하고 동일 protocol을 App Group transport로 다시 검증합니다.
-4. proper signing 기반 production runtime QA가 통과한 뒤에만 P2.6 완료 구현 기록을 만들고 활성 승격 계획을 archive합니다.
-5. snapshot/export는 `docs/superpowers/plans/2026-06-15-native-wallpaper-snapshot-export-gate.md`, BGRA IOSurface memory는 별도 최적화 작업으로 유지합니다.
-6. Native Web/Scene을 시작하지 않으며 Scene S0는 product runtime 방향이 다시 승인될 때까지 보류합니다.
+1. 별도 사용자 gate에서 Native auto-pause, sleep/wake, 1회 recovery의 실제 Desktop 동작을 확인합니다.
+2. 다음 구현 작업은 Scene Engine의 `S0 Format Research and Fixture Catalog` 설계/spec과 실행 계획 작성입니다.
+3. S0 승인 전에는 Metal renderer, Scene fallback, Native Scene surface 구현을 시작하지 않습니다.
+4. snapshot/export는 `docs/superpowers/plans/2026-06-15-native-wallpaper-snapshot-export-gate.md`, BGRA IOSurface memory는 별도 최적화 작업으로 유지합니다.
+5. proper Apple signing/provisioning 기반 App Group runtime QA는 release 전 별도 gate로 유지합니다.

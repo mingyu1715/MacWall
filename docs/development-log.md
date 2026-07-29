@@ -4,6 +4,35 @@
 
 ## 2026-07-29
 
+### 20:57 KST
+
+- 완료: Production Native Video Auto-pause 및 Runtime Stability 구현
+- 문서: [Native Auto-pause 및 Runtime Stability 구현 기록](implemented/2026-07-29-native-auto-pause-runtime-stability.md)
+- 구현:
+  - active generation 전용 `playback-control.json`과 stale/duplicate control policy 추가
+  - Desktop covered/visible 200ms debounce, sleep 즉시 suspend, wake 500ms 재평가 연결
+  - 마지막 frame과 reader/pending sample을 유지하는 가역적 Native frame bridge suspend/resume 구현
+  - candidate first-frame 이후 suspension 적용과 실패한 replacement의 기존 active playback 보존
+  - generation별 active renderer 1회 transactional recovery와 두 번째 실패 시 terminal freeze 구현
+  - Stop ACK 이후 generation staging과 transient display/playback control 정리
+- 검증:
+  - focused Native runtime/App/backend/coordinator test 전부 통과
+  - 전체 `swift test`: 254 tests, 0 failures
+  - Native Wallpaper project structure guard 통과
+  - Host + embedded Native extension unsigned AdHocQA compile: `BUILD SUCCEEDED`
+  - 독립 코드 리뷰에서 발견된 Stop/Play cleanup race를 operation revision과 회귀 테스트로 수정
+  - recovery candidate failure를 terminal second failure로 명시하고 follow-up 리뷰에서 Critical/Important 잔여 finding 없음 확인
+  - `git diff --check` 통과
+- 로컬 commit:
+  - `cf18b82 feat(native): stabilize playback lifecycle`
+- 미실행:
+  - 앱 및 GUI 실행
+  - System Settings 조작과 실제 Desktop auto-pause/recovery 확인
+  - package, DMG, notarization, `dist`
+- 다음:
+  - 별도 사용자 runtime QA
+  - Scene Engine `S0 Format Research and Fixture Catalog` 설계
+
 ### 20:18 KST
 
 - 완료: Production Native Wallpaper의 `Fit` / `Fill` / `Stretch` 실제 Desktop QA
