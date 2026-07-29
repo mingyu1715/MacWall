@@ -49,6 +49,7 @@ repository root에는 사용자와 외부 기여자가 바로 확인해야 하�
 - [Scene Engine 설계](superpowers/specs/2026-07-29-scene-engine-design.md): format, asset resolver, typed graph, Metal renderer, Native Wallpaper integration
 - [Scene S0 Format Research 및 Fixture Catalog 실행 계획](superpowers/plans/2026-07-29-scene-format-research-and-fixture-catalog.md): internal audit contract와 local-only fixture regression
 - [Scene S1 Format Layer Hardening 설계](superpowers/specs/2026-07-29-scene-format-layer-hardening-design.md): random-access PKG/TEX format module, Audit v2, 기존 parser 교체 경계
+- [Scene S1 Format Layer Hardening 실행 계획](superpowers/plans/2026-07-29-scene-format-layer-hardening.md): source foundation부터 consumer migration과 기존 구현 삭제까지의 TDD 실행 순서
 
 ## 재사용 템플릿
 

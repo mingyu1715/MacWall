@@ -4,6 +4,29 @@
 
 ## 2026-07-29
 
+### 23:46 KST
+
+- 완료: Scene Engine S1 Format Layer Hardening 실행 계획 작성 및 자체 검수
+- 계획:
+  - [S1 실행 계획](superpowers/plans/2026-07-29-scene-format-layer-hardening.md)
+  - random-access source, PKG archive, TEX inspection, selected-mip decoder,
+    Audit v2, local fixture gate, Core/App/CLI migration, 기존 구현 삭제,
+    완료 문서 정리의 11개 review gate로 분해
+  - 각 구현 task에 RED/GREEN focused test와 독립 local commit 포함
+  - Core가 Formats decoder output을 `SceneRenderTexture`로 변환해
+    `MacWallApp -> MacWallCore` dependency 방향을 유지하도록 명시
+  - S0/S1 완료 문서는 최종 검증 후 archive/implemented 구조로 정리
+- 검수:
+  - S1 설계의 limit, unsupported evidence, overlap/duplicate 정책,
+    Audit schema 2, random-access acceptance를 task에 모두 연결
+  - task 간 public type/signature와 fixture helper 사용 일치 확인
+  - placeholder 없음, Markdown code fence 짝 일치, `git diff --check` 통과
+- 미실행:
+  - 코드 구현 및 test 실행
+  - `swift build`, `xcodebuild build`, 앱/GUI/System Settings 실행
+  - S2, Metal, Native Scene surface, Scene fallback, SceneScript/effect 실행
+  - package, DMG, notarization, `dist` 작업
+
 ### 23:36 KST
 
 - 완료: Scene Engine S1 Format Layer Hardening 설계 문서 작성 및 자체 검수

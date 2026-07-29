@@ -1,6 +1,6 @@
 # MacWall Scene Format Layer Hardening Design
 
-상태: 설계 합의 완료, 문서 검토 대기
+상태: 승인 완료, 실행 계획 작성됨
 
 작성일: 2026-07-29
 대상: Scene Engine S1 Format Layer Hardening
