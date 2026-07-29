@@ -1641,7 +1641,7 @@ git commit -m "refactor(scene): migrate render plan to format module"
 - Preserves: `scene-render-info <scene.pkg>` prototype summary
 - Adds no command
 
-- [ ] **Step 1: Change CLI dependency and implementation**
+- [x] **Step 1: Change CLI dependency and implementation**
 
 Set:
 
@@ -1668,7 +1668,7 @@ private static func sceneInfo(arguments: [String]) throws {
 
 Do not pass the report through the CLI's generic `JSONEncoder`.
 
-- [ ] **Step 2: Update README command descriptions**
+- [x] **Step 2: Update README command descriptions**
 
 In both README files, state that:
 
@@ -1679,7 +1679,7 @@ In both README files, state that:
 
 Do not describe Scene as fully playable or add fallback claims.
 
-- [ ] **Step 3: Run compile-through tests and static checks**
+- [x] **Step 3: Run compile-through tests and static checks**
 
 Run:
 
@@ -1693,7 +1693,7 @@ git diff --check
 Expected: focused tests pass, both README languages describe schema 2, and
 the diff check is clean.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add Package.swift Sources/macwallctl/MacWallCtl.swift README.md README.ko.md

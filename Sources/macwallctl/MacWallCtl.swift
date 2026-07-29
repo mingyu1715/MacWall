@@ -1,5 +1,6 @@
 import Foundation
 import MacWallCore
+import MacWallSceneAudit
 
 @main
 struct MacWallCtl {
@@ -98,10 +99,12 @@ struct MacWallCtl {
         guard let path = arguments.first else {
             throw CLIError.missingPath
         }
-        let analysis = try ScenePackageAnalyzer().analyze(url: URL(filePath: path))
-        let data = try JSONEncoder.cli.encode(analysis)
-        FileHandle.standardOutput.write(data)
-        print("")
+        let report = SceneAuditor().audit(
+            url: URL(filePath: path)
+        )
+        FileHandle.standardOutput.write(
+            try SceneAuditReportEncoder.encode(report)
+        )
     }
 
     private static func sceneRenderInfo(arguments: [String]) throws {

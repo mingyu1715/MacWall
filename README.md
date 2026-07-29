@@ -223,7 +223,7 @@ swift run macwallctl scene-render-info "/path/to/scene.pkg"
 swift run macwallctl doctor
 ```
 
-Use `scene-info` first when a scene looks static. It reports animation, particle, effect, and shader counts without decoding large textures. `scene-render-info` decodes supported textures and can take longer on high-resolution scene packages.
+Use `scene-info` first when a scene looks static. It emits deterministic Audit schema 2 JSON describing package and TEX format support, detected features, dependencies, and diagnostics without executing SceneScript or effects. `scene-render-info` remains a limited experimental 2D render-plan summary; it decodes supported textures and can take longer on high-resolution scene packages.
 
 ## Troubleshooting
 

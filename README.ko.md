@@ -223,7 +223,7 @@ swift run macwallctl scene-render-info "/path/to/scene.pkg"
 swift run macwallctl doctor
 ```
 
-scene이 정적으로 보이면 먼저 `scene-info`를 실행해 보세요. 큰 texture를 디코딩하지 않고 animation, particle, effect, shader 개수를 보여줍니다. `scene-render-info`는 지원 가능한 texture를 실제로 디코딩하므로 고해상도 scene에서는 시간이 더 걸릴 수 있습니다.
+scene이 정적으로 보이면 먼저 `scene-info`를 실행해 보세요. 이 명령은 SceneScript나 effect를 실행하지 않고 package/TEX 형식 지원 여부, 감지된 기능, 의존성, 진단을 deterministic Audit schema 2 JSON으로 출력합니다. `scene-render-info`는 제한적인 실험용 2D render-plan 요약이며, 지원 가능한 texture를 실제로 디코딩하므로 고해상도 scene에서는 시간이 더 걸릴 수 있습니다.
 
 ## 문제 해결
 

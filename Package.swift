@@ -41,7 +41,10 @@ let package = Package(
         ),
         .executableTarget(
             name: "macwallctl",
-            dependencies: ["MacWallCore"]
+            dependencies: [
+                "MacWallCore",
+                "MacWallSceneAudit"
+            ]
         ),
         .testTarget(
             name: "MacWallCoreTests",
