@@ -149,6 +149,39 @@ final class NativeRuntimeStoreTests: XCTestCase {
         )
     }
 
+    func testPlaybackControlAtomicWriteRoundTripsLatestValue() throws {
+        let root = try makeTemporaryDirectory()
+        let store = NativeRuntimeStore(rootURL: root.appending(path: "NativeRuntime"))
+        let generation = UUID()
+        let first = NativeRuntimePlaybackControlUpdate(
+            commandID: UUID(),
+            targetGeneration: generation,
+            isSuspended: true,
+            createdAt: Date(timeIntervalSince1970: 1)
+        )
+        let second = NativeRuntimePlaybackControlUpdate(
+            commandID: UUID(),
+            targetGeneration: generation,
+            isSuspended: false,
+            createdAt: Date(timeIntervalSince1970: 2)
+        )
+
+        try store.writePlaybackControlUpdate(first)
+        try store.writePlaybackControlUpdate(second)
+
+        XCTAssertEqual(try store.readPlaybackControlUpdate(), second)
+        XCTAssertEqual(
+            store.playbackControlUpdateURL.lastPathComponent,
+            "playback-control.json"
+        )
+        XCTAssertFalse(
+            try FileManager.default.contentsOfDirectory(
+                at: store.rootURL,
+                includingPropertiesForKeys: nil
+            ).contains { $0.lastPathComponent.hasPrefix(".tmp-") }
+        )
+    }
+
     func testResolveRejectsTraversal() throws {
         let store = NativeRuntimeStore(rootURL: try makeTemporaryDirectory())
         let command = NativeRuntimeCommand.play(
@@ -251,6 +284,64 @@ final class NativeRuntimeStoreTests: XCTestCase {
             FileManager.default.fileExists(
                 atPath: store.generationsURL.appending(path: stale.uuidString).path
             )
+        )
+    }
+
+    func testStopCleanupRemovesGenerationsAndTransientUpdatesOnly() throws {
+        let root = try makeTemporaryDirectory()
+        let source = root.appending(path: "input.mp4")
+        try Data([1]).write(to: source)
+        let store = NativeRuntimeStore(
+            rootURL: root.appending(path: "NativeRuntime")
+        )
+        let generation = UUID()
+        _ = try store.stageVideo(
+            sourceURL: source,
+            generation: generation
+        )
+        try store.writeDisplayModeUpdate(
+            NativeRuntimeDisplayModeUpdate(
+                commandID: UUID(),
+                targetGeneration: generation,
+                displayMode: .fill,
+                createdAt: Date()
+            )
+        )
+        try store.writePlaybackControlUpdate(
+            NativeRuntimePlaybackControlUpdate(
+                commandID: UUID(),
+                targetGeneration: generation,
+                isSuspended: true,
+                createdAt: Date()
+            )
+        )
+        let stop = NativeRuntimeCommand.stop(
+            generation: UUID(),
+            createdAt: Date()
+        )
+        try store.writeCommand(stop)
+        let marker = store.rootURL.appending(path: "qa-transport.keep")
+        try Data("keep".utf8).write(to: marker)
+
+        try store.removeAllGenerationsAndTransientUpdates()
+
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: store.generationsURL.path)
+        )
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: store.displayModeUpdateURL.path
+            )
+        )
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: store.playbackControlUpdateURL.path
+            )
+        )
+        XCTAssertEqual(try store.readCommand(), stop)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: marker.path))
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: store.rootURL.path)
         )
     }
 

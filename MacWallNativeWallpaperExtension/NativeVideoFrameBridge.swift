@@ -53,6 +53,7 @@ final class NativeVideoFrameBridge: @unchecked Sendable {
     )
     private var lastTimingLogHostTime: CFTimeInterval = 0
     private var isRunning = false
+    private var isPlaybackSuspended = false
     private var didEnqueueFirstFrame = false
     private var didFail = false
     private var didTearDown = false
@@ -98,6 +99,7 @@ final class NativeVideoFrameBridge: @unchecked Sendable {
                 return
             }
             self.isRunning = true
+            self.isPlaybackSuspended = false
             self.startAssetPlayback()
         }
     }
@@ -106,12 +108,40 @@ final class NativeVideoFrameBridge: @unchecked Sendable {
         layer.videoGravity = videoGravity(for: displayMode)
     }
 
+    func setPlaybackSuspended(_ suspended: Bool) {
+        queue.async { [weak self] in
+            guard let self,
+                  self.isRunning,
+                  !self.didTearDown,
+                  !self.didFail,
+                  self.isPlaybackSuspended != suspended else {
+                return
+            }
+
+            self.isPlaybackSuspended = suspended
+            if suspended {
+                _ = self.pumpGeneration.advance()
+                self.rendererAdapter.stopRequestingMediaData()
+                self.playbackClock.pause()
+            } else {
+                let resumeTime = self.playbackClock.currentTime
+                let generation = self.pumpGeneration.advance()
+                self.playbackClock.start(at: resumeTime)
+                self.requestPump(generation: generation)
+            }
+            macWallNativeWallpaperLogger.info(
+                "nativeVideoBridge playbackControl bridgeID=\(self.bridgeID, privacy: .public) suspended=\(suspended, privacy: .public)"
+            )
+        }
+    }
+
     func freezeKeepingLastFrame(reason: String) {
         queue.async { [weak self] in
             guard let self, !self.didTearDown else {
                 return
             }
             self.isRunning = false
+            self.isPlaybackSuspended = false
             _ = self.pumpGeneration.advance()
             self.pendingSampleBuffer = nil
             self.rendererAdapter.stopRequestingMediaData()
@@ -130,6 +160,7 @@ final class NativeVideoFrameBridge: @unchecked Sendable {
             }
             self.didTearDown = true
             self.isRunning = false
+            self.isPlaybackSuspended = false
             _ = self.pumpGeneration.advance()
             self.pendingSampleBuffer = nil
             self.rendererAdapter.stopRequestingMediaData()
@@ -174,6 +205,7 @@ final class NativeVideoFrameBridge: @unchecked Sendable {
 
     private func requestPump(generation: UInt64) {
         guard isRunning,
+              !isPlaybackSuspended,
               !didTearDown,
               pumpGeneration.accepts(generation) else {
             return
@@ -197,6 +229,7 @@ final class NativeVideoFrameBridge: @unchecked Sendable {
         queue.asyncAfter(deadline: .now() + clampedDelay) { [weak self] in
             guard let self,
                   self.isRunning,
+                  !self.isPlaybackSuspended,
                   !self.didTearDown,
                   self.pumpGeneration.accepts(generation) else {
                 return
@@ -207,6 +240,7 @@ final class NativeVideoFrameBridge: @unchecked Sendable {
 
     private func pumpAssetFrames(generation: UInt64) {
         guard isRunning,
+              !isPlaybackSuspended,
               !didTearDown,
               pumpGeneration.accepts(generation) else {
             return
@@ -217,6 +251,7 @@ final class NativeVideoFrameBridge: @unchecked Sendable {
         }
 
         while isRunning,
+              !isPlaybackSuspended,
               !didTearDown,
               pumpGeneration.accepts(generation) {
             guard let assetOutput else {
@@ -337,6 +372,7 @@ final class NativeVideoFrameBridge: @unchecked Sendable {
                     }
                     self.queue.async {
                         guard self.isRunning,
+                              !self.isPlaybackSuspended,
                               !self.didTearDown,
                               self.pumpGeneration.accepts(generation) else {
                             return
@@ -422,6 +458,7 @@ final class NativeVideoFrameBridge: @unchecked Sendable {
         }
         didFail = true
         isRunning = false
+        isPlaybackSuspended = false
         _ = pumpGeneration.advance()
         pendingSampleBuffer = nil
         rendererAdapter.stopRequestingMediaData()

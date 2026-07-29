@@ -644,6 +644,58 @@ final class AppViewModelTests: XCTestCase {
         XCTAssertTrue(spaceRefresh.activeAssetIds.isEmpty)
     }
 
+    func testSuccessfulNativePlayActivatesNativeAutoPause() async throws {
+        let coordinator = MockPlaybackCoordinator()
+        let autoPause = MockNativePlaybackAutoPauseController()
+        coordinator.playHandler = {
+            .started(Self.receipt(for: $0.asset, backend: .native))
+        }
+        let store = LibraryStore(root: try makeTempDirectory())
+        let asset = try store.importVideoFile(makeVideoFile())
+        let model = AppViewModel(
+            store: store,
+            loginItemController: MockLoginItemController(),
+            userDefaults: try makeUserDefaults(),
+            playbackCoordinator: coordinator,
+            nativeAutoPauseController: autoPause,
+            nativeSetupPresenter: MockNativeWallpaperSetupPresenter(choice: .cancel),
+            wallpaperSettingsOpener: MockWallpaperSettingsOpener()
+        )
+        model.selectedLibraryAssetId = asset.id
+
+        model.playSelected()
+        await model.waitForPlaybackTask()
+
+        XCTAssertEqual(autoPause.activeValues, [true])
+    }
+
+    func testStopSuccessDeactivatesNativeAutoPause() async throws {
+        let coordinator = MockPlaybackCoordinator()
+        let autoPause = MockNativePlaybackAutoPauseController()
+        coordinator.playHandler = {
+            .started(Self.receipt(for: $0.asset, backend: .native))
+        }
+        let store = LibraryStore(root: try makeTempDirectory())
+        let asset = try store.importVideoFile(makeVideoFile())
+        let model = AppViewModel(
+            store: store,
+            loginItemController: MockLoginItemController(),
+            userDefaults: try makeUserDefaults(),
+            playbackCoordinator: coordinator,
+            nativeAutoPauseController: autoPause,
+            nativeSetupPresenter: MockNativeWallpaperSetupPresenter(choice: .cancel),
+            wallpaperSettingsOpener: MockWallpaperSettingsOpener()
+        )
+        model.selectedLibraryAssetId = asset.id
+        model.playSelected()
+        await model.waitForPlaybackTask()
+
+        model.stopPlayback()
+        await model.waitForPlaybackTask()
+
+        XCTAssertEqual(autoPause.activeValues, [true, false])
+    }
+
     func testStopCancelsPendingSettingsWait() async throws {
         let defaults = try makeUserDefaults()
         defaults.set("current", forKey: "lastPlayedAssetId")
@@ -922,6 +974,7 @@ private final class MockPlaybackCoordinator: WallpaperPlaybackCoordinating {
     var playedRequests: [PendingPlaybackRequest] = []
     var resolvedChoices: [NativeWallpaperSetupChoice] = []
     var displayModeUpdates: [WallpaperDisplayMode] = []
+    var playbackSuspendedUpdates: [Bool] = []
     var stopCallCount = 0
     private let events: MockAppEventLog?
 
@@ -956,6 +1009,25 @@ private final class MockPlaybackCoordinator: WallpaperPlaybackCoordinating {
 
     func updateDisplayMode(_ displayMode: WallpaperDisplayMode) {
         displayModeUpdates.append(displayMode)
+    }
+
+    func updatePlaybackSuspended(_ suspended: Bool) {
+        playbackSuspendedUpdates.append(suspended)
+    }
+}
+
+@MainActor
+private final class MockNativePlaybackAutoPauseController:
+    NativePlaybackAutoPauseControlling {
+    var enabledValues: [Bool] = []
+    var activeValues: [Bool] = []
+
+    func setEnabled(_ enabled: Bool) {
+        enabledValues.append(enabled)
+    }
+
+    func setNativePlaybackActive(_ active: Bool) {
+        activeValues.append(active)
     }
 }
 

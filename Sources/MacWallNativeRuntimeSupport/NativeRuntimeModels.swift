@@ -50,6 +50,28 @@ public struct NativeRuntimeDisplayModeUpdate: Codable, Equatable, Sendable {
     }
 }
 
+public struct NativeRuntimePlaybackControlUpdate: Codable, Equatable, Sendable {
+    public let schemaVersion: Int
+    public let commandID: UUID
+    public let targetGeneration: UUID
+    public let isSuspended: Bool
+    public let createdAt: Date
+
+    public init(
+        schemaVersion: Int = NativeRuntimeConstants.schemaVersion,
+        commandID: UUID,
+        targetGeneration: UUID,
+        isSuspended: Bool,
+        createdAt: Date
+    ) {
+        self.schemaVersion = schemaVersion
+        self.commandID = commandID
+        self.targetGeneration = targetGeneration
+        self.isSuspended = isSuspended
+        self.createdAt = createdAt
+    }
+}
+
 public struct NativeRuntimeCommand: Codable, Equatable, Sendable {
     public let schemaVersion: Int
     public let kind: NativeRuntimeCommandKind
@@ -117,6 +139,7 @@ public enum NativeRuntimeStatusState: String, Codable, Sendable {
     case inactive
     case preparing
     case playing
+    case suspended
     case stopped
     case failed
 }
@@ -143,6 +166,8 @@ public struct NativeRuntimeStatus: Codable, Equatable, Sendable {
     public let processIdentifier: Int32
     public let heartbeatAt: Date
     public let failure: NativeRuntimeFailure?
+    public let playbackSuspended: Bool?
+    public let lastPlaybackControlCommandID: UUID?
 
     public init(
         schemaVersion: Int = NativeRuntimeConstants.schemaVersion,
@@ -155,6 +180,34 @@ public struct NativeRuntimeStatus: Codable, Equatable, Sendable {
         heartbeatAt: Date,
         failure: NativeRuntimeFailure?
     ) {
+        self.init(
+            schemaVersion: schemaVersion,
+            requestedGeneration: requestedGeneration,
+            activeGeneration: activeGeneration,
+            state: state,
+            activeDesktopContextCount: activeDesktopContextCount,
+            extensionInstanceID: extensionInstanceID,
+            processIdentifier: processIdentifier,
+            heartbeatAt: heartbeatAt,
+            failure: failure,
+            playbackSuspended: nil,
+            lastPlaybackControlCommandID: nil
+        )
+    }
+
+    public init(
+        schemaVersion: Int = NativeRuntimeConstants.schemaVersion,
+        requestedGeneration: UUID?,
+        activeGeneration: UUID?,
+        state: NativeRuntimeStatusState,
+        activeDesktopContextCount: Int,
+        extensionInstanceID: UUID,
+        processIdentifier: Int32,
+        heartbeatAt: Date,
+        failure: NativeRuntimeFailure?,
+        playbackSuspended: Bool?,
+        lastPlaybackControlCommandID: UUID?
+    ) {
         self.schemaVersion = schemaVersion
         self.requestedGeneration = requestedGeneration
         self.activeGeneration = activeGeneration
@@ -164,6 +217,8 @@ public struct NativeRuntimeStatus: Codable, Equatable, Sendable {
         self.processIdentifier = processIdentifier
         self.heartbeatAt = heartbeatAt
         self.failure = failure
+        self.playbackSuspended = playbackSuspended
+        self.lastPlaybackControlCommandID = lastPlaybackControlCommandID
     }
 }
 

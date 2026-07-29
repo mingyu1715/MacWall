@@ -57,6 +57,14 @@ final class UnavailableNativeWallpaperBackend: NativeWallpaperBackendManaging {
         throw NativeWallpaperBackendError.runtimeUnavailable
     }
 
+    func updatePlaybackSuspended(
+        _ isSuspended: Bool,
+        activeGeneration: UUID,
+        commandID: UUID
+    ) throws {
+        throw NativeWallpaperBackendError.runtimeUnavailable
+    }
+
     func stop(generation: UUID) async throws {}
 }
 
@@ -71,6 +79,11 @@ protocol NativeWallpaperBackendManaging: AnyObject {
     ) async throws -> NativePlaybackReceipt
     func updateDisplayMode(
         _ displayMode: WallpaperDisplayMode,
+        activeGeneration: UUID,
+        commandID: UUID
+    ) throws
+    func updatePlaybackSuspended(
+        _ isSuspended: Bool,
         activeGeneration: UUID,
         commandID: UUID
     ) throws
@@ -94,6 +107,7 @@ final class NativeWallpaperBackend: NativeWallpaperBackendManaging {
     private let notifier: any NativeRuntimeNotifying
     private let waiter: NativeRuntimeWaiter
     private let dateProvider: any NativeRuntimeDateProviding
+    private var operationRevision: UInt64 = 0
 
     init(
         store: NativeRuntimeStore,
@@ -154,20 +168,31 @@ final class NativeWallpaperBackend: NativeWallpaperBackendManaging {
             throw NativeWallpaperBackendError.missingEntrypoint
         }
 
+        let revision = beginOperation()
         let sourceURL = URL(filePath: entrypoint)
-        let relativeSourcePath = try await Task.detached(priority: .userInitiated) { [store] in
-            try store.stageVideo(sourceURL: sourceURL, generation: generation)
-        }.value
-        let createdAt = dateProvider.now()
-        let command = NativeRuntimeCommand.play(
-            generation: generation,
-            assetID: asset.id,
-            relativeSourcePath: relativeSourcePath,
-            displayMode: displayMode.nativeRuntimeDisplayMode,
-            createdAt: createdAt
-        )
 
         do {
+            let relativeSourcePath = try await Task.detached(
+                priority: .userInitiated
+            ) { [store] in
+                try store.stageVideo(
+                    sourceURL: sourceURL,
+                    generation: generation
+                )
+            }.value
+            try Task.checkCancellation()
+            guard operationRevision == revision else {
+                throw CancellationError()
+            }
+
+            let createdAt = dateProvider.now()
+            let command = NativeRuntimeCommand.play(
+                generation: generation,
+                assetID: asset.id,
+                relativeSourcePath: relativeSourcePath,
+                displayMode: displayMode.nativeRuntimeDisplayMode,
+                createdAt: createdAt
+            )
             try store.writeCommand(command)
             notifier.postChange()
             _ = try await waiter.wait(timeout: timeout) { [waiter] status in
@@ -188,6 +213,9 @@ final class NativeWallpaperBackend: NativeWallpaperBackendManaging {
                     && status.activeDesktopContextCount > 0
             }
             try Task.checkCancellation()
+            guard operationRevision == revision else {
+                throw CancellationError()
+            }
         } catch is NativeRuntimeWaiterError {
             await removeGeneration(generation)
             throw NativeWallpaperBackendError.timedOut
@@ -196,7 +224,7 @@ final class NativeWallpaperBackend: NativeWallpaperBackendManaging {
             throw error
         }
 
-        await removeUnreferencedGenerations(keeping: [generation])
+        removeUnreferencedGenerations(keeping: [generation])
         return NativePlaybackReceipt(
             generation: generation,
             assetID: asset.id,
@@ -222,7 +250,26 @@ final class NativeWallpaperBackend: NativeWallpaperBackendManaging {
         )
     }
 
+    func updatePlaybackSuspended(
+        _ isSuspended: Bool,
+        activeGeneration: UUID,
+        commandID: UUID
+    ) throws {
+        let update = NativeRuntimePlaybackControlUpdate(
+            commandID: commandID,
+            targetGeneration: activeGeneration,
+            isSuspended: isSuspended,
+            createdAt: dateProvider.now()
+        )
+        try store.writePlaybackControlUpdate(update)
+        notifier.postChange()
+        Self.logger.info(
+            "nativeRuntime playbackControl command=\(commandID.uuidString, privacy: .public) target=\(activeGeneration.uuidString, privacy: .public) suspended=\(isSuspended, privacy: .public)"
+        )
+    }
+
     func stop(generation: UUID) async throws {
+        let revision = beginOperation()
         let createdAt = dateProvider.now()
         try store.writeCommand(.stop(generation: generation, createdAt: createdAt))
         notifier.postChange()
@@ -236,6 +283,13 @@ final class NativeWallpaperBackend: NativeWallpaperBackendManaging {
         } catch is NativeRuntimeWaiterError {
             throw NativeWallpaperBackendError.timedOut
         }
+        guard operationRevision == revision else {
+            Self.logger.info(
+                "nativeRuntime stop cleanup skipped generation=\(generation.uuidString, privacy: .public) reason=newer-operation"
+            )
+            return
+        }
+        removeAllGenerationsAndTransientUpdates()
     }
 
     private func isActive(_ status: NativeRuntimeStatus) -> Bool {
@@ -248,10 +302,29 @@ final class NativeWallpaperBackend: NativeWallpaperBackendManaging {
         }.value
     }
 
-    private func removeUnreferencedGenerations(keeping generations: Set<UUID>) async {
-        _ = try? await Task.detached(priority: .utility) { [store] in
+    private func removeUnreferencedGenerations(keeping generations: Set<UUID>) {
+        do {
             try store.removeUnreferencedGenerations(keeping: generations)
-        }.value
+        } catch {
+            Self.logger.error(
+                "nativeRuntime generation cleanup failed error=\(String(describing: error), privacy: .public)"
+            )
+        }
+    }
+
+    private func removeAllGenerationsAndTransientUpdates() {
+        do {
+            try store.removeAllGenerationsAndTransientUpdates()
+        } catch {
+            Self.logger.error(
+                "nativeRuntime stop cleanup failed error=\(String(describing: error), privacy: .public)"
+            )
+        }
+    }
+
+    private func beginOperation() -> UInt64 {
+        operationRevision &+= 1
+        return operationRevision
     }
 }
 

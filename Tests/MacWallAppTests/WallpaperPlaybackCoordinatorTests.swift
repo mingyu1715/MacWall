@@ -285,6 +285,99 @@ final class WallpaperPlaybackCoordinatorTests: XCTestCase {
         XCTAssertEqual(native.displayModeUpdates.map(\.mode), [.stretch])
     }
 
+    func testPlaybackSuspensionTargetsActiveNativeGeneration() async throws {
+        let native = MockNativeWallpaperBackend()
+        native.activation = .active(Self.status())
+        let coordinator = makeCoordinator(native: native)
+        _ = try await coordinator.play(
+            Self.request(asset: Self.asset(id: "native", kind: .video))
+        )
+        native.playbackControlUpdates.removeAll()
+
+        coordinator.updatePlaybackSuspended(true)
+
+        XCTAssertEqual(native.playbackControlUpdates.count, 1)
+        XCTAssertTrue(native.playbackControlUpdates[0].isSuspended)
+        XCTAssertEqual(
+            native.playbackControlUpdates[0].activeGeneration,
+            native.playedGenerations[0]
+        )
+    }
+
+    func testSuspensionDuringReplacementTargetsAThenCommittedB() async throws {
+        let native = MockNativeWallpaperBackend()
+        native.activation = .active(Self.status())
+        let coordinator = makeCoordinator(native: native)
+        _ = try await coordinator.play(
+            Self.request(asset: Self.asset(id: "a", kind: .video))
+        )
+        native.playbackControlUpdates.removeAll()
+        native.suspendPlay = true
+
+        let replacement = Task {
+            try await coordinator.play(
+                Self.request(asset: Self.asset(id: "b", kind: .video))
+            )
+        }
+        await native.waitForSuspendedPlay()
+
+        coordinator.updatePlaybackSuspended(true)
+        XCTAssertEqual(
+            native.playbackControlUpdates.map(\.activeGeneration),
+            [native.playedGenerations[0]]
+        )
+
+        native.resumeAllPlays()
+        _ = try await replacement.value
+
+        XCTAssertEqual(
+            native.playbackControlUpdates.map(\.activeGeneration),
+            native.playedGenerations
+        )
+        XCTAssertEqual(
+            native.playbackControlUpdates.map(\.isSuspended),
+            [true, true]
+        )
+    }
+
+    func testFailingReplacementKeepsAControlTarget() async throws {
+        let native = MockNativeWallpaperBackend()
+        native.activation = .active(Self.status())
+        let coordinator = makeCoordinator(native: native)
+        _ = try await coordinator.play(
+            Self.request(asset: Self.asset(id: "a", kind: .video))
+        )
+        native.playbackControlUpdates.removeAll()
+        coordinator.updatePlaybackSuspended(true)
+        native.playError = TestError.expected
+
+        do {
+            _ = try await coordinator.play(
+                Self.request(asset: Self.asset(id: "b", kind: .video))
+            )
+            XCTFail("Expected failure")
+        } catch TestError.expected {
+        }
+
+        XCTAssertEqual(coordinator.activeReceipt?.assetID, "a")
+        XCTAssertEqual(
+            native.playbackControlUpdates.map(\.activeGeneration),
+            [native.playedGenerations[0]]
+        )
+    }
+
+    func testPlaybackSuspensionDoesNotPublishForLegacyPlayback() async throws {
+        let native = MockNativeWallpaperBackend()
+        let coordinator = makeCoordinator(native: native)
+        _ = try await coordinator.play(
+            Self.request(asset: Self.asset(id: "web", kind: .web))
+        )
+
+        coordinator.updatePlaybackSuspended(true)
+
+        XCTAssertTrue(native.playbackControlUpdates.isEmpty)
+    }
+
     private func makeCoordinator(
         native: MockNativeWallpaperBackend = MockNativeWallpaperBackend(),
         legacy: MockLegacyWallpaperBackend = MockLegacyWallpaperBackend()
@@ -345,11 +438,18 @@ private final class MockNativeWallpaperBackend: NativeWallpaperBackendManaging {
         let commandID: UUID
     }
 
+    struct PlaybackControlUpdate: Equatable {
+        let isSuspended: Bool
+        let activeGeneration: UUID
+        let commandID: UUID
+    }
+
     var activation: NativeWallpaperActivationStatus = .inactive
     var activationCallCount = 0
     var playedAssetIDs: [WallpaperAsset.ID] = []
     var playedGenerations: [UUID] = []
     var displayModeUpdates: [DisplayModeUpdate] = []
+    var playbackControlUpdates: [PlaybackControlUpdate] = []
     var stoppedGenerations: [UUID] = []
     var playError: Error?
     var stopError: Error?
@@ -402,6 +502,20 @@ private final class MockNativeWallpaperBackend: NativeWallpaperBackendManaging {
         displayModeUpdates.append(
             DisplayModeUpdate(
                 mode: displayMode,
+                activeGeneration: activeGeneration,
+                commandID: commandID
+            )
+        )
+    }
+
+    func updatePlaybackSuspended(
+        _ isSuspended: Bool,
+        activeGeneration: UUID,
+        commandID: UUID
+    ) throws {
+        playbackControlUpdates.append(
+            PlaybackControlUpdate(
+                isSuspended: isSuspended,
                 activeGeneration: activeGeneration,
                 commandID: commandID
             )

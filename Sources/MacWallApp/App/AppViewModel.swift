@@ -25,6 +25,7 @@ final class AppViewModel: ObservableObject {
     @Published var autoPauseWhenCovered = true {
         didSet {
             wallpaperPlayer.setAutoPauseWhenCovered(autoPauseWhenCovered)
+            nativeAutoPauseController.setEnabled(autoPauseWhenCovered)
             userDefaults.set(autoPauseWhenCovered, forKey: PreferenceKey.autoPauseWhenCovered)
         }
     }
@@ -81,6 +82,7 @@ final class AppViewModel: ObservableObject {
     private let lockScreenAnimationController: LockScreenAnimationManaging
     private let desktopWallpaperRestoreWarningPresenter: DesktopWallpaperRestoreWarningPresenting
     private let playbackCoordinator: WallpaperPlaybackCoordinating
+    private let nativeAutoPauseController: NativePlaybackAutoPauseControlling
     private let nativeSetupPresenter: NativeWallpaperSetupPresenting
     private let wallpaperSettingsOpener: WallpaperSettingsOpening
     private let userDefaults: UserDefaults
@@ -108,7 +110,7 @@ final class AppViewModel: ObservableObject {
         } else {
             nativeBackend = UnavailableNativeWallpaperBackend()
         }
-        playbackCoordinator = WallpaperPlaybackCoordinator(
+        let resolvedPlaybackCoordinator = WallpaperPlaybackCoordinator(
             nativeBackend: nativeBackend,
             legacyBackend: LegacyWallpaperBackend(
                 wallpaperPlayer: wallpaperPlayer,
@@ -116,6 +118,12 @@ final class AppViewModel: ObservableObject {
                 spaceRefreshCoordinator: spaceRefreshCoordinator
             )
         )
+        playbackCoordinator = resolvedPlaybackCoordinator
+        nativeAutoPauseController = NativePlaybackAutoPauseController(
+            enabled: true
+        ) { [weak resolvedPlaybackCoordinator] suspended in
+            resolvedPlaybackCoordinator?.updatePlaybackSuspended(suspended)
+        }
         do {
             store = try LibraryStore.defaultStore()
             restorePreferences()
@@ -143,6 +151,7 @@ final class AppViewModel: ObservableObject {
         desktopFallbackSpaceRefreshCoordinator: DesktopFallbackSpaceRefreshCoordinating? = nil,
         desktopWallpaperRestoreWarningPresenter: DesktopWallpaperRestoreWarningPresenting = DesktopWallpaperRestoreWarningPresenter(),
         playbackCoordinator: WallpaperPlaybackCoordinating? = nil,
+        nativeAutoPauseController: NativePlaybackAutoPauseControlling? = nil,
         nativeSetupPresenter: NativeWallpaperSetupPresenting = NativeWallpaperSetupPresenter(),
         wallpaperSettingsOpener: WallpaperSettingsOpening = WallpaperSettingsController()
     ) {
@@ -167,7 +176,7 @@ final class AppViewModel: ObservableObject {
             resolvedSpaceRefreshCoordinator = NoopDesktopFallbackSpaceRefreshCoordinator()
         }
         self.desktopFallbackSpaceRefreshCoordinator = resolvedSpaceRefreshCoordinator
-        self.playbackCoordinator = playbackCoordinator ?? WallpaperPlaybackCoordinator(
+        let resolvedPlaybackCoordinator = playbackCoordinator ?? WallpaperPlaybackCoordinator(
             eligibility: NativeWallpaperEligibility(
                 environment: .init(macOSMajorVersion: 0, isAppleSilicon: false)
             ),
@@ -178,6 +187,13 @@ final class AppViewModel: ObservableObject {
                 spaceRefreshCoordinator: resolvedSpaceRefreshCoordinator
             )
         )
+        self.playbackCoordinator = resolvedPlaybackCoordinator
+        self.nativeAutoPauseController = nativeAutoPauseController
+            ?? NativePlaybackAutoPauseController(
+                enabled: true
+            ) { [weak resolvedPlaybackCoordinator] suspended in
+                resolvedPlaybackCoordinator?.updatePlaybackSuspended(suspended)
+            }
         restorePreferences()
         configureOriginalWallpaperRestore()
         loadLibrary()
@@ -421,6 +437,7 @@ extension AppViewModel {
             }
             do {
                 try await self.playbackCoordinator.stop()
+                self.nativeAutoPauseController.setNativePlaybackActive(false)
                 self.status = "Playback stopped."
             } catch {
                 self.status = "Playback could not be stopped: \(error.localizedDescription)"
@@ -668,6 +685,9 @@ extension AppViewModel {
     ) {
         switch outcome {
         case .started(let receipt):
+            nativeAutoPauseController.setNativePlaybackActive(
+                receipt.backend == .native
+            )
             if request.remember {
                 userDefaults.set(receipt.assetID, forKey: PreferenceKey.lastPlayedAssetId)
             }

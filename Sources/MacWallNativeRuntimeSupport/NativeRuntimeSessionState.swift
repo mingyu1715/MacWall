@@ -59,4 +59,11 @@ public struct NativeRuntimeSessionState: Equatable, Sendable {
         readyContextIDs = []
         return .reject(generation)
     }
+
+    public mutating func stop() {
+        activeGeneration = nil
+        candidateGeneration = nil
+        targetContextIDs = []
+        readyContextIDs = []
+    }
 }

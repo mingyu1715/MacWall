@@ -45,6 +45,28 @@ final class NativeRuntimeModelsTests: XCTestCase {
         XCTAssertEqual(decoded.displayMode, .stretch)
     }
 
+    func testPlaybackControlTargetsGenerationAndRoundTrips() throws {
+        let commandID = UUID()
+        let generation = UUID()
+        let update = NativeRuntimePlaybackControlUpdate(
+            commandID: commandID,
+            targetGeneration: generation,
+            isSuspended: true,
+            createdAt: Date(timeIntervalSince1970: 175)
+        )
+
+        let decoded = try JSONDecoder().decode(
+            NativeRuntimePlaybackControlUpdate.self,
+            from: JSONEncoder().encode(update)
+        )
+
+        XCTAssertEqual(decoded, update)
+        XCTAssertEqual(decoded.schemaVersion, NativeRuntimeConstants.schemaVersion)
+        XCTAssertEqual(decoded.commandID, commandID)
+        XCTAssertEqual(decoded.targetGeneration, generation)
+        XCTAssertTrue(decoded.isSuspended)
+    }
+
     func testStopCommandHasNoAssetPayload() {
         let command = NativeRuntimeCommand.stop(
             generation: UUID(),
@@ -71,7 +93,9 @@ final class NativeRuntimeModelsTests: XCTestCase {
                 category: "reader",
                 code: "asset-reader-failed",
                 message: "Could not read source video."
-            )
+            ),
+            playbackSuspended: true,
+            lastPlaybackControlCommandID: UUID()
         )
 
         let decoded = try JSONDecoder().decode(
@@ -81,5 +105,31 @@ final class NativeRuntimeModelsTests: XCTestCase {
 
         XCTAssertEqual(decoded, status)
         XCTAssertEqual(decoded.schemaVersion, NativeRuntimeConstants.schemaVersion)
+    }
+
+    func testStatusWithoutPlaybackControlFieldsRemainsDecodable() throws {
+        let generation = UUID()
+        let instanceID = UUID()
+        let json = """
+        {
+          "schemaVersion": 1,
+          "requestedGeneration": "\(generation.uuidString)",
+          "activeGeneration": "\(generation.uuidString)",
+          "state": "playing",
+          "activeDesktopContextCount": 1,
+          "extensionInstanceID": "\(instanceID.uuidString)",
+          "processIdentifier": 123,
+          "heartbeatAt": 0
+        }
+        """
+
+        let decoded = try JSONDecoder().decode(
+            NativeRuntimeStatus.self,
+            from: Data(json.utf8)
+        )
+
+        XCTAssertEqual(decoded.activeGeneration, generation)
+        XCTAssertNil(decoded.playbackSuspended)
+        XCTAssertNil(decoded.lastPlaybackControlCommandID)
     }
 }

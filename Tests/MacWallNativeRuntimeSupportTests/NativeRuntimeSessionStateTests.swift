@@ -117,4 +117,25 @@ final class NativeRuntimeSessionStateTests: XCTestCase {
         XCTAssertEqual(state.targetContextIDs, ["display-1", "display-2"])
         XCTAssertTrue(state.readyContextIDs.isEmpty)
     }
+
+    func testStopClearsActiveAndCandidateState() {
+        let active = UUID()
+        let candidate = UUID()
+        var state = NativeRuntimeSessionState(activeGeneration: active)
+        state.beginCandidate(
+            generation: candidate,
+            contextIDs: ["display-1", "display-2"]
+        )
+        _ = state.markReady(
+            generation: candidate,
+            contextID: "display-1"
+        )
+
+        state.stop()
+
+        XCTAssertNil(state.activeGeneration)
+        XCTAssertNil(state.candidateGeneration)
+        XCTAssertTrue(state.targetContextIDs.isEmpty)
+        XCTAssertTrue(state.readyContextIDs.isEmpty)
+    }
 }

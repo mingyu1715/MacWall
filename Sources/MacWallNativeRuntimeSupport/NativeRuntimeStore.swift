@@ -31,6 +31,10 @@ public struct NativeRuntimeStore: Sendable {
         rootURL.appending(path: "display-mode.json")
     }
 
+    public var playbackControlUpdateURL: URL {
+        rootURL.appending(path: "playback-control.json")
+    }
+
     public var generationsURL: URL {
         rootURL.appending(path: "Generations")
     }
@@ -83,6 +87,30 @@ public struct NativeRuntimeStore: Sendable {
         let update = try JSONDecoder().decode(
             NativeRuntimeDisplayModeUpdate.self,
             from: Data(contentsOf: displayModeUpdateURL)
+        )
+        try validateSchema(update.schemaVersion)
+        return update
+    }
+
+    public func writePlaybackControlUpdate(
+        _ update: NativeRuntimePlaybackControlUpdate
+    ) throws {
+        try writeAtomically(
+            JSONEncoder().encode(update),
+            to: playbackControlUpdateURL
+        )
+    }
+
+    public func readPlaybackControlUpdate()
+        throws -> NativeRuntimePlaybackControlUpdate? {
+        guard FileManager.default.fileExists(
+            atPath: playbackControlUpdateURL.path
+        ) else {
+            return nil
+        }
+        let update = try JSONDecoder().decode(
+            NativeRuntimePlaybackControlUpdate.self,
+            from: Data(contentsOf: playbackControlUpdateURL)
         )
         try validateSchema(update.schemaVersion)
         return update
@@ -201,6 +229,20 @@ public struct NativeRuntimeStore: Sendable {
                 continue
             }
             try fileManager.removeItem(at: entry)
+        }
+    }
+
+    public func removeAllGenerationsAndTransientUpdates() throws {
+        let fileManager = FileManager.default
+        let transientURLs = [
+            generationsURL,
+            rootURL.appending(path: ".Staging"),
+            displayModeUpdateURL,
+            playbackControlUpdateURL,
+        ]
+        for url in transientURLs
+        where fileManager.fileExists(atPath: url.path) {
+            try fileManager.removeItem(at: url)
         }
     }
 

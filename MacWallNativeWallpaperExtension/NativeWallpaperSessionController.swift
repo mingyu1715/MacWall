@@ -27,12 +27,18 @@ final class NativeWallpaperSessionController: @unchecked Sendable {
     private var activeBridges: [String: NativeVideoFrameBridge] = [:]
     private var candidateBridges: [String: NativeVideoFrameBridge] = [:]
     private var state = NativeRuntimeSessionState()
+    private var activeInstanceID: UUID?
     private var candidateInstanceID: UUID?
+    private var recoveryCandidateInstanceID: UUID?
+    private var recoveryPolicy = NativeRuntimeRecoveryPolicy()
     private var lastProcessedCommandGeneration: UUID?
     private var lastProcessedDisplayModeCommandID: UUID?
+    private var lastProcessedPlaybackControlCommandID: UUID?
     private var lastCommand: NativeRuntimeCommand?
     private var activeDisplayMode: NativeRuntimeDisplayMode?
     private var candidateDisplayMode: NativeRuntimeDisplayMode?
+    private var activePlaybackSuspended = false
+    private var candidatePlaybackSuspended = false
     private var requestedGeneration: UUID?
     private var statusState: NativeRuntimeStatusState = .inactive
     private var statusFailure: NativeRuntimeFailure?
@@ -176,6 +182,7 @@ final class NativeWallpaperSessionController: @unchecked Sendable {
     private func processRuntimeUpdatesOnQueue(forceReconcile: Bool) {
         processCurrentCommandOnQueue(forceReconcile: forceReconcile)
         processCurrentDisplayModeUpdateOnQueue()
+        processCurrentPlaybackControlUpdateOnQueue()
     }
 
     private func processCurrentCommandOnQueue(forceReconcile: Bool) {
@@ -226,7 +233,10 @@ final class NativeWallpaperSessionController: @unchecked Sendable {
         }
     }
 
-    private func processPlayOnQueue(_ command: NativeRuntimeCommand) {
+    private func processPlayOnQueue(
+        _ command: NativeRuntimeCommand,
+        isRecovery: Bool = false
+    ) {
         guard let store else {
             return
         }
@@ -277,6 +287,11 @@ final class NativeWallpaperSessionController: @unchecked Sendable {
 
         let instanceID = UUID()
         candidateInstanceID = instanceID
+        recoveryCandidateInstanceID = isRecovery ? instanceID : nil
+        candidatePlaybackSuspended =
+            state.activeGeneration == command.generation
+                ? activePlaybackSuspended
+                : false
         let displayMode = state.activeGeneration == command.generation
             ? activeDisplayMode ?? requestedDisplayMode
             : requestedDisplayMode
@@ -310,9 +325,10 @@ final class NativeWallpaperSessionController: @unchecked Sendable {
                     },
                     failed: { [weak self] error in
                         self?.queue.async { [weak self] in
-                            self?.failCandidateOnQueue(
+                            self?.handleBridgeFailureOnQueue(
                                 generation: command.generation,
                                 instanceID: instanceID,
+                                contextKey: key,
                                 error: error
                             )
                         }
@@ -411,6 +427,129 @@ final class NativeWallpaperSessionController: @unchecked Sendable {
         }
     }
 
+    private func processCurrentPlaybackControlUpdateOnQueue() {
+        guard let store else {
+            return
+        }
+
+        let update: NativeRuntimePlaybackControlUpdate
+        do {
+            guard let current = try store.readPlaybackControlUpdate() else {
+                return
+            }
+            update = current
+        } catch {
+            macWallNativeWallpaperLogger.error(
+                "nativeRuntime playbackControl read failed error=\(String(describing: error), privacy: .public)"
+            )
+            return
+        }
+
+        guard lastProcessedPlaybackControlCommandID != update.commandID else {
+            return
+        }
+
+        let persistedPlayGeneration = lastCommand?.kind == .play
+            ? lastCommand?.generation
+            : nil
+        let decision = NativeRuntimePlaybackControlPolicy.decision(
+            targetGeneration: update.targetGeneration,
+            activeGeneration: state.activeGeneration,
+            candidateGeneration: state.candidateGeneration,
+            persistedPlayGeneration: persistedPlayGeneration
+        )
+        switch decision {
+        case .deferred:
+            return
+        case .ignore:
+            lastProcessedPlaybackControlCommandID = update.commandID
+            macWallNativeWallpaperLogger.info(
+                "playbackControl event=ignored command=\(update.commandID.uuidString, privacy: .public) targetGeneration=\(update.targetGeneration.uuidString, privacy: .public)"
+            )
+        case .apply(let targets):
+            if targets.active {
+                activePlaybackSuspended = update.isSuspended
+                for bridge in activeBridges.values {
+                    bridge.setPlaybackSuspended(update.isSuspended)
+                }
+            }
+            if targets.candidate {
+                candidatePlaybackSuspended = update.isSuspended
+            }
+            if state.candidateGeneration == nil, targets.active {
+                statusState = update.isSuspended ? .suspended : .playing
+            }
+            lastProcessedPlaybackControlCommandID = update.commandID
+            publishStatusOnQueue()
+            macWallNativeWallpaperLogger.info(
+                "playbackControl event=applied command=\(update.commandID.uuidString, privacy: .public) targetGeneration=\(update.targetGeneration.uuidString, privacy: .public) suspended=\(update.isSuspended, privacy: .public) active=\(targets.active, privacy: .public) candidate=\(targets.candidate, privacy: .public)"
+            )
+        }
+    }
+
+    private func handleBridgeFailureOnQueue(
+        generation: UUID,
+        instanceID: UUID,
+        contextKey: String,
+        error: NativeVideoFrameBridgeError
+    ) {
+        if candidateInstanceID == instanceID,
+           candidateBridges[contextKey] != nil {
+            failCandidateOnQueue(
+                generation: generation,
+                instanceID: instanceID,
+                error: error
+            )
+            return
+        }
+
+        guard activeInstanceID == instanceID,
+              activeBridges[contextKey] != nil else {
+            macWallNativeWallpaperLogger.info(
+                "nativeRecovery event=ignored generation=\(generation.uuidString, privacy: .public) instance=\(instanceID.uuidString, privacy: .public) context=\(contextKey, privacy: .public)"
+            )
+            return
+        }
+
+        if recoveryCandidateInstanceID != nil {
+            macWallNativeWallpaperLogger.info(
+                "nativeRecovery event=coalesced generation=\(generation.uuidString, privacy: .public) instance=\(instanceID.uuidString, privacy: .public) context=\(contextKey, privacy: .public)"
+            )
+            return
+        }
+
+        switch recoveryPolicy.registerFailure(
+            generation: generation,
+            activeGeneration: state.activeGeneration
+        ) {
+        case .ignored:
+            return
+        case .retry:
+            guard let command = lastCommand,
+                  command.kind == .play,
+                  command.generation == generation else {
+                exhaustRecoveryOnQueue(
+                    generation: generation,
+                    error: error,
+                    reason: "persisted-play-missing"
+                )
+                return
+            }
+            macWallNativeWallpaperLogger.info(
+                "nativeRecovery event=started generation=\(generation.uuidString, privacy: .public) instance=\(instanceID.uuidString, privacy: .public) attempt=1"
+            )
+            processPlayOnQueue(command, isRecovery: true)
+            processCurrentDisplayModeUpdateOnQueue()
+            processCurrentPlaybackControlUpdateOnQueue()
+        case .exhausted:
+            exhaustRecoveryOnQueue(
+                generation: generation,
+                error: error,
+                reason: "retry-budget-exhausted"
+            )
+        }
+    }
+
     private func markCandidateReadyOnQueue(
         generation: UUID,
         instanceID: UUID,
@@ -448,6 +587,8 @@ final class NativeWallpaperSessionController: @unchecked Sendable {
 
         let previousBridges = activeBridges
         let replacements = candidateBridges
+        let committedRecovery =
+            recoveryCandidateInstanceID == instanceID
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         for bridge in replacements.values {
@@ -461,17 +602,32 @@ final class NativeWallpaperSessionController: @unchecked Sendable {
 
         activeBridges = replacements
         candidateBridges = [:]
+        activeInstanceID = instanceID
         candidateInstanceID = nil
+        recoveryCandidateInstanceID = nil
         activeDisplayMode = candidateDisplayMode
         candidateDisplayMode = nil
+        activePlaybackSuspended = candidatePlaybackSuspended
+        candidatePlaybackSuspended = false
         requestedGeneration = generation
-        statusState = .playing
+        statusState = activePlaybackSuspended ? .suspended : .playing
         statusFailure = nil
+        if activePlaybackSuspended {
+            for bridge in replacements.values {
+                bridge.setPlaybackSuspended(true)
+            }
+        }
         for bridge in previousBridges.values {
             bridge.teardown(reason: "candidate-committed")
         }
         publishStatusOnQueue()
         processCurrentDisplayModeUpdateOnQueue()
+        processCurrentPlaybackControlUpdateOnQueue()
+        if committedRecovery {
+            macWallNativeWallpaperLogger.info(
+                "nativeRecovery event=committed generation=\(generation.uuidString, privacy: .public) instance=\(instanceID.uuidString, privacy: .public) attempt=1"
+            )
+        }
     }
 
     private func failCandidateOnQueue(
@@ -487,11 +643,34 @@ final class NativeWallpaperSessionController: @unchecked Sendable {
         }
 
         let rejected = candidateBridges
+        let rejectedRecovery =
+            recoveryCandidateInstanceID == instanceID
         candidateBridges = [:]
         candidateInstanceID = nil
+        recoveryCandidateInstanceID = nil
         candidateDisplayMode = nil
+        candidatePlaybackSuspended = false
         for bridge in rejected.values {
             bridge.teardown(reason: "candidate-failed")
+        }
+        if rejectedRecovery {
+            switch recoveryPolicy.registerReplacementFailure(
+                generation: generation,
+                activeGeneration: state.activeGeneration
+            ) {
+            case .exhausted:
+                exhaustRecoveryOnQueue(
+                    generation: generation,
+                    error: error,
+                    reason: "replacement-candidate-failed"
+                )
+            case .ignored, .retry:
+                requestedGeneration = state.activeGeneration
+                statusState = activePlaybackSuspended ? .suspended : .playing
+                statusFailure = nil
+                publishStatusOnQueue()
+            }
+            return
         }
         failStatusOnQueue(
             requestedGeneration: generation,
@@ -508,6 +687,12 @@ final class NativeWallpaperSessionController: @unchecked Sendable {
         for bridge in activeBridges.values {
             bridge.freezeKeepingLastFrame(reason: "stop-command")
         }
+        state.stop()
+        activeInstanceID = nil
+        recoveryCandidateInstanceID = nil
+        recoveryPolicy.clear()
+        activePlaybackSuspended = false
+        candidatePlaybackSuspended = false
         statusState = .stopped
         statusFailure = nil
         publishStatusOnQueue()
@@ -521,10 +706,32 @@ final class NativeWallpaperSessionController: @unchecked Sendable {
         let cancelled = candidateBridges
         candidateBridges = [:]
         candidateInstanceID = nil
+        recoveryCandidateInstanceID = nil
         candidateDisplayMode = nil
+        candidatePlaybackSuspended = false
         for bridge in cancelled.values {
             bridge.teardown(reason: reason)
         }
+    }
+
+    private func exhaustRecoveryOnQueue(
+        generation: UUID,
+        error: NativeVideoFrameBridgeError,
+        reason: String
+    ) {
+        cancelCandidateOnQueue(reason: "recovery-exhausted")
+        for bridge in activeBridges.values {
+            bridge.freezeKeepingLastFrame(reason: "recovery-exhausted")
+        }
+        macWallNativeWallpaperLogger.error(
+            "nativeRecovery event=exhausted generation=\(generation.uuidString, privacy: .public) reason=\(reason, privacy: .public) error=\(String(describing: error), privacy: .public)"
+        )
+        failStatusOnQueue(
+            requestedGeneration: generation,
+            category: "playback",
+            code: String(describing: error),
+            message: "Native playback recovery was exhausted."
+        )
     }
 
     private func failStatusOnQueue(
@@ -555,7 +762,10 @@ final class NativeWallpaperSessionController: @unchecked Sendable {
             extensionInstanceID: extensionInstanceID,
             processIdentifier: getpid(),
             heartbeatAt: Date(),
-            failure: statusFailure
+            failure: statusFailure,
+            playbackSuspended: activePlaybackSuspended,
+            lastPlaybackControlCommandID:
+                lastProcessedPlaybackControlCommandID
         )
         do {
             try store.writeStatus(status)

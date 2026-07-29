@@ -42,6 +42,7 @@ protocol WallpaperPlaybackCoordinating: AnyObject {
         pending: PendingPlaybackRequest
     ) async throws -> PlaybackStartOutcome
     func updateDisplayMode(_ displayMode: WallpaperDisplayMode)
+    func updatePlaybackSuspended(_ suspended: Bool)
     func stop() async throws
 }
 
@@ -69,6 +70,7 @@ final class WallpaperPlaybackCoordinator: WallpaperPlaybackCoordinating {
     private var inFlight: InFlightRequest?
     private var latestRequestID: UUID?
     private var pendingDisplayMode: WallpaperDisplayMode?
+    private var desiredPlaybackSuspended = false
     private(set) var activeReceipt: PlaybackReceipt?
 
     init(
@@ -107,6 +109,11 @@ final class WallpaperPlaybackCoordinator: WallpaperPlaybackCoordinating {
         publishDisplayModeUpdate(displayMode)
     }
 
+    func updatePlaybackSuspended(_ suspended: Bool) {
+        desiredPlaybackSuspended = suspended
+        publishPlaybackControlUpdate(suspended)
+    }
+
     func stop() async throws {
         latestRequestID = nil
         pendingDisplayMode = nil
@@ -117,9 +124,11 @@ final class WallpaperPlaybackCoordinator: WallpaperPlaybackCoordinating {
         case .legacy:
             legacyBackend.stop(reason: .userStop)
             activeReceipt = nil
+            desiredPlaybackSuspended = false
         case .native:
             try await nativeBackend.stop(generation: UUID())
             activeReceipt = nil
+            desiredPlaybackSuspended = false
         case nil:
             break
         }
@@ -212,6 +221,7 @@ final class WallpaperPlaybackCoordinator: WallpaperPlaybackCoordinating {
             restoreSupport: nil
         )
         activeReceipt = receipt
+        publishPlaybackControlUpdate(desiredPlaybackSuspended)
         return .started(receipt)
     }
 
@@ -237,6 +247,24 @@ final class WallpaperPlaybackCoordinator: WallpaperPlaybackCoordinating {
         } catch {
             Self.logger.error(
                 "native displayMode update failed mode=\(displayMode.rawValue, privacy: .public) error=\(String(describing: error), privacy: .public)"
+            )
+        }
+    }
+
+    private func publishPlaybackControlUpdate(_ suspended: Bool) {
+        guard activeReceipt?.backend == .native,
+              let activeGeneration = activeReceipt?.nativeGeneration else {
+            return
+        }
+        do {
+            try nativeBackend.updatePlaybackSuspended(
+                suspended,
+                activeGeneration: activeGeneration,
+                commandID: UUID()
+            )
+        } catch {
+            Self.logger.error(
+                "native playbackControl update failed suspended=\(suspended, privacy: .public) error=\(String(describing: error), privacy: .public)"
             )
         }
     }
@@ -269,6 +297,7 @@ final class WallpaperPlaybackCoordinator: WallpaperPlaybackCoordinating {
             restoreSupport: legacyReceipt.restoreSupport
         )
         activeReceipt = receipt
+        desiredPlaybackSuspended = false
         return .started(receipt)
     }
 }
