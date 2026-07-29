@@ -48,6 +48,15 @@ public struct SceneBoundedByteSource: SceneByteSource {
         byteCount = range.upperBound - range.lowerBound
     }
 
+    init(
+        validatedParent parent: any SceneByteSource,
+        range: Range<UInt64>
+    ) {
+        self.parent = parent
+        parentRange = range
+        byteCount = range.upperBound - range.lowerBound
+    }
+
     public func read(range: Range<UInt64>) throws -> Data {
         guard range.upperBound <= byteCount else {
             throw SceneFormatError.outOfBounds

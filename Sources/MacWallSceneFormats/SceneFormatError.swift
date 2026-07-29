@@ -2,6 +2,7 @@ import Foundation
 
 public enum SceneResourceLimit: String, Equatable, Sendable {
     case packageBytes
+    case entryBytes
     case entryCount
     case entryPathBytes
     case indexBytes

@@ -104,7 +104,7 @@ struct SceneBinaryCursor {
         return start..<end
     }
 
-    private mutating func readData(
+    mutating func readData(
         byteCount: UInt64
     ) throws -> Data {
         let range = try consume(byteCount: byteCount)

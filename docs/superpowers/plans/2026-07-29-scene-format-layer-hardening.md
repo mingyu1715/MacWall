@@ -239,6 +239,7 @@ Define these exact error categories in
 ```swift
 public enum SceneResourceLimit: String, Equatable, Sendable {
     case packageBytes
+    case entryBytes
     case entryCount
     case entryPathBytes
     case indexBytes
@@ -400,7 +401,7 @@ git commit -m "feat(scene): add random access byte sources"
 - Produces: `ScenePackageArchive.read(entry:maximumBytes:)`
 - Consumed by: Tasks 6-9
 
-- [ ] **Step 1: Write failing archive and malformed-corpus tests**
+- [x] **Step 1: Write failing archive and malformed-corpus tests**
 
 Create `ScenePackageFixtureEntry` and builder use sites in
 `ScenePackageArchiveTests.swift`:
@@ -448,7 +449,7 @@ Add explicit tests for:
 Resource-limit unit tests must assert the production default values, then
 inject smaller limits to exercise rejection without allocating 64/512 MiB.
 
-- [ ] **Step 2: Run the focused test and verify RED**
+- [x] **Step 2: Run the focused test and verify RED**
 
 Run:
 
@@ -459,7 +460,7 @@ swift test --filter ScenePackageArchiveTests
 Expected: compile failure because the archive models, reader, and fixture
 builder do not exist.
 
-- [ ] **Step 3: Add immutable package models**
+- [x] **Step 3: Add immutable package models**
 
 Define:
 
@@ -501,7 +502,7 @@ public struct ScenePackageArchive: Sendable {
 The archive keeps the source strongly and builds an exact-case path lookup
 dictionary. It must not expose an unbounded `read(entry:)` overload.
 
-- [ ] **Step 4: Implement incremental index parsing and run GREEN**
+- [x] **Step 4: Implement incremental index parsing and run GREEN**
 
 Define:
 
@@ -575,7 +576,7 @@ swift test --filter ScenePackageArchiveTests
 
 Expected: all package archive and malformed-corpus tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Sources/MacWallSceneFormats/ScenePackage.swift Sources/MacWallSceneFormats/ScenePackageArchiveReader.swift Tests/MacWallSceneTestSupport/ScenePackageFixtureBuilder.swift Tests/MacWallSceneFormatsTests/ScenePackageArchiveTests.swift
