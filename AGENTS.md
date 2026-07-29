@@ -69,6 +69,14 @@
 - 재테스트는 항상 `dev reset -> dev install -> 사용자 System Settings 선택 -> 로그 확인 -> 사용자 화면 확인` 순서로 진행합니다.
 - System Settings 조작, 실제 Desktop 출력 확인, Fullscreen -> Desktop 빨간약 검증은 사용자가 직접 수행합니다.
 
+## Production Native AdHocQA
+
+- signing/provisioning 전 production runtime 검증은 `Scripts/native-wallpaper-adhoc-qa.sh`만 사용합니다.
+- 순서는 `reset -> install -> 사용자 System Settings 선택 -> status/logs -> 사용자 화면 확인`입니다.
+- runner는 앱이나 System Settings를 자동으로 열지 않습니다.
+- `AdHocQA` 성공을 production App Group 성공으로 기록하지 않습니다.
+- `Debug`와 `Release`는 `development-home`으로 자동 fallback하지 않습니다.
+
 ## 금지 범위
 
 명시적인 사용자 승인 없이 아래 작업을 하지 않습니다.

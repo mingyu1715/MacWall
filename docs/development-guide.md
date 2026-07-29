@@ -160,6 +160,28 @@ Main App의 Native/Legacy 통합은 별도 승인이 없으면 명령어, 정적
 - production runtime QA 전까지 `MacWallNativeWallpaperSpike`를 삭제하거나 production 구현으로 대체하지 않습니다.
 - 실제 System Settings 선택, Desktop 출력, Fullscreen/Space 전환 확인은 사용자가 직접 수행하며 별도 승인 없는 자동 UI 조작은 금지합니다.
 
+### Production Native AdHocQA 실행 규칙
+
+Apple development signing identity와 provisioning profile이 준비되지 않은 로컬 환경에서는 production target의 `AdHocQA` configuration만 사용합니다.
+
+```text
+1. ./Scripts/native-wallpaper-adhoc-qa.sh reset
+2. ./Scripts/native-wallpaper-adhoc-qa.sh install
+3. 사용자가 System Settings에서 MacWall 선택
+4. ./Scripts/native-wallpaper-adhoc-qa.sh status
+5. ./Scripts/native-wallpaper-adhoc-qa.sh logs 3m
+6. 사용자가 Desktop 출력과 Fullscreen 전환 확인
+```
+
+규칙:
+
+- `AdHocQA`는 proper App Group signing/provisioning 검증을 대체하지 않습니다.
+- runner는 앱이나 System Settings를 자동으로 열지 않습니다.
+- `Debug`와 `Release`는 App Group 실패 후 `development-home`으로 fallback하지 않습니다.
+- 재검증은 항상 `reset` 후 `install` 순서로 시작합니다.
+- `reset`은 production QA app 경로의 Extension과 QA runtime root만 정리하며 `WallpaperAgent`와 Spike를 종료하지 않습니다.
+- 화면 상태 확인과 System Settings 선택은 사용자가 직접 수행합니다.
+
 기본 정적 검증:
 
 ```bash
