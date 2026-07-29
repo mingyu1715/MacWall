@@ -1,6 +1,6 @@
 # MacWall Scene Engine Design
 
-상태: Approved design
+상태: Approved design / S0 implemented
 
 작성일: 2026-07-29
 대상: Wallpaper Engine Scene compatibility runtime
@@ -27,6 +27,16 @@ Workshop Scene project
 첫 useful milestone은 일반적인 2D image Scene을 실제 asset과 animation으로
 렌더링하는 것입니다. Text, particle, effect, SceneScript, 3D는 같은 구조 위에
 순차적으로 추가합니다.
+
+### S0 implementation evidence
+
+S0는 [실행 계획](../plans/2026-07-29-scene-format-research-and-fixture-catalog.md)에
+따라 구현했습니다. Schema version 1 audit contract, bounded TEX metadata
+inspection, Scene JSON/dependency/script evidence, stable diagnostics를
+`MacWallCore`에 추가했고, 세 local fixture는 저작물 payload 없이
+[aggregate catalog](../../../Tests/Fixtures/SceneAudit/local-scene-catalog.json)로
+검증합니다. Focused Scene 25 tests와 전체 267 tests가 실패 없이 통과했으며,
+S1 module extraction과 S2 이후 renderer 작업은 시작하지 않았습니다.
 
 ## 2. 확정 정책
 

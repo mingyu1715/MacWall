@@ -1401,7 +1401,7 @@ git commit -m "test(scene): catalog local fixtures"
 - Produces: completed S0 record and explicit S1 next gate
 - Preserves: S2+ implementation as unstarted
 
-- [ ] **Step 1: Run all focused Scene tests**
+- [x] **Step 1: Run all focused Scene tests**
 
 Run:
 
@@ -1418,7 +1418,7 @@ swift test --filter SceneRenderPlanTests
 Expected: all focused tests pass. Local fixture test audits three fixtures on
 the current machine.
 
-- [ ] **Step 2: Run the complete Swift test suite**
+- [x] **Step 2: Run the complete Swift test suite**
 
 Run:
 
@@ -1428,7 +1428,7 @@ swift test
 
 Expected: all tests pass with zero failures.
 
-- [ ] **Step 3: Run repository safety and policy checks**
+- [x] **Step 3: Run repository safety and policy checks**
 
 Run:
 
@@ -1446,7 +1446,7 @@ Expected:
 - No new CLI or thumbnail fallback implementation appears.
 - Audit APIs appear only in `MacWallCore` Scene files and tests.
 
-- [ ] **Step 4: Update the plan and design status**
+- [x] **Step 4: Update the plan and design status**
 
 In this plan:
 
@@ -1458,7 +1458,7 @@ In this plan:
 In the design spec, add an `S0 implementation evidence` paragraph linking this
 plan and the tracked catalog.
 
-- [ ] **Step 5: Update roadmap and development log**
+- [x] **Step 5: Update roadmap and development log**
 
 Roadmap:
 
@@ -1476,14 +1476,14 @@ Development log:
 - Record that no CLI, Metal, Native Scene, fallback, GUI, package, or `dist`
   work ran.
 
-- [ ] **Step 6: Commit final S0 records**
+- [x] **Step 6: Commit final S0 records**
 
 ```bash
 git add docs/development-roadmap.md docs/development-log.md docs/superpowers/specs/2026-07-29-scene-engine-design.md docs/superpowers/plans/2026-07-29-scene-format-research-and-fixture-catalog.md
 git commit -m "docs: record scene format audit"
 ```
 
-- [ ] **Step 7: Verify final implementation state**
+- [x] **Step 7: Verify final implementation state**
 
 Run:
 
@@ -1505,18 +1505,32 @@ Expected:
 
 ---
 
+## Execution Results
+
+- Focused Scene verification: 25 tests, 0 failures.
+- Full `swift test`: 267 tests, 0 failures.
+- Local fixture verification: 1 test audited all 3 listed fixtures, 0 skips,
+  0 failures.
+- `git diff --check` passed and `git ls-files test` printed no tracked path.
+- Policy search found no new CLI or thumbnail fallback implementation.
+  Matches were existing policy text and this plan's verification command.
+- Audit APIs are limited to `MacWallCore/Scene` and tests.
+- No `swift build`, `xcodebuild build`, app/GUI/System Settings, Metal,
+  Native Scene, Scene fallback, package, DMG, notarization, or `dist` action
+  ran.
+
 ## Self-review Checklist
 
-- [ ] Every design requirement assigned to S0 has a task.
-- [ ] No CLI command or executable target is added.
-- [ ] No real Workshop payload is tracked.
-- [ ] TEX audit does not decode mip payloads and uses `skip(count:)` rather
+- [x] Every design requirement assigned to S0 has a task.
+- [x] No CLI command or executable target is added.
+- [x] No real Workshop payload is tracked.
+- [x] TEX audit does not decode mip payloads and uses `skip(count:)` rather
   than creating an additional `Data` copy for each mip.
-- [ ] `TEXB0004` non-video and video layouts are distinguished.
-- [ ] Unknown raw values survive the report.
-- [ ] Absolute local paths cannot enter JSON output.
-- [ ] Report arrays and JSON keys are deterministic.
-- [ ] Local fixture tests skip cleanly when fixtures are absent.
-- [ ] Existing parser/decoder/render-plan tests remain unchanged and pass.
-- [ ] S1 module extraction is not accidentally started in S0.
-- [ ] Metal, Native Scene, Scene fallback, SceneScript execution remain out of scope.
+- [x] `TEXB0004` non-video and video layouts are distinguished.
+- [x] Unknown raw values survive the report.
+- [x] Absolute local paths cannot enter JSON output.
+- [x] Report arrays and JSON keys are deterministic.
+- [x] Local fixture tests skip cleanly when fixtures are absent.
+- [x] Existing parser/decoder/render-plan tests remain unchanged and pass.
+- [x] S1 module extraction is not accidentally started in S0.
+- [x] Metal, Native Scene, Scene fallback, SceneScript execution remain out of scope.

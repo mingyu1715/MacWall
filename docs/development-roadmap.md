@@ -393,6 +393,8 @@ module은 AppKit/Metal desktop rendering 없이 test와 non-GUI code에서 사�
 
 ### S0: Format Research and Fixture Catalog
 
+상태: 구현 완료
+
 목표: 최종 renderer를 만들기 전에 input surface를 이해합니다.
 
 - 새 CLI command 없이 internal `SceneAudit` API와 test support의 stable
@@ -408,7 +410,24 @@ module은 AppKit/Metal desktop rendering 없이 test와 non-GUI code에서 사�
 - unknown format을 crash 없이 report합니다.
 - texture decoding 전에 audit report를 사용할 수 있습니다.
 
+구현 결과:
+
+- schema version 1의 internal `SceneAuditReport`와 canonical JSON encoder를
+  `MacWallCore`에 추가했습니다.
+- TEX payload를 decode/copy하지 않고 `TEXB0003`, `TEXB0004`, image/mipmap,
+  animation metadata를 bounded parse합니다.
+- Scene JSON의 object, parent/instance, animation, dependency, effect, shader,
+  inline SceneScript evidence를 deterministic report로 만듭니다.
+- 세 local fixture의 aggregate count만
+  `Tests/Fixtures/SceneAudit/local-scene-catalog.json`에 추적합니다.
+- S0 구현은 S1에서 `MacWallSceneFormats`/`MacWallSceneAudit` module을
+  추출할 때까지 `MacWallCore`에만 유지합니다.
+- focused Scene 검증은 25 tests, 전체 검증은 267 tests로 실패 없이
+  통과했습니다.
+
 ### S1: Format Layer Hardening
+
+상태: 다음 구현 단계
 
 - package, texture, compression, pixel-format parsing을 focused file로 분리합니다.
 - path traversal protection을 유지합니다.
@@ -612,8 +631,8 @@ P1 Desktop Fallback Cache (완료)
 Scene runtime work:
 
 ```text
-S0 Format Research and Fixture Catalog
--> S1 Format Layer Hardening
+S0 Format Research and Fixture Catalog (완료)
+-> S1 Format Layer Hardening (다음)
 -> S2 Asset Resolver and Typed Scene Graph
 -> S3 GPU Texture Pipeline
 -> S4 Headless 2D Metal Renderer
@@ -636,7 +655,7 @@ S5에서 common 2D Scene은 extension 내부의 실제 Metal output으로 재생
 다음 planning:
 
 1. 별도 사용자 gate에서 Native auto-pause, sleep/wake, 1회 recovery의 실제 Desktop 동작을 확인합니다.
-2. 승인된 [Scene Engine 설계](superpowers/specs/2026-07-29-scene-engine-design.md)와 [S0 실행 계획](superpowers/plans/2026-07-29-scene-format-research-and-fixture-catalog.md)을 기준으로 internal audit contract와 fixture catalog를 구현합니다.
-3. S0/S1/S2 format과 graph contract가 검증되기 전에는 Metal renderer, Scene fallback, Native Scene surface 구현을 시작하지 않습니다.
+2. 완료된 [S0 실행 계획](superpowers/plans/2026-07-29-scene-format-research-and-fixture-catalog.md)을 입력으로 S1 Format Layer Hardening 설계와 실행 계획을 작성합니다.
+3. S1/S2 format과 graph contract가 검증되기 전에는 Metal renderer, Scene fallback, Native Scene surface 구현을 시작하지 않습니다.
 4. snapshot/export는 `docs/superpowers/plans/2026-06-15-native-wallpaper-snapshot-export-gate.md`, BGRA IOSurface memory는 별도 최적화 작업으로 유지합니다.
 5. proper Apple signing/provisioning 기반 App Group runtime QA는 release 전 별도 gate로 유지합니다.

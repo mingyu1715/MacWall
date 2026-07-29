@@ -4,6 +4,35 @@
 
 ## 2026-07-29
 
+### 22:50 KST
+
+- 완료: Scene Engine S0 Format Research 및 Fixture Catalog 구현
+- 구현:
+  - schema version 1 `SceneAuditReport`, S0 support policy, canonical JSON encoder
+  - allocation 없는 payload skip을 사용하는 bounded TEX metadata reader
+  - `TEXB0003`/`TEXB0004` regular/video, multi-image/mipmap, animated texture metadata
+  - Scene object, parent/instance, animation, dependency, effect, shader,
+    inline SceneScript evidence와 stable invalid diagnostic
+  - 실제 Workshop payload 없이 aggregate count만 저장한 local fixture catalog
+- local fixture:
+  - `PKGV0008`, `PKGV0018`, `PKGV0023` 세 package audit 통과
+  - texture container `TEXB0003`/`TEXB0004`, raw format/flag count 일치
+  - local fixture test: 1 test에서 fixture 3개 audit, skip 0, failure 0
+- 검증:
+  - focused Scene suites: `25 tests, 0 failures`
+  - 전체 `swift test`: `267 tests, 0 failures`
+  - `git diff --check` 통과
+  - `git ls-files test` 출력 없음
+  - 새 `macwallctl` command 및 thumbnail fallback 구현 없음
+  - audit API가 `MacWallCore/Scene`과 tests에만 존재함을 확인
+- 범위:
+  - S0 구현은 S1 module extraction 전까지 `MacWallCore`에 유지
+  - 다음 단계는 S1 Format Layer Hardening
+- 미실행:
+  - `swift build`, `xcodebuild build`, 앱/GUI/System Settings 실행
+  - Metal, Native Scene surface, Scene fallback, SceneScript execution
+  - package, DMG, notarization, `dist` 작업
+
 ### 22:30 KST
 
 - 완료: Scene Engine S0 Format Research 및 Fixture Catalog 실행 계획 작성
