@@ -1220,7 +1220,7 @@ git commit -m "feat(scene): define audit v2 contract"
 - Produces: `SceneAuditor.audit(source:) -> SceneAuditReport`
 - Consumed by: Tasks 7 and 9
 
-- [ ] **Step 1: Write failing synthetic audit and limit tests**
+- [x] **Step 1: Write failing synthetic audit and limit tests**
 
 Port the S0 object/dependency/script synthetic package test to
 `MacWallSceneAuditTests`, change its default package version to `PKGV0008`,
@@ -1254,7 +1254,7 @@ Add tests for:
 - report ordering does not depend on package entry order
 - diagnostic message excludes temp directory and `/Users/`
 
-- [ ] **Step 2: Run the focused test and verify RED**
+- [x] **Step 2: Run the focused test and verify RED**
 
 Run:
 
@@ -1264,7 +1264,7 @@ swift test --filter SceneAuditorTests
 
 Expected: compile failure because the new auditor and inspector do not exist.
 
-- [ ] **Step 3: Port JSON evidence inspection**
+- [x] **Step 3: Port JSON evidence inspection**
 
 Move S0 classification, recursive animation detection, dependency resolution,
 built-in candidate classification, and exported function-name inspection into
@@ -1294,7 +1294,7 @@ struct SceneJSONInspector: Sendable {
 Do not pass `ScenePackageArchive` into the JSON inspector; it consumes only
 path evidence and parsed JSON values.
 
-- [ ] **Step 4: Implement bounded auditor and run GREEN**
+- [x] **Step 4: Implement bounded auditor and run GREEN**
 
 Define:
 
@@ -1352,7 +1352,7 @@ swift test --filter SceneAuditorTests
 
 Expected: all synthetic audit, limit, ordering, and path-redaction tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Sources/MacWallSceneAudit/SceneJSONInspector.swift Sources/MacWallSceneAudit/SceneAuditor.swift Tests/MacWallSceneAuditTests/SceneAuditorTests.swift
