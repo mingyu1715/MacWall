@@ -46,7 +46,7 @@ private struct MenuBarIcon: View {
     @State private var didOpenInitialSettings = false
 
     var body: some View {
-        Image(systemName: "photo.on.rectangle.angled")
+        MacWallMenuBarBrandIcon()
             .accessibilityLabel("MacWall")
             .task {
                 openInitialSettings()

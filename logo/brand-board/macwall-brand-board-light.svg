@@ -1,0 +1,225 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="2048"
+     height="1536"
+     viewBox="0 0 2048 1536"
+     role="img"
+     aria-labelledby="title desc">
+  <title id="title">MacWall Light Brand Identity Board</title>
+  <desc id="desc">MacWall primary logo, symbol, app icon, usage, color palette, and typography on a light presentation board.</desc>
+
+  <defs>
+    <radialGradient id="boardBackground" cx="50%" cy="40%" r="72%">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset=".62" stop-color="#F7F8FC"/>
+      <stop offset="1" stop-color="#EEF1F6"/>
+    </radialGradient>
+
+    <linearGradient id="brand" x1="225" y1="305" x2="815" y2="735"
+                    gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#24C9FF"/>
+      <stop offset=".24" stop-color="#2E8CFF"/>
+      <stop offset=".52" stop-color="#5360FF"/>
+      <stop offset=".76" stop-color="#8A48FF"/>
+      <stop offset="1" stop-color="#C832F4"/>
+    </linearGradient>
+
+    <linearGradient id="brandBar" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#24C9FF"/>
+      <stop offset=".24" stop-color="#2E8CFF"/>
+      <stop offset=".52" stop-color="#5360FF"/>
+      <stop offset=".76" stop-color="#8A48FF"/>
+      <stop offset="1" stop-color="#C832F4"/>
+    </linearGradient>
+
+    <linearGradient id="brandHighlight" x1="260" y1="290" x2="760" y2="700"
+                    gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity=".16"/>
+      <stop offset=".45" stop-color="#FFFFFF" stop-opacity="0"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity=".08"/>
+    </linearGradient>
+
+    <linearGradient id="iconBackground" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#20232B"/>
+      <stop offset=".55" stop-color="#12141A"/>
+      <stop offset="1" stop-color="#090A0E"/>
+    </linearGradient>
+
+    <filter id="symbolShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="9" stdDeviation="15"
+                    flood-color="#000000" flood-opacity=".20"/>
+    </filter>
+
+    <filter id="iconShadow" x="-35%" y="-35%" width="170%" height="180%">
+      <feDropShadow dx="0" dy="24" stdDeviation="28"
+                    flood-color="#000000" flood-opacity=".25"/>
+    </filter>
+
+    <mask id="baseCutout" x="170" y="700" width="684" height="68"
+          maskUnits="userSpaceOnUse">
+      <rect x="170" y="700" width="684" height="68" fill="#FFFFFF"/>
+      <path d="
+        M444 727
+        H580
+        L576 741
+        Q573 746 564 746
+        H460
+        Q451 746 448 741
+        Z"
+        fill="#000000"/>
+    </mask>
+
+    <symbol id="macwallMark" viewBox="0 0 1024 1024">
+      <g filter="url(#symbolShadow)">
+        <path fill="url(#brand)" fill-rule="evenodd" d="
+          M256 294
+          H300
+          L512 469
+          L724 294
+          H768
+          Q786 294 786 313
+          V679
+          Q786 697 768 697
+          H256
+          Q238 697 238 679
+          V313
+          Q238 294 256 294
+          Z
+
+          M300 382
+          V638
+          H724
+          V382
+          L512 556
+          Z
+        "/>
+
+        <path fill="url(#brandHighlight)" fill-rule="evenodd" opacity=".55" d="
+          M256 294
+          H300
+          L512 469
+          L724 294
+          H768
+          Q786 294 786 313
+          V679
+          Q786 697 768 697
+          H256
+          Q238 697 238 679
+          V313
+          Q238 294 256 294
+          Z
+
+          M300 382
+          V638
+          H724
+          V382
+          L512 556
+          Z
+        "/>
+      </g>
+
+      <g filter="url(#symbolShadow)">
+        <path d="
+          M184 716
+          H840
+          Q836 735 821 744
+          Q809 752 787 752
+          H237
+          Q215 752 203 744
+          Q188 735 184 716
+          Z"
+          fill="url(#brand)"
+          mask="url(#baseCutout)"/>
+      </g>
+    </symbol>
+
+    <style>
+      .label {
+        fill: #656B78;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display",
+          "Helvetica Neue", Arial, sans-serif;
+        font-size: 27px;
+        font-weight: 600;
+        letter-spacing: 2.5px;
+      }
+
+      .wordmark {
+        fill: #11131A;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display",
+          "Helvetica Neue", Arial, sans-serif;
+        font-weight: 600;
+        letter-spacing: -5px;
+      }
+
+      .body {
+        fill: #11131A;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display",
+          "Helvetica Neue", Arial, sans-serif;
+      }
+
+      .muted {
+        fill: #6D7380;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display",
+          "Helvetica Neue", Arial, sans-serif;
+      }
+
+      .divider {
+        stroke: #D6DAE3;
+        stroke-width: 2;
+      }
+    </style>
+  </defs>
+
+  <rect width="2048" height="1536" fill="url(#boardBackground)"/>
+
+  <text x="72" y="86" class="label">PRIMARY LOGO</text>
+
+  <g aria-label="Primary MacWall logo">
+    <use href="#macwallMark" x="420" y="145" width="500" height="500"/>
+    <text x="875" y="475" class="wordmark" font-size="170">MacWall</text>
+  </g>
+
+  <line x1="68" y1="650" x2="1980" y2="650" class="divider"/>
+
+  <text x="72" y="720" class="label">SYMBOL</text>
+  <text x="758" y="720" class="label">APP ICON</text>
+  <text x="1320" y="720" class="label">LOGO USAGE</text>
+
+  <line x1="690" y1="686" x2="690" y2="1162" class="divider"/>
+  <line x1="1260" y1="686" x2="1260" y2="1162" class="divider"/>
+
+  <use href="#macwallMark" x="115" y="740" width="485" height="485"/>
+
+  <g filter="url(#iconShadow)">
+    <rect x="820" y="785" width="310" height="310" rx="68"
+          fill="url(#iconBackground)" stroke="#343741" stroke-width="3"/>
+    <rect x="834" y="799" width="282" height="282" rx="57"
+          fill="none" stroke="#FFFFFF" stroke-opacity=".035" stroke-width="2"/>
+  </g>
+  <use href="#macwallMark" x="825" y="790" width="300" height="300"/>
+
+  <g aria-label="Horizontal MacWall logo">
+    <use href="#macwallMark" x="1315" y="815" width="300" height="300"/>
+    <text x="1582" y="1012" class="wordmark" font-size="83"
+          letter-spacing="-2.5">MacWall</text>
+  </g>
+
+  <line x1="68" y1="1180" x2="1980" y2="1180" class="divider"/>
+
+  <text x="72" y="1248" class="label">BRAND PALETTE</text>
+  <text x="1320" y="1248" class="label">TYPOGRAPHY</text>
+  <line x1="1260" y1="1218" x2="1260" y2="1484" class="divider"/>
+
+  <circle cx="122" cy="1368" r="48" fill="#24C9FF"/>
+  <circle cx="248" cy="1368" r="48" fill="#5360FF"/>
+  <circle cx="374" cy="1368" r="48" fill="#C832F4"/>
+  <rect x="474" y="1337" width="648" height="62" rx="9" fill="url(#brandBar)"/>
+
+  <text x="74" y="1454" class="muted" font-size="21">#24C9FF</text>
+  <text x="200" y="1454" class="muted" font-size="21">#5360FF</text>
+  <text x="326" y="1454" class="muted" font-size="21">#C832F4</text>
+
+  <text x="1330" y="1415" class="body" font-size="126" font-weight="600">Aa</text>
+  <text x="1534" y="1362" class="body" font-size="36" font-weight="500">SF Pro Display</text>
+  <text x="1534" y="1414" class="muted" font-size="28">Clean. Modern. Native.</text>
+  <text x="1534" y="1458" class="muted" font-size="22">Semibold · Regular</text>
+</svg>

@@ -2,6 +2,26 @@
 
 모든 시간은 Asia/Seoul 기준입니다.
 
+## 2026-07-29
+
+### 21:45 KST
+
+- 완료: MacWall 브랜드 로고 자산 정리 및 앱 적용
+- 변경:
+  - `logo/`를 `brand-board`, `primary-logo`, `symbol`, `app-icon` 유형별로 정리
+  - Primary Logo를 밝은 배경용 검정 글자와 어두운 배경용 흰 글자로 분리
+  - 모든 심볼의 트랙패드를 단일 투명 홈으로 통일
+  - macOS 앱 아이콘 PNG/ICNS 생성
+  - 메뉴바의 기존 SF Symbol을 단색 MacWall 벡터 마크로 교체
+  - 영문/한글 README 헤더에 라이트/다크 모드 Primary Logo 연결
+  - 앱 번들 `Info.plist`에 `CFBundleIconFile`이 포함되도록 패키징 스크립트 갱신
+- 검증:
+  - 메뉴바 마크 focused test 통과
+  - SVG XML, PNG 크기, ICNS 추출, shell 문법 정적 검증
+- 제외:
+  - 앱 및 GUI 실행 없음
+  - package, DMG, notarization, `dist` 작업 없음
+
 ## 2026-07-20
 
 ### 20:14 KST

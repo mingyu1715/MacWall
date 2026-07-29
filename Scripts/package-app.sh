@@ -6,6 +6,7 @@ APP_NAME="MacWall"
 APP_DIR="$ROOT/dist/$APP_NAME.app"
 MACOS_DIR="$APP_DIR/Contents/MacOS"
 RESOURCES_DIR="$APP_DIR/Contents/Resources"
+APP_ICON_SOURCE="$ROOT/logo/app-icon/MacWall.icns"
 SAVER_NAME="MacWall"
 SAVER_DIR="$RESOURCES_DIR/$SAVER_NAME.saver"
 SAVER_MACOS_DIR="$SAVER_DIR/Contents/MacOS"
@@ -31,6 +32,7 @@ rm -rf "$ROOT/dist"
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR" "$SAVER_MACOS_DIR"
 cp "$ROOT/.build/release/MacWall" "$MACOS_DIR/MacWall"
 cp "$ROOT/.build/release/macwallctl" "$MACOS_DIR/macwallctl"
+cp "$APP_ICON_SOURCE" "$RESOURCES_DIR/MacWall.icns"
 cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -42,6 +44,8 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
   <string>MacWall</string>
   <key>CFBundleIdentifier</key>
   <string>io.github.mingyu1715.MacWall</string>
+  <key>CFBundleIconFile</key>
+  <string>MacWall.icns</string>
   <key>CFBundleInfoDictionaryVersion</key>
   <string>6.0</string>
   <key>CFBundleName</key>

@@ -4,7 +4,7 @@
      viewBox="0 0 1024 1024"
      role="img"
      aria-labelledby="title desc">
-  <title id="title">MacWall logo</title>
+  <title id="title">MacWall symbol</title>
   <desc id="desc">A blue-to-purple M-shaped laptop symbol on a transparent background.</desc>
 
   <defs>
@@ -29,8 +29,6 @@
     <mask id="baseCutout" x="170" y="700" width="684" height="68"
           maskUnits="userSpaceOnUse">
       <rect x="170" y="700" width="684" height="68" fill="#FFFFFF"/>
-      <path d="M448 721 H576" fill="none" stroke="#000000"
-            stroke-width="4" stroke-linecap="round"/>
       <path d="
         M444 727
         H580

@@ -1,4 +1,10 @@
-# MacWall
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="logo/primary-logo/macwall-primary-on-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="logo/primary-logo/macwall-primary-on-light.svg">
+    <img src="logo/primary-logo/macwall-primary-on-light.svg" alt="MacWall" width="640">
+  </picture>
+</p>
 
 내가 가진 Wallpaper Engine Workshop 프로젝트를 macOS에서 배경화면처럼 사용합니다.
 

@@ -4,10 +4,23 @@
      viewBox="0 0 1024 1024"
      role="img"
      aria-labelledby="title desc">
-  <title id="title">MacWall logo on black</title>
-  <desc id="desc">A blue-to-purple M-shaped laptop symbol on a black background.</desc>
+  <title id="title">MacWall app icon</title>
+  <desc id="desc">The MacWall gradient laptop symbol on a rounded dark app icon.</desc>
 
   <defs>
+    <linearGradient id="iconBackground" x1="128" y1="96" x2="896" y2="928"
+                    gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#252A36"/>
+      <stop offset=".48" stop-color="#141720"/>
+      <stop offset="1" stop-color="#08090D"/>
+    </linearGradient>
+
+    <radialGradient id="iconGlow" cx="50%" cy="22%" r="80%">
+      <stop offset="0" stop-color="#5360FF" stop-opacity=".16"/>
+      <stop offset=".52" stop-color="#5360FF" stop-opacity=".025"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0"/>
+    </radialGradient>
+
     <linearGradient id="brand" x1="225" y1="305" x2="815" y2="735"
                     gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#24C9FF"/>
@@ -19,21 +32,24 @@
 
     <linearGradient id="brandHighlight" x1="260" y1="290" x2="760" y2="700"
                     gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#FFFFFF" stop-opacity=".16"/>
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity=".18"/>
       <stop offset=".45" stop-color="#FFFFFF" stop-opacity="0"/>
       <stop offset="1" stop-color="#FFFFFF" stop-opacity=".08"/>
     </linearGradient>
 
+    <filter id="iconShadow" x="-20%" y="-20%" width="140%" height="155%">
+      <feDropShadow dx="0" dy="28" stdDeviation="32"
+                    flood-color="#000000" flood-opacity=".45"/>
+    </filter>
+
     <filter id="symbolShadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="7" stdDeviation="11"
-                    flood-color="#000000" flood-opacity=".36"/>
+      <feDropShadow dx="0" dy="9" stdDeviation="14"
+                    flood-color="#000000" flood-opacity=".42"/>
     </filter>
 
     <mask id="baseCutout" x="170" y="700" width="684" height="68"
           maskUnits="userSpaceOnUse">
       <rect x="170" y="700" width="684" height="68" fill="#FFFFFF"/>
-      <path d="M448 721 H576" fill="none" stroke="#000000"
-            stroke-width="4" stroke-linecap="round"/>
       <path d="
         M444 727
         H580
@@ -46,9 +62,18 @@
     </mask>
   </defs>
 
-  <rect width="1024" height="1024" fill="#000000"/>
+  <g filter="url(#iconShadow)">
+    <rect x="64" y="54" width="896" height="896" rx="205"
+          fill="url(#iconBackground)"/>
+    <rect x="64" y="54" width="896" height="896" rx="205"
+          fill="url(#iconGlow)"/>
+    <rect x="76" y="66" width="872" height="872" rx="194"
+          fill="none" stroke="#FFFFFF" stroke-opacity=".11" stroke-width="5"/>
+    <rect x="91" y="81" width="842" height="842" rx="181"
+          fill="none" stroke="#000000" stroke-opacity=".34" stroke-width="4"/>
+  </g>
 
-  <g filter="url(#symbolShadow)">
+  <g transform="translate(103 105) scale(.8)" filter="url(#symbolShadow)">
     <path fill="url(#brand)" fill-rule="evenodd" d="
       M256 294
       H300
@@ -94,9 +119,7 @@
       L512 556
       Z
     "/>
-  </g>
 
-  <g filter="url(#symbolShadow)">
     <path d="
       M184 716
       H840

@@ -1,0 +1,118 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="1600"
+     height="600"
+     viewBox="0 0 1600 600"
+     role="img"
+     aria-labelledby="title desc">
+  <title id="title">MacWall primary logo</title>
+  <desc id="desc">The MacWall gradient laptop symbol and dark wordmark on a transparent background.</desc>
+
+  <defs>
+    <linearGradient id="brand" x1="225" y1="305" x2="815" y2="735"
+                    gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#24C9FF"/>
+      <stop offset=".24" stop-color="#2E8CFF"/>
+      <stop offset=".52" stop-color="#5360FF"/>
+      <stop offset=".76" stop-color="#8A48FF"/>
+      <stop offset="1" stop-color="#C832F4"/>
+    </linearGradient>
+
+    <linearGradient id="brandHighlight" x1="260" y1="290" x2="760" y2="700"
+                    gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity=".16"/>
+      <stop offset=".45" stop-color="#FFFFFF" stop-opacity="0"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity=".08"/>
+    </linearGradient>
+
+    <filter id="symbolShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="7" stdDeviation="11"
+                    flood-color="#000000" flood-opacity=".25"/>
+    </filter>
+
+    <mask id="baseCutout" x="170" y="700" width="684" height="68"
+          maskUnits="userSpaceOnUse">
+      <rect x="170" y="700" width="684" height="68" fill="#FFFFFF"/>
+      <path d="
+        M444 727
+        H580
+        L576 741
+        Q573 746 564 746
+        H460
+        Q451 746 448 741
+        Z"
+        fill="#000000"/>
+    </mask>
+
+    <symbol id="macwallMark" viewBox="0 0 1024 1024">
+      <g filter="url(#symbolShadow)">
+        <path fill="url(#brand)" fill-rule="evenodd" d="
+          M256 294
+          H300
+          L512 469
+          L724 294
+          H768
+          Q786 294 786 313
+          V679
+          Q786 697 768 697
+          H256
+          Q238 697 238 679
+          V313
+          Q238 294 256 294
+          Z
+
+          M300 382
+          V638
+          H724
+          V382
+          L512 556
+          Z
+        "/>
+
+        <path fill="url(#brandHighlight)" fill-rule="evenodd" opacity=".55" d="
+          M256 294
+          H300
+          L512 469
+          L724 294
+          H768
+          Q786 294 786 313
+          V679
+          Q786 697 768 697
+          H256
+          Q238 697 238 679
+          V313
+          Q238 294 256 294
+          Z
+
+          M300 382
+          V638
+          H724
+          V382
+          L512 556
+          Z
+        "/>
+      </g>
+
+      <g filter="url(#symbolShadow)">
+        <path d="
+          M184 716
+          H840
+          Q836 735 821 744
+          Q809 752 787 752
+          H237
+          Q215 752 203 744
+          Q188 735 184 716
+          Z"
+          fill="url(#brand)"
+          mask="url(#baseCutout)"/>
+      </g>
+    </symbol>
+  </defs>
+
+  <use href="#macwallMark" x="25" y="25" width="550" height="550"/>
+  <text x="540" y="410"
+        fill="#11131A"
+        font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif"
+        font-size="190"
+        font-weight="600"
+        letter-spacing="-6">MacWall</text>
+</svg>
