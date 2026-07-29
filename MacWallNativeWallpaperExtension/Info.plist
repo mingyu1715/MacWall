@@ -27,5 +27,7 @@
 	</dict>
 	<key>LSMinimumSystemVersion</key>
 	<string>26.0</string>
+	<key>MacWallNativeRuntimeTransport</key>
+	<string>$(MACWALL_NATIVE_RUNTIME_TRANSPORT)</string>
 </dict>
 </plist>

@@ -2,6 +2,7 @@ import Darwin
 import Foundation
 import MacWallNativeRuntimeSupport
 import QuartzCore
+import os
 
 struct NativeDesktopSurface: @unchecked Sendable {
     let key: String
@@ -34,7 +35,11 @@ final class NativeWallpaperSessionController: @unchecked Sendable {
     private var statusFailure: NativeRuntimeFailure?
     private var isShuttingDown = false
 
-    init(store: NativeRuntimeStore? = try? NativeRuntimeStore.live()) {
+    convenience init() {
+        self.init(store: Self.makeLiveStore())
+    }
+
+    init(store: NativeRuntimeStore?) {
         self.store = store
 
         let observer = NativeRuntimeDarwinObserver { [weak self] in
@@ -52,6 +57,22 @@ final class NativeWallpaperSessionController: @unchecked Sendable {
             self.startHeartbeatOnQueue()
             self.processCurrentCommandOnQueue(forceReconcile: false)
             self.publishStatusOnQueue()
+        }
+    }
+
+    private static func makeLiveStore() -> NativeRuntimeStore? {
+        do {
+            let mode = try NativeRuntimeTransportMode.configured()
+            let store = try NativeRuntimeStore.live(mode: mode)
+            macWallNativeWallpaperLogger.info(
+                "nativeRuntime transportMode=\(mode.rawValue, privacy: .public) root=\(store.rootURL.path, privacy: .public)"
+            )
+            return store
+        } catch {
+            macWallNativeWallpaperLogger.error(
+                "nativeRuntime store unavailable error=\(String(describing: error), privacy: .public)"
+            )
+            return nil
         }
     }
 
@@ -157,8 +178,8 @@ final class NativeWallpaperSessionController: @unchecked Sendable {
             failStatusOnQueue(
                 requestedGeneration: nil,
                 category: "store",
-                code: "app-group-unavailable",
-                message: "Native runtime App Group container is unavailable."
+                code: "runtime-store-unavailable",
+                message: "Native runtime store is unavailable."
             )
             return
         }

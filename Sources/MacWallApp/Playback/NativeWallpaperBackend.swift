@@ -1,6 +1,7 @@
 import Foundation
 import MacWallCore
 import MacWallNativeRuntimeSupport
+import os
 
 enum NativeWallpaperActivationStatus: Equatable {
     case active(NativeRuntimeStatus)
@@ -71,6 +72,11 @@ extension NativeWallpaperBackendManaging {
 
 @MainActor
 final class NativeWallpaperBackend: NativeWallpaperBackendManaging {
+    private static let logger = Logger(
+        subsystem: "io.github.mingyu1715.MacWall",
+        category: "NativeRuntime"
+    )
+
     private let store: NativeRuntimeStore
     private let notifier: any NativeRuntimeNotifying
     private let waiter: NativeRuntimeWaiter
@@ -92,7 +98,12 @@ final class NativeWallpaperBackend: NativeWallpaperBackendManaging {
     }
 
     convenience init() throws {
-        try self.init(store: .live())
+        let mode = try NativeRuntimeTransportMode.configured()
+        let store = try NativeRuntimeStore.live(mode: mode)
+        Self.logger.info(
+            "nativeRuntime transportMode=\(mode.rawValue, privacy: .public) root=\(store.rootURL.path, privacy: .public)"
+        )
+        self.init(store: store)
     }
 
     func activationStatus(timeout: Duration) async -> NativeWallpaperActivationStatus {
