@@ -296,7 +296,9 @@ final class SceneWallpaperView: NSView,
         sceneLayer.beginTime = timeSincePause
     }
 
-    private static func cgImage(from texture: SceneTexture) -> CGImage? {
+    private static func cgImage(
+        from texture: SceneRenderTexture
+    ) -> CGImage? {
         switch texture.storage {
         case .encodedImage(let data):
             return NSImage(data: data)?.cgImage(forProposedRect: nil, context: nil, hints: nil)

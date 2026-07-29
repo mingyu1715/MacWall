@@ -1,4 +1,5 @@
 import Foundation
+import MacWallSceneFormats
 // swiftlint:disable identifier_name
 
 public struct SceneSize: Equatable, Sendable {
@@ -114,12 +115,37 @@ public struct SceneLayer: Equatable, Sendable {
     }
 }
 
+public struct SceneRenderTexture: Equatable, Sendable {
+    public let width: Int
+    public let height: Int
+    public let storage: SceneRenderTextureStorage
+
+    public init(
+        width: Int,
+        height: Int,
+        storage: SceneRenderTextureStorage
+    ) {
+        self.width = width
+        self.height = height
+        self.storage = storage
+    }
+}
+
+public enum SceneRenderTextureStorage: Equatable, Sendable {
+    case encodedImage(Data)
+    case rgba(width: Int, height: Int, data: Data)
+}
+
 public struct SceneRenderPlan: Equatable, Sendable {
     public let canvasSize: SceneSize
     public let layers: [SceneLayer]
-    public let textures: [String: SceneTexture]
+    public let textures: [String: SceneRenderTexture]
 
-    public init(canvasSize: SceneSize, layers: [SceneLayer], textures: [String: SceneTexture]) {
+    public init(
+        canvasSize: SceneSize,
+        layers: [SceneLayer],
+        textures: [String: SceneRenderTexture]
+    ) {
         self.canvasSize = canvasSize
         self.layers = layers
         self.textures = textures
@@ -127,6 +153,9 @@ public struct SceneRenderPlan: Equatable, Sendable {
 }
 
 public struct SceneRenderPlanBuilder: Sendable {
+    private static let maximumJSONEntryBytes: UInt64 =
+        16 * 1_024 * 1_024
+
     private let maximumDecodedLayerCount: Int
 
     public init(maximumDecodedLayerCount: Int = 16) {
@@ -149,28 +178,55 @@ public struct SceneRenderPlanBuilder: Sendable {
     }
 
     private func build(url: URL, decodeTextures: Bool) throws -> SceneRenderPlan {
-        let package = try ScenePackageReader().read(url: url)
-        guard let sceneData = package.data(forPath: "scene.json"),
-              let scene = try JSONSerialization.jsonObject(with: sceneData) as? [String: Any] else {
+        let archive = try ScenePackageArchiveReader().read(url: url)
+        let sceneEntry = try Self.requiredEntry(
+            "scene.json",
+            in: archive
+        )
+        let sceneData = try archive.read(
+            entry: sceneEntry,
+            maximumBytes: Self.maximumJSONEntryBytes
+        )
+        guard let scene = try JSONSerialization.jsonObject(
+            with: sceneData
+        ) as? [String: Any] else {
             throw SceneRenderPlanError.missingSceneJSON
         }
         let objects = scene["objects"] as? [[String: Any]] ?? []
         let canvasSize = Self.canvasSize(from: scene)
         var layers: [SceneLayer] = []
-        var textures: [String: SceneTexture] = [:]
+        var textures: [String: SceneRenderTexture] = [:]
 
         for object in objects where Self.isVisible(object["visible"]) {
             guard let imagePath = Self.stringValue(object["image"]),
-                  let texturePath = try resolveTexturePath(imagePath: imagePath, package: package) else {
+                  let texturePath = try resolveTexturePath(
+                      imagePath: imagePath,
+                      archive: archive
+                  ) else {
                 continue
             }
-            var texture: SceneTexture?
+            var texture: SceneRenderTexture?
             if decodeTextures {
-                guard let textureData = package.data(forPath: texturePath) else {
+                guard let textureEntry = archive.entry(
+                    named: texturePath
+                ) else {
                     continue
                 }
+                let source = archive.source(for: textureEntry)
                 do {
-                    texture = try SceneTextureDecoder().decode(data: textureData)
+                    let descriptor = try SceneTextureFormatReader()
+                        .read(
+                            source: source,
+                            path: texturePath
+                        )
+                    let decoded = try SceneTextureSoftwareDecoder()
+                        .decode(
+                            descriptor: descriptor,
+                            source: source,
+                            imageIndex: 0,
+                            mipmapIndex: 0
+                        )
+                    texture = Self.renderTexture(from: decoded)
                 } catch {
                     continue
                 }
@@ -188,19 +244,73 @@ public struct SceneRenderPlanBuilder: Sendable {
         return SceneRenderPlan(canvasSize: canvasSize, layers: layers, textures: textures)
     }
 
-    private func resolveTexturePath(imagePath: String, package: ScenePackage) throws -> String? {
-        guard let modelData = package.data(forPath: imagePath),
-              let model = try JSONSerialization.jsonObject(with: modelData) as? [String: Any],
+    private func resolveTexturePath(
+        imagePath: String,
+        archive: ScenePackageArchive
+    ) throws -> String? {
+        guard let modelEntry = archive.entry(named: imagePath) else {
+            return nil
+        }
+        let modelData = try archive.read(
+            entry: modelEntry,
+            maximumBytes: Self.maximumJSONEntryBytes
+        )
+        guard let model = try JSONSerialization.jsonObject(
+            with: modelData
+        ) as? [String: Any],
               let materialPath = Self.stringValue(model["material"]),
-              let materialData = package.data(forPath: materialPath),
-              let material = try JSONSerialization.jsonObject(with: materialData) as? [String: Any] else {
+              let materialEntry = archive.entry(
+                  named: materialPath
+              ) else {
+            return nil
+        }
+        let materialData = try archive.read(
+            entry: materialEntry,
+            maximumBytes: Self.maximumJSONEntryBytes
+        )
+        guard let material = try JSONSerialization.jsonObject(
+            with: materialData
+        ) as? [String: Any] else {
             return nil
         }
         guard let textureName = Self.firstTextureName(in: material) else {
             return nil
         }
         let candidates = Self.textureCandidates(for: textureName)
-        return candidates.first { package.entry(named: $0) != nil }
+        return candidates.first {
+            archive.entry(named: $0) != nil
+        }
+    }
+
+    private static func requiredEntry(
+        _ path: String,
+        in archive: ScenePackageArchive
+    ) throws -> MacWallSceneFormats.ScenePackageEntry {
+        guard let entry = archive.entry(named: path) else {
+            throw SceneRenderPlanError.missingSceneJSON
+        }
+        return entry
+    }
+
+    private static func renderTexture(
+        from decoded: SceneDecodedTexture
+    ) -> SceneRenderTexture {
+        let storage: SceneRenderTextureStorage
+        switch decoded.storage {
+        case .encodedImage(let data):
+            storage = .encodedImage(data)
+        case .rgba(let width, let height, let data):
+            storage = .rgba(
+                width: width,
+                height: height,
+                data: data
+            )
+        }
+        return SceneRenderTexture(
+            width: decoded.width,
+            height: decoded.height,
+            storage: storage
+        )
     }
 
     private static func firstTextureName(in material: [String: Any]) -> String? {
@@ -248,7 +358,7 @@ public struct SceneRenderPlanBuilder: Sendable {
     private static func layer(
         from object: [String: Any],
         texturePath: String,
-        texture: SceneTexture?,
+        texture: SceneRenderTexture?,
         canvasSize: SceneSize
     ) -> SceneLayer {
         let originValue = vectorValue(object["origin"]) ?? SceneVector3(

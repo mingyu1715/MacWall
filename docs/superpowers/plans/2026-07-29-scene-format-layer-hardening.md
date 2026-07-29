@@ -1466,7 +1466,7 @@ git commit -m "test(scene): gate format modules with local fixtures"
 - Preserves: `SceneRenderPlanBuilder.build`, `buildLayout`, `canBuild`
 - Keeps: `MacWallApp -> MacWallCore` dependency only
 
-- [ ] **Step 1: Change Core test dependencies and write a failing render texture assertion**
+- [x] **Step 1: Change Core test dependencies and write a failing render texture assertion**
 
 Change target dependencies:
 
@@ -1493,7 +1493,7 @@ XCTAssertEqual(texture.storage, .encodedImage(png))
 The expected compile-time type is `SceneRenderTexture`, not the old
 `SceneTexture`.
 
-- [ ] **Step 2: Run the focused test and verify RED**
+- [x] **Step 2: Run the focused test and verify RED**
 
 Run:
 
@@ -1504,7 +1504,7 @@ swift test --filter SceneRenderPlanTests
 Expected: compile failure because `SceneRenderTexture` and the new Core
 dependency migration do not exist.
 
-- [ ] **Step 3: Migrate `SceneRenderPlanBuilder`**
+- [x] **Step 3: Migrate `SceneRenderPlanBuilder`**
 
 Add `import MacWallSceneFormats` and define a Core prototype output model:
 
@@ -1574,7 +1574,7 @@ let decoded = try SceneTextureSoftwareDecoder().decode(
 Keep decoded layer limit 16 and the current model/material resolution
 behavior. Do not add parent/effect/instance support.
 
-- [ ] **Step 4: Migrate App and Core fixture call sites**
+- [x] **Step 4: Migrate App and Core fixture call sites**
 
 Change:
 
@@ -1599,7 +1599,12 @@ Remove `TextureImageFixture`, `Fixture.writeScenePackage`,
 `Fixture.scenePackageData`, and `Fixture.texData` from
 `Tests/MacWallCoreTests/Fixture.swift` after all Core call sites are moved.
 
-- [ ] **Step 5: Run focused consumer tests and commit**
+Implementation note: the remaining call sites belong only to the legacy Core
+format/audit tests deleted in Task 10. Their helper removal is therefore
+deferred to the same Task 10 deletion commit so the test target remains
+compilable between tasks.
+
+- [x] **Step 5: Run focused consumer tests and commit**
 
 Run:
 

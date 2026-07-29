@@ -1,6 +1,7 @@
 import Foundation
 import XCTest
 @testable import MacWallCore
+import MacWallSceneTestSupport
 
 final class SceneRenderPlanTests: XCTestCase {
     func testRenderPlanResolvesImageLayerTextureFromModelMaterialChain() throws {
@@ -27,13 +28,26 @@ final class SceneRenderPlanTests: XCTestCase {
           ]
         }
         """
-        try Fixture.writeScenePackage(
+        try ScenePackageFixtureBuilder.write(
             to: packageURL,
             sceneJSON: sceneJSON,
             extraEntries: [
-                (path: "models/background.json", data: Data(#"{"material":"materials/background.json"}"#.utf8)),
-                (path: "materials/background.json", data: Data(#"{"passes":[{"textures":["background"]}]}"#.utf8)),
-                (path: "materials/background.tex", data: Fixture.texData(width: 1, height: 1, imageData: png))
+                .init(
+                    path: "models/background.json",
+                    data: Data(
+                        #"{"material":"materials/background.json"}"#.utf8
+                    )
+                ),
+                .init(
+                    path: "materials/background.json",
+                    data: Data(
+                        #"{"passes":[{"textures":["background"]}]}"#.utf8
+                    )
+                ),
+                .init(
+                    path: "materials/background.tex",
+                    data: textureData(png)
+                )
             ]
         )
 
@@ -49,6 +63,10 @@ final class SceneRenderPlanTests: XCTestCase {
         XCTAssertEqual(plan.layers[0].origin, SceneVector3(x: 960, y: 540, z: 0))
         XCTAssertEqual(plan.layers[0].size, SceneSize(width: 1920, height: 1080))
         XCTAssertEqual(plan.layers[0].alpha, 0.75)
+        let texture: SceneRenderTexture = try XCTUnwrap(
+            plan.textures["materials/background.tex"]
+        )
+        XCTAssertEqual(texture.storage, .encodedImage(png))
     }
 
     func testRenderPlanPreservesLayerTransformAndOpacityAnimations() throws {
@@ -106,13 +124,26 @@ final class SceneRenderPlanTests: XCTestCase {
           ]
         }
         """
-        try Fixture.writeScenePackage(
+        try ScenePackageFixtureBuilder.write(
             to: packageURL,
             sceneJSON: sceneJSON,
             extraEntries: [
-                (path: "models/fish.json", data: Data(#"{"material":"materials/fish.json"}"#.utf8)),
-                (path: "materials/fish.json", data: Data(#"{"passes":[{"textures":["fish"]}]}"#.utf8)),
-                (path: "materials/fish.tex", data: Fixture.texData(width: 1, height: 1, imageData: png))
+                .init(
+                    path: "models/fish.json",
+                    data: Data(
+                        #"{"material":"materials/fish.json"}"#.utf8
+                    )
+                ),
+                .init(
+                    path: "materials/fish.json",
+                    data: Data(
+                        #"{"passes":[{"textures":["fish"]}]}"#.utf8
+                    )
+                ),
+                .init(
+                    path: "materials/fish.tex",
+                    data: textureData(png)
+                )
             ]
         )
 
@@ -135,5 +166,17 @@ final class SceneRenderPlanTests: XCTestCase {
         XCTAssertEqual(layer.scaleAnimation?.keyframes.last?.value, SceneVector3(x: 1.4, y: 0.8, z: 1))
         XCTAssertEqual(layer.angleAnimation?.keyframes.last?.value.z, -15)
         XCTAssertEqual(layer.alphaAnimation?.keyframes.last?.value, 0.9)
+    }
+
+    private func textureData(_ payload: Data) -> Data {
+        SceneTextureFixtureBuilder.make(
+            formatRawValue: 13,
+            textureSize: (1, 1),
+            imageSize: (1, 1),
+            container: .b0003(imageFormatRawValue: 13),
+            images: [.init(mipmaps: [
+                .init(width: 1, height: 1, payload: payload)
+            ])]
+        )
     }
 }

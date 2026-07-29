@@ -26,7 +26,10 @@ let package = Package(
             dependencies: ["MacWallSceneFormats"],
             path: "Tests/MacWallSceneTestSupport"
         ),
-        .target(name: "MacWallCore"),
+        .target(
+            name: "MacWallCore",
+            dependencies: ["MacWallSceneFormats"]
+        ),
         .target(name: "MacWallNativeRuntimeSupport"),
         .target(
             name: "MacWallApp",
@@ -42,7 +45,10 @@ let package = Package(
         ),
         .testTarget(
             name: "MacWallCoreTests",
-            dependencies: ["MacWallCore"]
+            dependencies: [
+                "MacWallCore",
+                "MacWallSceneTestSupport"
+            ]
         ),
         .testTarget(
             name: "MacWallAppTests",

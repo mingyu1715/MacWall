@@ -1,6 +1,7 @@
 import Foundation
 import XCTest
 @testable import MacWallCore
+import MacWallSceneTestSupport
 
 final class LibraryStoreTests: XCTestCase {
     func testImportCopiesProjectIntoLibraryAndPersistsManifest() throws {
@@ -178,7 +179,7 @@ final class LibraryStoreTests: XCTestCase {
         try #"{"title":"Scene","file":"scene.json","preview":"preview.jpg","type":"scene"}"#
             .write(to: project.appending(path: "project.json"), atomically: true, encoding: .utf8)
         FileManager.default.createFile(atPath: preview.path, contents: Data([1]))
-        try Fixture.writeScenePackage(
+        try ScenePackageFixtureBuilder.write(
             to: scenePackage,
             sceneJSON: #"{"objects":[{"image":"models/background.json"}]}"#
         )

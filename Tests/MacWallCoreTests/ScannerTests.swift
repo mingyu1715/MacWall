@@ -1,6 +1,7 @@
 import Foundation
 import XCTest
 @testable import MacWallCore
+import MacWallSceneTestSupport
 
 final class ScannerTests: XCTestCase {
     func testScanDiscoversPlayableVideoWhenWorkshopFolderContainsProjectJson() throws {
@@ -87,10 +88,15 @@ final class ScannerTests: XCTestCase {
             atomically: true,
             encoding: .utf8
         )
-        try Fixture.writeScenePackage(
+        try ScenePackageFixtureBuilder.write(
             to: project.appending(path: "scene.pkg"),
             sceneJSON: #"{"objects":[{"image":"models/background.json"},{"particle":"particles/leaves.json"}]}"#,
-            extraEntries: [(path: "materials/background.tex", data: Data([1, 2, 3]))]
+            extraEntries: [
+                .init(
+                    path: "materials/background.tex",
+                    data: Data([1, 2, 3])
+                )
+            ]
         )
         FileManager.default.createFile(atPath: project.appending(path: "preview.jpg").path, contents: Data())
 
@@ -121,7 +127,7 @@ final class ScannerTests: XCTestCase {
             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lz8KWwAAAABJRU5ErkJggg=="
         )!
         FileManager.default.createFile(atPath: project.appending(path: "preview.jpg").path, contents: png)
-        try Fixture.writeScenePackage(
+        try ScenePackageFixtureBuilder.write(
             to: project.appending(path: "scene.pkg"),
             sceneJSON: """
             {
@@ -135,9 +141,22 @@ final class ScannerTests: XCTestCase {
             }
             """,
             extraEntries: [
-                (path: "models/background.json", data: Data(#"{"material":"materials/background.json"}"#.utf8)),
-                (path: "materials/background.json", data: Data(#"{"passes":[{"textures":["background"]}]}"#.utf8)),
-                (path: "materials/background.tex", data: Fixture.texData(width: 1, height: 1, imageData: png))
+                .init(
+                    path: "models/background.json",
+                    data: Data(
+                        #"{"material":"materials/background.json"}"#.utf8
+                    )
+                ),
+                .init(
+                    path: "materials/background.json",
+                    data: Data(
+                        #"{"passes":[{"textures":["background"]}]}"#.utf8
+                    )
+                ),
+                .init(
+                    path: "materials/background.tex",
+                    data: textureData(png)
+                )
             ]
         )
 
@@ -164,7 +183,7 @@ final class ScannerTests: XCTestCase {
             atPath: project.appending(path: "preview.jpg").path,
             contents: Data([1, 2, 3])
         )
-        try Fixture.writeScenePackage(
+        try ScenePackageFixtureBuilder.write(
             to: project.appending(path: "scene.pkg"),
             sceneJSON: """
             {
@@ -178,9 +197,22 @@ final class ScannerTests: XCTestCase {
             }
             """,
             extraEntries: [
-                (path: "models/background.json", data: Data(#"{"material":"materials/background.json"}"#.utf8)),
-                (path: "materials/background.json", data: Data(#"{"passes":[{"textures":["background"]}]}"#.utf8)),
-                (path: "materials/background.tex", data: Data([1, 2, 3]))
+                .init(
+                    path: "models/background.json",
+                    data: Data(
+                        #"{"material":"materials/background.json"}"#.utf8
+                    )
+                ),
+                .init(
+                    path: "materials/background.json",
+                    data: Data(
+                        #"{"passes":[{"textures":["background"]}]}"#.utf8
+                    )
+                ),
+                .init(
+                    path: "materials/background.tex",
+                    data: Data([1, 2, 3])
+                )
             ]
         )
 
@@ -293,5 +325,25 @@ final class ScannerTests: XCTestCase {
         XCTAssertNil(asset.entrypoint)
         XCTAssertEqual(asset.kind, .unknown)
         XCTAssertEqual(asset.supportStatus, .unsupported)
+    }
+
+    private func textureData(_ payload: Data) -> Data {
+        SceneTextureFixtureBuilder.make(
+            formatRawValue: 13,
+            textureSize: (1, 1),
+            imageSize: (1, 1),
+            container: .b0003(imageFormatRawValue: 13),
+            images: [
+                .init(
+                    mipmaps: [
+                        .init(
+                            width: 1,
+                            height: 1,
+                            payload: payload
+                        )
+                    ]
+                )
+            ]
+        )
     }
 }
