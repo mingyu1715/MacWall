@@ -1717,7 +1717,7 @@ git commit -m "refactor(scene): route scene info through audit v2"
 - Keeps: `SceneRenderPlanBuilder`, `SceneRenderPlan`, `SceneRenderTexture`
 - Provides no compatibility aliases
 
-- [ ] **Step 1: Verify all old consumers are gone before deletion**
+- [x] **Step 1: Verify all old consumers are gone before deletion**
 
 Run:
 
@@ -1730,7 +1730,7 @@ will be deleted. New module names such as
 `ScenePackageArchiveReader` and `SceneTextureSoftwareDecoder` are not part
 of this result.
 
-- [ ] **Step 2: Delete old files**
+- [x] **Step 2: Delete old files**
 
 Delete exactly:
 
@@ -1751,7 +1751,7 @@ Tests/MacWallCoreTests/SceneAuditorTests.swift
 Tests/MacWallCoreTests/SceneLocalFixtureAuditTests.swift
 ```
 
-- [ ] **Step 3: Run structure checks**
+- [x] **Step 3: Run structure checks**
 
 Run:
 
@@ -1767,7 +1767,7 @@ Expected:
 - no compatibility re-export/typealias
 - no package-level `Data(contentsOf:)` in the Scene format path
 
-- [ ] **Step 4: Run focused and full test verification**
+- [x] **Step 4: Run focused and full test verification**
 
 Run:
 
@@ -1781,7 +1781,7 @@ git diff --check
 
 Expected: all focused suites and the full suite pass with zero failures.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A Sources/MacWallCore/Scene Tests/MacWallCoreTests Package.swift
