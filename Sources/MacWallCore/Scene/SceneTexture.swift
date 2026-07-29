@@ -445,6 +445,13 @@ struct SceneTextureBinaryReader {
         return data.subdata(in: range)
     }
 
+    mutating func skip(count: Int) throws {
+        guard count >= 0, data.count - offset >= count else {
+            throw SceneTextureError.truncatedTexture
+        }
+        offset += count
+    }
+
     mutating func readCString(maxLength: Int) throws -> String {
         let start = offset
         while offset < data.count, offset - start <= maxLength {

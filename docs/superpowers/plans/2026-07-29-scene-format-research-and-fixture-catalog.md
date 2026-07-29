@@ -510,7 +510,7 @@ git commit -m "feat(scene): define audit report contract"
 - Preserves: `Fixture.texData(width:height:imageFormat:imageData:)`
 - Consumed by: `SceneAuditor` in Task 3
 
-- [ ] **Step 1: Extend the synthetic TEX builder without breaking existing tests**
+- [x] **Step 1: Extend the synthetic TEX builder without breaking existing tests**
 
 Keep the existing `Fixture.texData(width:height:imageFormat:imageData:)`
 signature and implement it as a convenience wrapper over:
@@ -560,7 +560,7 @@ exactly 32 zero bytes per frame.
 The existing convenience function must continue generating one
 `TEXB0003` image with one mip and the same byte layout as before.
 
-- [ ] **Step 2: Write failing metadata tests**
+- [x] **Step 2: Write failing metadata tests**
 
 Create `Tests/MacWallCoreTests/SceneTextureMetadataTests.swift`:
 
@@ -686,7 +686,7 @@ final class SceneTextureMetadataTests: XCTestCase {
 }
 ```
 
-- [ ] **Step 3: Run metadata tests and verify RED**
+- [x] **Step 3: Run metadata tests and verify RED**
 
 Run:
 
@@ -697,7 +697,7 @@ swift test --filter SceneTextureMetadataTests
 Expected: compile failure because `SceneTextureMetadataReader` and the extended
 fixture types do not exist.
 
-- [ ] **Step 4: Add allocation-free binary skipping**
+- [x] **Step 4: Add allocation-free binary skipping**
 
 Add to `SceneTextureBinaryReader` in `SceneTexture.swift`:
 
@@ -713,7 +713,7 @@ mutating func skip(count: Int) throws {
 Metadata inspection must call `skip(count:)`, not `readData(count:)`, for mip
 payloads and animation frame records.
 
-- [ ] **Step 5: Implement the metadata reader**
+- [x] **Step 5: Implement the metadata reader**
 
 Create `SceneTextureMetadata.swift`.
 
@@ -775,7 +775,7 @@ frame count, read GIF width/height for `TEXS0003`, then skip exactly
 
 Do not reject unknown texture format or flag values. Store raw values.
 
-- [ ] **Step 6: Run metadata and existing decoder tests**
+- [x] **Step 6: Run metadata and existing decoder tests**
 
 Run:
 
@@ -786,7 +786,7 @@ swift test --filter SceneTextureDecoderTests
 
 Expected: both suites pass. Existing texture decode behavior is unchanged.
 
-- [ ] **Step 7: Commit metadata inspection**
+- [x] **Step 7: Commit metadata inspection**
 
 ```bash
 git add Sources/MacWallCore/Scene/SceneTexture.swift Sources/MacWallCore/Scene/SceneTextureMetadata.swift Tests/MacWallCoreTests/Fixture.swift Tests/MacWallCoreTests/SceneTextureMetadataTests.swift

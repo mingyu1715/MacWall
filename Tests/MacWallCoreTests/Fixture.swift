@@ -1,5 +1,9 @@
 import Foundation
 
+struct TextureImageFixture {
+    let mipmaps: [Data]
+}
+
 enum Fixture {
     static func makeTempDirectory() throws -> URL {
         let root = FileManager.default.temporaryDirectory
@@ -61,26 +65,78 @@ enum Fixture {
         imageFormat: Int = 13,
         imageData: Data
     ) -> Data {
+        texData(
+            width: width,
+            height: height,
+            imageFormat: imageFormat,
+            images: [TextureImageFixture(mipmaps: [imageData])]
+        )
+    }
+
+    static func texData(
+        version: String = "TEXV0005",
+        infoVersion: String = "TEXI0001",
+        format: Int = 0,
+        flags: Int = 0,
+        width: Int,
+        height: Int,
+        imageWidth: Int? = nil,
+        imageHeight: Int? = nil,
+        container: String = "TEXB0003",
+        imageFormat: Int = 13,
+        isVideoMP4: Bool = false,
+        images: [TextureImageFixture],
+        animationVersion: String? = nil,
+        animationFrameCount: Int = 0
+    ) -> Data {
         var data = Data()
-        data.appendNullTerminatedString("TEXV0005")
-        data.appendNullTerminatedString("TEXI0001")
-        data.appendInt32(0)
-        data.appendInt32(0)
+        data.appendNullTerminatedString(version)
+        data.appendNullTerminatedString(infoVersion)
+        data.appendInt32(format)
+        data.appendInt32(flags)
         data.appendInt32(width)
         data.appendInt32(height)
-        data.appendInt32(width)
-        data.appendInt32(height)
+        data.appendInt32(imageWidth ?? width)
+        data.appendInt32(imageHeight ?? height)
         data.appendUInt32(0)
-        data.appendNullTerminatedString("TEXB0003")
-        data.appendInt32(1)
-        data.appendInt32(imageFormat)
-        data.appendInt32(1)
-        data.appendInt32(width)
-        data.appendInt32(height)
-        data.appendInt32(0)
-        data.appendInt32(0)
-        data.appendInt32(imageData.count)
-        data.append(imageData)
+        data.appendNullTerminatedString(container)
+        data.appendInt32(images.count)
+        if container == "TEXB0003" || container == "TEXB0004" {
+            data.appendInt32(imageFormat)
+        }
+        if container == "TEXB0004" {
+            data.appendInt32(isVideoMP4 ? 1 : 0)
+        }
+        for image in images {
+            data.appendInt32(image.mipmaps.count)
+            for mipmap in image.mipmaps {
+                if container == "TEXB0004", isVideoMP4 {
+                    data.appendInt32(1)
+                    data.appendInt32(2)
+                    data.appendNullTerminatedString("{}")
+                    data.appendInt32(1)
+                }
+                data.appendInt32(width)
+                data.appendInt32(height)
+                if container != "TEXB0001" {
+                    data.appendInt32(0)
+                    data.appendInt32(mipmap.count)
+                }
+                data.appendInt32(mipmap.count)
+                data.append(mipmap)
+            }
+        }
+        if let animationVersion {
+            data.appendNullTerminatedString(animationVersion)
+            data.appendInt32(animationFrameCount)
+            if animationVersion == "TEXS0003" {
+                data.appendInt32(imageWidth ?? width)
+                data.appendInt32(imageHeight ?? height)
+            }
+            for _ in 0..<max(0, animationFrameCount) {
+                data.append(Data(repeating: 0, count: 32))
+            }
+        }
         return data
     }
 }
