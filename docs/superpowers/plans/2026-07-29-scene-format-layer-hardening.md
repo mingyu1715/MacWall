@@ -1063,7 +1063,7 @@ git commit -m "feat(scene): add selected mip software decoder"
 - Produces: `SceneAuditReportEncoder.encode(_:)`
 - Consumed by: Tasks 6, 7, 9
 
-- [ ] **Step 1: Add Audit targets and failing schema tests**
+- [x] **Step 1: Add Audit targets and failing schema tests**
 
 Add:
 
@@ -1097,7 +1097,7 @@ XCTAssertFalse(String(decoding: first, as: UTF8.self).contains("/Users/"))
 Also port the existing support precedence assertions for exact, degraded,
 unsupported, warning, and error.
 
-- [ ] **Step 2: Run the focused test and verify RED**
+- [x] **Step 2: Run the focused test and verify RED**
 
 Run:
 
@@ -1107,7 +1107,7 @@ swift test --filter SceneAuditModelsTests
 
 Expected: compile failure because the new Audit module has no report types.
 
-- [ ] **Step 3: Define schema 2 models**
+- [x] **Step 3: Define schema 2 models**
 
 Move the S0 feature/dependency/diagnostic enums from Core into Audit and
 define the changed texture summary:
@@ -1169,7 +1169,7 @@ public struct SceneAuditReport: Codable, Equatable, Sendable {
 
 Unknown/unread fields stay `nil`; do not encode invented zero/empty values.
 
-- [ ] **Step 4: Port policy/canonical encoder and run GREEN**
+- [x] **Step 4: Port policy/canonical encoder and run GREEN**
 
 Move support precedence into `SceneAuditSupportPolicy.s1`. Configure
 `JSONEncoder` with `.sortedKeys`, sort all semantic arrays before model
@@ -1196,7 +1196,7 @@ swift test --filter SceneAuditModelsTests
 
 Expected: all Audit v2 model and canonical encoding tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Package.swift Sources/MacWallSceneAudit Tests/MacWallSceneAuditTests/SceneAuditModelsTests.swift
