@@ -4,6 +4,30 @@
 
 ## 2026-07-29
 
+### 23:36 KST
+
+- 완료: Scene Engine S1 Format Layer Hardening 설계 문서 작성 및 자체 검수
+- 설계:
+  - [S1 Format Layer Hardening 설계](superpowers/specs/2026-07-29-scene-format-layer-hardening-design.md)
+  - `MacWallSceneFormats`와 `MacWallSceneAudit` target으로 format/audit 책임 분리
+  - file descriptor와 `pread` 기반 random-access package source 및 bounded entry 계약
+  - PKG/TEX unknown layout evidence 보존, strict descriptor API, selected mip software decode
+  - Audit schema 2와 S0 aggregate catalog compatibility gate 분리
+  - 새 module 병행 구현, consumer migration, 전체 검증 후 기존 구현 삭제 순서 확정
+  - compatibility facade/typealias 없이 새 API로 완전 전환
+- 검수:
+  - 실제 local PKG/TEX 분포와 S0 audit 결과 재대조
+  - overlap warning, duplicate path invalid, unverified PKG version 정책 분리
+  - parser structural limit과 decoder allocation limit 분리
+  - 문서 code fence, placeholder, 링크 대상 및 `git diff --check` 확인
+- 다음:
+  - 작성된 설계 문서 검토 승인 후 executable implementation plan 작성
+- 미실행:
+  - 코드 구현 및 test 실행
+  - `swift build`, `xcodebuild build`, 앱/GUI/System Settings 실행
+  - Metal, Native Scene surface, Scene fallback, SceneScript execution
+  - package, DMG, notarization, `dist` 작업
+
 ### 22:50 KST
 
 - 완료: Scene Engine S0 Format Research 및 Fixture Catalog 구현
