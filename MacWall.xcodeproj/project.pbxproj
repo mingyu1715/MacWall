@@ -106,6 +106,8 @@
 		A2000000000000000000001C /* NativeVideoSampleRetimer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeVideoSampleRetimer.swift; sourceTree = "<group>"; };
 		A2000000000000000000001D /* NativeRuntimeDarwinObserver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeRuntimeDarwinObserver.swift; sourceTree = "<group>"; };
 		A2000000000000000000001E /* NativeWallpaperSessionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeWallpaperSessionController.swift; sourceTree = "<group>"; };
+		A2000000000000000000001F /* MacWallHostApp.AdHocQA.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MacWallHostApp.AdHocQA.entitlements; sourceTree = "<group>"; };
+		A20000000000000000000020 /* MacWallNativeWallpaperExtension.AdHocQA.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MacWallNativeWallpaperExtension.AdHocQA.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -157,6 +159,7 @@
 				A20000000000000000000001 /* main.swift */,
 				A20000000000000000000002 /* Info.plist */,
 				A20000000000000000000003 /* MacWallHostApp.entitlements */,
+				A2000000000000000000001F /* MacWallHostApp.AdHocQA.entitlements */,
 			);
 			path = MacWallHostApp;
 			sourceTree = "<group>";
@@ -180,6 +183,7 @@
 				A2000000000000000000001E /* NativeWallpaperSessionController.swift */,
 				A20000000000000000000004 /* Info.plist */,
 				A20000000000000000000005 /* MacWallNativeWallpaperExtension.entitlements */,
+				A20000000000000000000020 /* MacWallNativeWallpaperExtension.AdHocQA.entitlements */,
 			);
 			path = MacWallNativeWallpaperExtension;
 			sourceTree = "<group>";
@@ -409,6 +413,7 @@
 			buildSettings = {
 				CLANG_ENABLE_MODULES = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MACWALL_NATIVE_RUNTIME_TRANSPORT = app-group;
 				SDKROOT = macosx;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_VERSION = 6.0;
@@ -420,11 +425,24 @@
 			buildSettings = {
 				CLANG_ENABLE_MODULES = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MACWALL_NATIVE_RUNTIME_TRANSPORT = app-group;
 				SDKROOT = macosx;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_VERSION = 6.0;
 			};
 			name = Release;
+		};
+		A90000000000000000000009 /* AdHocQA */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MACWALL_NATIVE_RUNTIME_TRANSPORT = development-home;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG ADHOC_QA";
+				SWIFT_VERSION = 6.0;
+			};
+			name = AdHocQA;
 		};
 		A90000000000000000000003 /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -461,6 +479,25 @@
 				SWIFT_VERSION = 6.0;
 			};
 			name = Release;
+		};
+		A9000000000000000000000A /* AdHocQA */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = MacWallHostApp/MacWallHostApp.AdHocQA.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = MacWallHostApp/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = io.github.mingyu1715.MacWall;
+				PRODUCT_NAME = MacWall;
+				SWIFT_VERSION = 6.0;
+			};
+			name = AdHocQA;
 		};
 		A90000000000000000000005 /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -508,6 +545,30 @@
 			};
 			name = Release;
 		};
+		A9000000000000000000000B /* AdHocQA */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				ARCHS = arm64;
+				CODE_SIGN_ENTITLEMENTS = MacWallNativeWallpaperExtension/MacWallNativeWallpaperExtension.AdHocQA.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				ENABLE_APP_SANDBOX = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = MacWallNativeWallpaperExtension/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = io.github.mingyu1715.MacWall.NativeWallpaper;
+				PRODUCT_NAME = MacWallNativeWallpaperExtension;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = AdHocQA;
+		};
 		A90000000000000000000007 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -540,6 +601,23 @@
 			};
 			name = Release;
 		};
+		A9000000000000000000000C /* AdHocQA */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = MacWallLockScreenSaver/Info.plist;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = io.github.mingyu1715.MacWall.LockScreenSaver;
+				PRODUCT_NAME = MacWall;
+				SKIP_INSTALL = YES;
+				WRAPPER_EXTENSION = saver;
+			};
+			name = AdHocQA;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -548,6 +626,7 @@
 			buildConfigurations = (
 				A90000000000000000000001 /* Debug */,
 				A90000000000000000000002 /* Release */,
+				A90000000000000000000009 /* AdHocQA */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -557,6 +636,7 @@
 			buildConfigurations = (
 				A90000000000000000000003 /* Debug */,
 				A90000000000000000000004 /* Release */,
+				A9000000000000000000000A /* AdHocQA */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -566,6 +646,7 @@
 			buildConfigurations = (
 				A90000000000000000000005 /* Debug */,
 				A90000000000000000000006 /* Release */,
+				A9000000000000000000000B /* AdHocQA */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -575,6 +656,7 @@
 			buildConfigurations = (
 				A90000000000000000000007 /* Debug */,
 				A90000000000000000000008 /* Release */,
+				A9000000000000000000000C /* AdHocQA */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
