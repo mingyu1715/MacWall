@@ -91,7 +91,7 @@ S0에서는 다음 파일을 수정하지 않습니다.
 - Produces: `SceneAuditSupportPolicy.evaluate(features:diagnostics:) -> SceneAuditStatus`
 - Consumed by: Tasks 2-4
 
-- [ ] **Step 1: Write failing model and encoding tests**
+- [x] **Step 1: Write failing model and encoding tests**
 
 Create `Tests/MacWallCoreTests/SceneAuditModelsTests.swift`:
 
@@ -206,7 +206,7 @@ final class SceneAuditModelsTests: XCTestCase {
 }
 ```
 
-- [ ] **Step 2: Run the focused test and verify RED**
+- [x] **Step 2: Run the focused test and verify RED**
 
 Run:
 
@@ -216,7 +216,7 @@ swift test --filter SceneAuditModelsTests
 
 Expected: compile failure because `SceneAuditReport` and related types do not exist.
 
-- [ ] **Step 3: Add the report model**
+- [x] **Step 3: Add the report model**
 
 Create `Sources/MacWallCore/Scene/SceneAuditModels.swift` with these exact
 public model names:
@@ -430,7 +430,7 @@ public struct SceneAuditReport: Codable, Equatable, Sendable {
 }
 ```
 
-- [ ] **Step 4: Add S0 support policy and canonical encoder**
+- [x] **Step 4: Add S0 support policy and canonical encoder**
 
 Append:
 
@@ -475,7 +475,7 @@ public enum SceneAuditReportEncoder {
 }
 ```
 
-- [ ] **Step 5: Run the focused test and verify GREEN**
+- [x] **Step 5: Run the focused test and verify GREEN**
 
 Run:
 
@@ -485,7 +485,7 @@ swift test --filter SceneAuditModelsTests
 
 Expected: `SceneAuditModelsTests` passes.
 
-- [ ] **Step 6: Commit the audit contract**
+- [x] **Step 6: Commit the audit contract**
 
 ```bash
 git add Sources/MacWallCore/Scene/SceneAuditModels.swift Tests/MacWallCoreTests/SceneAuditModelsTests.swift
