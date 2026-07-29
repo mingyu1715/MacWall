@@ -73,6 +73,26 @@ public struct SceneTextureFormatReader: Sendable {
         let container = try cursor.readCString(maximumBytes: 32)
         try chargeMetadata(bytes: container.utf8.count + 1, total: &metadataBytes)
 
+        guard ["TEXB0001", "TEXB0002", "TEXB0003", "TEXB0004"]
+            .contains(container) else {
+            return .unsupported(
+                SceneTextureUnsupportedMetadata(
+                    path: path,
+                    kind: .container,
+                    version: version,
+                    infoVersion: infoVersion,
+                    declaredContainer: container
+                )
+            )
+        }
+
+        let imageCount = try checkedCount(
+            try cursor.readInt32(),
+            minimum: 1,
+            maximum: limits.maximumImageCount
+        )
+        try chargeMetadata(bytes: 4, total: &metadataBytes)
+
         let layout: SceneTextureMipmapLayout
         let imageFormatRawValue: Int?
         let isVideoMP4: Bool
@@ -98,22 +118,8 @@ public struct SceneTextureFormatReader: Sendable {
             isVideoMP4 = videoFlag != 0
             layout = isVideoMP4 ? .b0004Video : .b0002OrB0003
         default:
-            return .unsupported(
-                SceneTextureUnsupportedMetadata(
-                    path: path,
-                    kind: .container,
-                    version: version,
-                    infoVersion: infoVersion,
-                    declaredContainer: container
-                )
-            )
+            preconditionFailure("validated texture container")
         }
-
-        let imageCount = try checkedCount(
-            try cursor.readInt32(),
-            maximum: limits.maximumImageCount
-        )
-        try chargeMetadata(bytes: 4, total: &metadataBytes)
 
         var images: [SceneTextureImageDescriptor] = []
         images.reserveCapacity(imageCount)
@@ -121,6 +127,7 @@ public struct SceneTextureFormatReader: Sendable {
             try chargeMetadata(bytes: 64, total: &metadataBytes)
             let mipmapCount = try checkedCount(
                 try cursor.readInt32(),
+                minimum: 1,
                 maximum: limits.maximumMipmapCount
             )
             try chargeMetadata(bytes: 4, total: &metadataBytes)
@@ -229,8 +236,12 @@ public struct SceneTextureFormatReader: Sendable {
         }
     }
 
-    private func checkedCount(_ value: Int32, maximum: Int) throws -> Int {
-        guard value >= 0 else {
+    private func checkedCount(
+        _ value: Int32,
+        minimum: Int = 0,
+        maximum: Int
+    ) throws -> Int {
+        guard Int64(value) >= Int64(minimum) else {
             throw SceneFormatError.invalidCount(Int64(value))
         }
         guard Int(value) <= maximum else {

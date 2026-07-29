@@ -782,8 +782,8 @@ Parsing rules:
 3. Preserve format, flags, dimensions, and the unknown UInt32 header field by consuming it.
 4. B0001 has dimensions/count/payload only.
 5. B0002/B0003 have LZ4 flag, decompressed count, byte count, payload.
-6. B0003 reads image format before image count.
-7. B0004 reads image format and video flag; non-video uses B0003-compatible mip layout without changing declared container.
+6. All verified containers read image count immediately after the container identifier.
+7. B0003 then reads image format; B0004 reads image format and video flag. B0004 non-video uses B0003-compatible mip layout without changing declared container.
 8. B0004 video reads the four video fields before each mip dimensions.
 9. Consume payload ranges without loading bytes.
 10. Parse animation only when flag bit 4 is set.

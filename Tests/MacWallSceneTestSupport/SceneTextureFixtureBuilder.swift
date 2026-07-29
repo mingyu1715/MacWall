@@ -120,6 +120,9 @@ public enum SceneTextureFixtureBuilder {
         result.appendInt32(imageSize.1)
         result.appendUInt32(0)
         result.appendCString(container.name)
+        result.appendInt32(
+            declaredImageCount ?? Int32(images.count)
+        )
 
         switch container {
         case .b0003(let imageFormatRawValue):
@@ -134,9 +137,6 @@ public enum SceneTextureFixtureBuilder {
             break
         }
 
-        result.appendInt32(
-            declaredImageCount ?? Int32(images.count)
-        )
         for image in images {
             result.appendInt32(
                 image.declaredMipmapCount

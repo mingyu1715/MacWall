@@ -535,6 +535,35 @@ final class SceneTextureFormatReaderTests: XCTestCase {
         )
     }
 
+    func testZeroImageAndMipmapCountsAreInvalid() {
+        let zeroImages = SceneTextureFixtureBuilder.make(
+            formatRawValue: 0,
+            textureSize: (1, 1),
+            imageSize: (1, 1),
+            container: .b0001,
+            images: [],
+            declaredImageCount: 0
+        )
+        assertError(
+            bytes: zeroImages,
+            expected: .invalidCount(0)
+        )
+
+        let zeroMips = SceneTextureFixtureBuilder.make(
+            formatRawValue: 0,
+            textureSize: (1, 1),
+            imageSize: (1, 1),
+            container: .b0001,
+            images: [
+                .init(mipmaps: [], declaredMipmapCount: 0)
+            ]
+        )
+        assertError(
+            bytes: zeroMips,
+            expected: .invalidCount(0)
+        )
+    }
+
     func testConditionCStringReadsInBoundedChunks() throws {
         let condition = String(repeating: "a", count: 5_000)
         let bytes = SceneTextureFixtureBuilder.make(
