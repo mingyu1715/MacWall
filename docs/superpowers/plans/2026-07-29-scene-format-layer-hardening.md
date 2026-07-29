@@ -602,7 +602,7 @@ git commit -m "feat(scene): add versioned package archive"
 - Produces: immutable mip payload ranges
 - Consumed by: Tasks 4, 6, 8
 
-- [ ] **Step 1: Write failing known/unsupported/corrupt TEX tests**
+- [x] **Step 1: Write failing known/unsupported/corrupt TEX tests**
 
 Create tests that use a recording source and assert:
 
@@ -659,7 +659,7 @@ Add cases for:
 - animation frame-range multiplication overflow
 - no single C-string scan read above 4,096 bytes
 
-- [ ] **Step 2: Run the focused test and verify RED**
+- [x] **Step 2: Run the focused test and verify RED**
 
 Run:
 
@@ -669,7 +669,7 @@ swift test --filter SceneTextureFormatReaderTests
 
 Expected: compile failure because descriptor and reader types do not exist.
 
-- [ ] **Step 3: Add exact descriptor and unsupported models**
+- [x] **Step 3: Add exact descriptor and unsupported models**
 
 Define these public types:
 
@@ -749,7 +749,7 @@ public struct SceneTextureDescriptor: Equatable, Sendable {
 }
 ```
 
-- [ ] **Step 4: Implement structural parser and run GREEN**
+- [x] **Step 4: Implement structural parser and run GREEN**
 
 Define:
 
@@ -873,7 +873,7 @@ swift test --filter SceneTextureFormatReaderTests
 
 Expected: all structural TEX tests pass without reading mip payload bytes.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Sources/MacWallSceneFormats/SceneTextureDescriptor.swift Sources/MacWallSceneFormats/SceneTextureFormatReader.swift Tests/MacWallSceneTestSupport/SceneTextureFixtureBuilder.swift Tests/MacWallSceneFormatsTests/SceneTextureFormatReaderTests.swift
