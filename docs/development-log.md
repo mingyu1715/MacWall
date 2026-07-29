@@ -2,6 +2,36 @@
 
 모든 시간은 Asia/Seoul 기준입니다.
 
+## 2026-07-29
+
+### 16:09 KST
+
+- 진행: production Native Wallpaper discovery 및 App Group runtime QA
+- 사용자 관측:
+  - System Settings의 배경화면 목록에 production `MacWall` 항목 표시
+  - `WallpaperAgent` 동작 확인
+- 로그 확인:
+  - `io.github.mingyu1715.MacWall.NativeWallpaper` extension process 실제 launch
+  - `connect`와 `provideSettingsViewModels` 요청 성공
+  - production provider가 runtime에 생성되고 update/invalidate 요청 수신
+  - 기존 Spike와 production extension이 설정 조회 중 함께 launch됐고, provider 전환 후 Spike runtime은 invalidate됨
+- 실패 경계:
+  - production extension의 2초 heartbeat status write가 매번 `NSCocoaErrorDomain 513` / `Operation not permitted`로 실패
+  - 실패 경로: `~/Library/Group Containers/group.com.mingyu1715.macwall/NativeRuntime`
+  - Host/Extension은 ad-hoc signature이며 `TeamIdentifier=not set`
+  - `group.` App Group은 provisioning profile authorization이 필요하므로 entitlement 문자열만 ad-hoc signature에 넣어서는 runtime 접근 권한이 생기지 않음
+- 판정:
+  - WallpaperExtensionKit discovery/launch/handshake: pass
+  - production App Group transport: fail due to signing/provisioning
+  - Main App Video Play와 generation ACK QA: blocked before execution
+  - snapshot `WallpaperExtensionError(2)`는 기존 별도 gate이며 이번 App Group 실패 원인이 아님
+- 변경:
+  - 코드 수정 없음
+  - app/extension registration과 사용자 System Settings 선택 외 package/DMG/notarization/`dist` 작업 없음
+- 다음:
+  - MacWall 이외의 wallpaper로 전환 후 production/Spike extension process 정리
+  - 정식 Apple signing/provisioning을 준비하거나, 명시적인 development-only transport 설계를 별도로 승인받기 전까지 runtime 구현 변경 금지
+
 ## 2026-07-28
 
 ### 01:05 KST
