@@ -899,7 +899,7 @@ git commit -m "feat(scene): add versioned texture inspection"
 - Produces: `SceneDecodedTexture`
 - Consumed by: Task 8
 
-- [ ] **Step 1: Write failing decode and read-boundary tests**
+- [x] **Step 1: Write failing decode and read-boundary tests**
 
 Create tests for:
 
@@ -953,7 +953,7 @@ Also test:
 - unknown format
 - animated/video descriptor rejected without payload read
 
-- [ ] **Step 2: Run the focused test and verify RED**
+- [x] **Step 2: Run the focused test and verify RED**
 
 Run:
 
@@ -963,7 +963,7 @@ swift test --filter SceneTextureSoftwareDecoderTests
 
 Expected: compile failure because decoder/output types do not exist.
 
-- [ ] **Step 3: Add output model and decoder API**
+- [x] **Step 3: Add output model and decoder API**
 
 Define:
 
@@ -999,7 +999,7 @@ and output pixel count before reading the selected payload.
 Limit tests assert the production defaults and inject small limits for
 rejection cases.
 
-- [ ] **Step 4: Port bounded decode algorithms and run GREEN**
+- [x] **Step 4: Port bounded decode algorithms and run GREEN**
 
 Move the existing algorithms from:
 
@@ -1036,7 +1036,7 @@ swift test --filter SceneTextureSoftwareDecoderTests
 
 Expected: all decoder tests pass, including the exact one-range assertion.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Sources/MacWallSceneFormats/SceneDecodedTexture.swift Sources/MacWallSceneFormats/SceneTextureSoftwareDecoder.swift Sources/MacWallSceneFormats/SceneLZ4BlockDecoder.swift Sources/MacWallSceneFormats/SceneDXTDecoder.swift Tests/MacWallSceneFormatsTests/SceneTextureSoftwareDecoderTests.swift
