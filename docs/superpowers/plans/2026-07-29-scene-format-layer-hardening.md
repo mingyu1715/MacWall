@@ -158,7 +158,7 @@ Core의 `SceneRenderPlan.swift`와 App의 `SceneWallpaperView.swift`는 삭제�
 - Produces: internal `SceneBinaryCursor`
 - Consumed by: Tasks 2-7
 
-- [ ] **Step 1: Add target skeletons and failing source tests**
+- [x] **Step 1: Add target skeletons and failing source tests**
 
 Add these target declarations to `Package.swift`:
 
@@ -219,7 +219,7 @@ final class SceneByteSourceTests: XCTestCase {
 }
 ```
 
-- [ ] **Step 2: Run the focused test and verify RED**
+- [x] **Step 2: Run the focused test and verify RED**
 
 Run:
 
@@ -231,7 +231,7 @@ Expected: compile failure because `SceneByteSource`,
 `SceneDataByteSource`, `SceneBoundedByteSource`, and
 `SceneFileByteSource` do not exist.
 
-- [ ] **Step 3: Implement typed errors and byte sources**
+- [x] **Step 3: Implement typed errors and byte sources**
 
 Define these exact error categories in
 `Sources/MacWallSceneFormats/SceneFormatError.swift`:
@@ -344,7 +344,7 @@ struct SceneBinaryCursor {
 NUL. `consume` advances after bounds/overflow validation without loading the
 consumed payload.
 
-- [ ] **Step 4: Implement the thread-safe recording source and run GREEN**
+- [x] **Step 4: Implement the thread-safe recording source and run GREEN**
 
 Create `RecordingSceneByteSource` as a test-only wrapper:
 
@@ -373,7 +373,7 @@ swift test --filter SceneByteSourceTests
 
 Expected: all `SceneByteSourceTests` pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Package.swift Sources/MacWallSceneFormats Tests/MacWallSceneTestSupport/RecordingSceneByteSource.swift Tests/MacWallSceneFormatsTests/SceneByteSourceTests.swift

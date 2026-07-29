@@ -16,6 +16,12 @@ let package = Package(
         .executable(name: "macwallctl", targets: ["macwallctl"])
     ],
     targets: [
+        .target(name: "MacWallSceneFormats"),
+        .target(
+            name: "MacWallSceneTestSupport",
+            dependencies: ["MacWallSceneFormats"],
+            path: "Tests/MacWallSceneTestSupport"
+        ),
         .target(name: "MacWallCore"),
         .target(name: "MacWallNativeRuntimeSupport"),
         .target(
@@ -41,6 +47,13 @@ let package = Package(
         .testTarget(
             name: "MacWallNativeRuntimeSupportTests",
             dependencies: ["MacWallNativeRuntimeSupport"]
+        ),
+        .testTarget(
+            name: "MacWallSceneFormatsTests",
+            dependencies: [
+                "MacWallSceneFormats",
+                "MacWallSceneTestSupport"
+            ]
         )
     ]
 )
