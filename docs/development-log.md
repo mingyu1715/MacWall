@@ -4,6 +4,27 @@
 
 ## 2026-07-29
 
+### 22:30 KST
+
+- 완료: Scene Engine S0 Format Research 및 Fixture Catalog 실행 계획 작성
+- 계획:
+  - [S0 실행 계획](superpowers/plans/2026-07-29-scene-format-research-and-fixture-catalog.md)
+  - versioned audit schema, canonical JSON, bounded TEX metadata, Scene JSON/
+    dependency/script inspector, local fixture catalog 순서로 분해
+  - 새 CLI 없이 `MacWallCore` internal API와 tests로만 S0를 구현
+  - 실제 Workshop fixture는 `test/` local-only로 유지하고 aggregate catalog만 추적
+  - S1 module extraction, Metal, Native Scene, fallback, SceneScript execution은 제외
+- 라이선스:
+  - 전체 MIT 정책 유지
+  - GPL code와 Wallpaper Engine built-in asset 복사 금지 유지
+- 검증:
+  - 승인된 Scene Engine 설계와 현재 Scene parser/test helper의 실제 interface 대조
+  - task별 RED/GREEN focused test, commit, 최종 전체 `swift test` 절차 명시
+- 미실행:
+  - 코드 구현 및 test 실행
+  - 앱/GUI/System Settings 실행
+  - `swift build`, package, DMG, notarization, `dist` 작업
+
 ### 22:21 KST
 
 - 완료: Scene Engine 전체 구조 설계 및 local fixture 기반 format 재검증

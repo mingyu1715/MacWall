@@ -47,6 +47,7 @@ repository root에는 사용자와 외부 기여자가 바로 확인해야 하�
 - [macOS 26 Native Wallpaper AdHocQA Transport 설계](superpowers/specs/2026-07-29-native-wallpaper-adhoc-qa-transport-design.md): provisioning 전 개발용 runtime transport
 - [macOS 26 Native Wallpaper AdHocQA Transport 실행 계획](superpowers/plans/2026-07-29-native-wallpaper-adhoc-qa-transport.md)
 - [Scene Engine 설계](superpowers/specs/2026-07-29-scene-engine-design.md): format, asset resolver, typed graph, Metal renderer, Native Wallpaper integration
+- [Scene S0 Format Research 및 Fixture Catalog 실행 계획](superpowers/plans/2026-07-29-scene-format-research-and-fixture-catalog.md): internal audit contract와 local-only fixture regression
 
 ## 재사용 템플릿
 
