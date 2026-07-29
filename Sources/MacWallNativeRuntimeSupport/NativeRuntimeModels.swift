@@ -4,6 +4,13 @@ public enum NativeRuntimeConstants {
     public static let schemaVersion = 1
     public static let appGroupIdentifier = "group.com.mingyu1715.macwall"
     public static let changeNotificationName = "com.mingyu1715.macwall.native-runtime.changed"
+    public static let transportInfoDictionaryKey = "MacWallNativeRuntimeTransport"
+    public static let developmentRuntimeDirectoryComponents = [
+        "Library",
+        "Application Support",
+        "MacWall",
+        "NativeRuntimeAdHocQA"
+    ]
 }
 
 public enum NativeRuntimeCommandKind: String, Codable, Sendable {
@@ -140,6 +147,9 @@ public struct NativeRuntimeStatus: Codable, Equatable, Sendable {
 
 public enum NativeRuntimeStoreError: Error, Equatable {
     case appGroupUnavailable
+    case transportConfigurationMissing
+    case unsupportedTransportConfiguration(String)
+    case accountHomeUnavailable
     case unsupportedSchema(Int)
     case invalidCommand
     case invalidSourcePath

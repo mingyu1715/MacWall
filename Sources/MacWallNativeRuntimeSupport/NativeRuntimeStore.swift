@@ -7,15 +7,16 @@ public struct NativeRuntimeStore: Sendable {
         self.rootURL = rootURL.standardizedFileURL
     }
 
+    public static func live() throws -> Self {
+        let mode = try NativeRuntimeTransportMode.configured()
+        return try live(mode: mode)
+    }
+
     public static func live(
-        appGroupIdentifier: String = NativeRuntimeConstants.appGroupIdentifier
+        mode: NativeRuntimeTransportMode,
+        rootResolver: any NativeRuntimeRootResolving = NativeRuntimeRootResolver.live
     ) throws -> Self {
-        guard let container = FileManager.default.containerURL(
-            forSecurityApplicationGroupIdentifier: appGroupIdentifier
-        ) else {
-            throw NativeRuntimeStoreError.appGroupUnavailable
-        }
-        return Self(rootURL: container.appending(path: "NativeRuntime"))
+        Self(rootURL: try rootResolver.rootURL(for: mode))
     }
 
     public var commandURL: URL {
