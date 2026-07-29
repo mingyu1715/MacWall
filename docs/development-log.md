@@ -4,6 +4,25 @@
 
 ## 2026-07-29
 
+### 16:36 KST
+
+- 완료: Native Wallpaper `AdHocQA` development-only transport 실행 계획 작성
+- 설계: [Native Wallpaper AdHocQA Transport 설계](superpowers/specs/2026-07-29-native-wallpaper-adhoc-qa-transport-design.md)
+- 계획: [Native Wallpaper AdHocQA Transport 실행 계획](superpowers/plans/2026-07-29-native-wallpaper-adhoc-qa-transport.md)
+- 작업 순서:
+  - 명시적인 transport mode와 POSIX account home 기반 root resolver
+  - Host/Extension의 mode 및 root diagnostic
+  - Debug/Release와 격리된 `AdHocQA` configuration, scheme, entitlements
+  - reset/install/status/logs production QA runner
+  - focused test, project guard, ad-hoc compile/signature 중심 정적 검증
+- 제한:
+  - App Group 실패 시 development-home 자동 fallback 없음
+  - 실제 System Settings와 Desktop/Fullscreen 확인은 별도 사용자 gate
+  - proper Apple signing/provisioning은 후속 production gate
+  - 코드, GUI, package, DMG, notarization, `dist` 변경 없음
+- 다음:
+  - 실행 방식 선택 후 Task 1부터 TDD로 구현
+
 ### 16:23 KST
 
 - 완료: Native Wallpaper `AdHocQA` development-only transport 설계 승인 및 문서화
