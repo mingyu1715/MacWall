@@ -4,6 +4,38 @@
 
 ## 2026-07-29
 
+### 17:09 KST
+
+- 완료: Native Wallpaper `AdHocQA` development-only runtime transport 구현 및 정적 검증
+- 구현:
+  - `NativeRuntimeTransportMode`와 POSIX account home 기반 root resolver 추가
+  - Host/Extension transport mode 및 resolved root diagnostic 추가
+  - Debug/Release와 격리된 `AdHocQA` configuration, scheme, entitlements 추가
+  - QA 전용 `reset`, `install`, `status`, `logs` runner 추가
+  - production App Group 실패 시 development-home으로 자동 fallback하지 않도록 경계 유지
+- 로컬 commit:
+  - `b3be7e8 feat(native): resolve AdHocQA runtime transport`
+  - `38d482c feat(native): wire configured runtime transport`
+  - `db3a9a0 build(native): isolate AdHocQA configuration`
+  - `700cae8 chore(native): add AdHocQA development runner`
+- 검증:
+  - 전체 `swift test`: 208 tests, 0 failures
+  - transport/store/backend focused test: 22 tests, 0 failures
+  - AdHocQA project/runner structure guard 및 Bash syntax 검사 통과
+  - `MacWallAdHocQA` ad-hoc signed build 성공
+  - `codesign --verify --deep --strict` 통과
+  - Host/Extension 빌드 산출물의 transport 값 `development-home` 확인
+  - Host App Group entitlement 없음 확인
+  - Extension sandbox와 `/Library/Application Support/MacWall/NativeRuntimeAdHocQA/` home-relative read/write 예외 확인
+  - `xcodebuild`가 자동 등록한 `/tmp` 검증 산출물은 즉시 LaunchServices에서 등록 해제하고 dump에서 경로가 사라졌음을 확인
+- 미실행:
+  - runner `install`과 사용자 runtime 등록 절차
+  - System Settings 선택과 실제 Desktop/Fullscreen 검증
+  - package, DMG, notarization, `dist`
+- 다음:
+  - 별도 사용자 gate에서 `reset -> install -> System Settings 선택 -> status/logs -> 화면 확인`
+  - AdHocQA 통과 후 proper Apple signing/provisioning 기반 production App Group QA
+
 ### 16:36 KST
 
 - 완료: Native Wallpaper `AdHocQA` development-only transport 실행 계획 작성

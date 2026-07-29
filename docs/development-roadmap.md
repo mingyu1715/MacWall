@@ -196,7 +196,7 @@ Spike 자체는 production 기능이 아닙니다.
 
 ### Phase P2.6: Native Wallpaper Backend Promotion
 
-상태: 구현 완료 / production runtime QA 대기
+상태: 구현 완료 / AdHocQA runtime 사용자 검증 대기 / production signing gate 유지
 
 목표:
 
@@ -224,14 +224,24 @@ Spike 자체는 production 기능이 아닙니다.
 - Main App은 Native/Legacy backend를 eligibility로 routing하며, 실패한 Native 전환은 기존 성공 playback을 유지합니다.
 - Native 미활성 Play에는 `취소`, `기존 방식으로 재생`, `배경화면 설정 열기` 3버튼 흐름을 연결했습니다.
 - Native Stop은 마지막 frame을 유지하며, Native 경로는 fallback PNG와 original wallpaper restore state를 변경하지 않습니다.
+- development-only `AdHocQA` configuration과 scheme은 Host/Extension이 POSIX account home 아래 `~/Library/Application Support/MacWall/NativeRuntimeAdHocQA`를 공유하도록 분리했습니다.
+- `AdHocQA` extension에만 위 디렉터리로 제한한 Sandbox temporary exception을 적용하며, Debug/Release는 기존 App Group transport를 유지합니다.
+- App Group 접근 실패 시 `development-home`으로 자동 fallback하지 않습니다.
+- `Scripts/native-wallpaper-adhoc-qa.sh`에 QA 전용 `reset`, `install`, `status`, `logs` 흐름을 추가했습니다.
 
 검증 결과:
 
-- 전체 `swift test`: 201 tests, 0 failures
+- 전체 `swift test`: 208 tests, 0 failures
+- AdHocQA transport/store/backend focused test: 22 tests, 0 failures
 - project structure guard 및 Bash syntax 검사 통과
 - Xcode target/scheme 목록 검사 통과
 - Host + `Contents/Extensions` embedded appex unsigned compile 통과
-- production app 실행, System Settings 선택, 실제 Desktop 출력, Fullscreen/Space 전환은 실행하지 않았습니다.
+- `AdHocQA` Host/Extension ad-hoc signed build와 `codesign --verify --deep --strict` 통과
+- 빌드 산출물의 Host/Extension transport 값이 모두 `development-home`임을 확인
+- Host에는 App Group entitlement가 없고, Extension에는 sandbox와 정확한 QA home-relative read/write 예외만 적용됨을 확인
+- production WallpaperAgent discovery/handshake는 통과했지만, ad-hoc App Group write는 `NSCocoaErrorDomain 513`으로 실패했습니다.
+- 이번 AdHocQA 구현 후 System Settings 선택, 실제 Desktop 출력, Host/Extension command round trip, Fullscreen/Space 전환은 실행하지 않았습니다.
+- proper Apple signing/provisioning 기반 App Group runtime QA가 통과하기 전에는 P2.6 완료 기록을 만들거나 승격 계획을 archive하지 않습니다.
 
 설계:
 
@@ -568,8 +578,9 @@ S0 Format Research and Fixture Catalog
 
 다음 product work:
 
-1. 별도 승인 후 production Native backend의 app 설치, System Settings 선택, 실제 Video Desktop 출력, Fullscreen/Space 전환을 수동 QA합니다.
-2. 사용자 관측과 `WallpaperAgent`/extension 로그를 대조해 App Group command, heartbeat, generation ACK, all-or-nothing replacement를 확인합니다.
-3. production runtime QA가 통과한 뒤에만 P2.6 완료 구현 기록을 만들고 활성 승격 계획을 archive합니다.
-4. snapshot/export는 `docs/superpowers/plans/2026-06-15-native-wallpaper-snapshot-export-gate.md`, BGRA IOSurface memory는 별도 최적화 작업으로 유지합니다.
-5. Native Web/Scene을 시작하지 않으며 Scene S0는 product runtime 방향이 다시 승인될 때까지 보류합니다.
+1. 별도 승인 후 `AdHocQA` runner의 `reset -> install` 순서로 등록하고 사용자가 System Settings에서 MacWall을 선택합니다.
+2. 사용자 관측과 `WallpaperAgent`/extension 로그를 대조해 development-home command, heartbeat, generation ACK, all-or-nothing replacement를 확인합니다.
+3. AdHocQA runtime gate 통과 후 proper Apple signing/provisioning을 준비하고 동일 protocol을 App Group transport로 다시 검증합니다.
+4. proper signing 기반 production runtime QA가 통과한 뒤에만 P2.6 완료 구현 기록을 만들고 활성 승격 계획을 archive합니다.
+5. snapshot/export는 `docs/superpowers/plans/2026-06-15-native-wallpaper-snapshot-export-gate.md`, BGRA IOSurface memory는 별도 최적화 작업으로 유지합니다.
+6. Native Web/Scene을 시작하지 않으며 Scene S0는 product runtime 방향이 다시 승인될 때까지 보류합니다.
