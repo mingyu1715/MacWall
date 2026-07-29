@@ -4,11 +4,12 @@
      viewBox="0 0 1024 1024"
      role="img"
      aria-labelledby="title desc">
-  <title id="title">MacWall logo</title>
-  <desc id="desc">A blue-to-purple M-shaped laptop symbol on a transparent background.</desc>
+  <title id="title">MacWall logo on black</title>
+  <desc id="desc">A blue-to-purple M-shaped laptop symbol on a black background.</desc>
 
   <defs>
-    <linearGradient id="brand" x1="225" y1="305" x2="815" y2="735" gradientUnits="userSpaceOnUse">
+    <linearGradient id="brand" x1="225" y1="305" x2="815" y2="735"
+                    gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#24C9FF"/>
       <stop offset=".24" stop-color="#2E8CFF"/>
       <stop offset=".52" stop-color="#5360FF"/>
@@ -16,14 +17,16 @@
       <stop offset="1" stop-color="#C832F4"/>
     </linearGradient>
 
-    <linearGradient id="brandHighlight" x1="260" y1="290" x2="760" y2="700" gradientUnits="userSpaceOnUse">
+    <linearGradient id="brandHighlight" x1="260" y1="290" x2="760" y2="700"
+                    gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#FFFFFF" stop-opacity=".16"/>
       <stop offset=".45" stop-color="#FFFFFF" stop-opacity="0"/>
       <stop offset="1" stop-color="#FFFFFF" stop-opacity=".08"/>
     </linearGradient>
 
     <filter id="symbolShadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="7" stdDeviation="11" flood-color="#000000" flood-opacity=".36"/>
+      <feDropShadow dx="0" dy="7" stdDeviation="11"
+                    flood-color="#000000" flood-opacity=".36"/>
     </filter>
 
     <mask id="baseCutout" x="170" y="700" width="684" height="68"
@@ -43,7 +46,8 @@
     </mask>
   </defs>
 
-  <!-- M / screen symbol -->
+  <rect width="1024" height="1024" fill="#000000"/>
+
   <g filter="url(#symbolShadow)">
     <path fill="url(#brand)" fill-rule="evenodd" d="
       M256 294
@@ -68,7 +72,6 @@
       Z
     "/>
 
-    <!-- restrained surface highlight, clipped to the symbol -->
     <path fill="url(#brandHighlight)" fill-rule="evenodd" opacity=".55" d="
       M256 294
       H300
@@ -93,7 +96,6 @@
     "/>
   </g>
 
-  <!-- Laptop base -->
   <g filter="url(#symbolShadow)">
     <path d="
       M184 716
