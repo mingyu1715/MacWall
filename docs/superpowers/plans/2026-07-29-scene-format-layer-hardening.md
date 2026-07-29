@@ -1374,7 +1374,7 @@ git commit -m "feat(scene): add bounded audit pipeline"
 - Produces: local-only regression evidence for three tracked fixture IDs
 - Does not produce a runtime API
 
-- [ ] **Step 1: Port the local fixture test with random-access assertions**
+- [x] **Step 1: Port the local fixture test with random-access assertions**
 
 Decode the existing schema 1 aggregate catalog unchanged. If none of the
 fixture paths exist, throw one `XCTSkip`.
@@ -1414,7 +1414,7 @@ XCTAssertTrue(report.textures.allSatisfy {
 
 Keep the existing feature-count and canonical double-encode assertions.
 
-- [ ] **Step 2: Run the local fixture gate**
+- [x] **Step 2: Run the local fixture gate**
 
 Run:
 
@@ -1427,7 +1427,7 @@ aggregate catalog with no error diagnostic and no whole-package read.
 
 Expected when fixtures do not exist: one explicit skip and no failure.
 
-- [ ] **Step 3: Run all new format/audit tests**
+- [x] **Step 3: Run all new format/audit tests**
 
 Run:
 
@@ -1438,7 +1438,7 @@ swift test --filter MacWallSceneAuditTests
 
 Expected: both suites pass.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add Tests/MacWallSceneAuditTests/SceneLocalFixtureAuditTests.swift
