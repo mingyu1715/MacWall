@@ -14,7 +14,7 @@ public enum SceneAuditFeatureSupport: String, Codable, Equatable, Sendable {
     case unknown
 }
 
-public enum SceneAuditFeatureKey: String, Codable, CaseIterable, Equatable, Sendable {
+public enum SceneAuditFeatureKey: String, Codable, CaseIterable, Equatable, Hashable, Sendable {
     case packageIndex
     case textureMetadata
     case imageLayer

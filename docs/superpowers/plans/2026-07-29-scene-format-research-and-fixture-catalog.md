@@ -811,7 +811,7 @@ git commit -m "feat(scene): inspect texture metadata"
 - Preserves: `ScenePackageAnalyzer.analyze(url:)`
 - Consumed by: local fixture tests in Task 4
 
-- [ ] **Step 1: Write failing end-to-end audit tests**
+- [x] **Step 1: Write failing end-to-end audit tests**
 
 Create `Tests/MacWallCoreTests/SceneAuditorTests.swift` with:
 
@@ -978,7 +978,7 @@ final class SceneAuditorTests: XCTestCase {
 }
 ```
 
-- [ ] **Step 2: Run auditor tests and verify RED**
+- [x] **Step 2: Run auditor tests and verify RED**
 
 Run:
 
@@ -989,7 +989,7 @@ swift test --filter SceneAuditorTests
 Expected: compile failure because `SceneAuditor` and `SceneJSONInspector` do not
 exist.
 
-- [ ] **Step 3: Implement JSON evidence collection**
+- [x] **Step 3: Implement JSON evidence collection**
 
 Create `SceneJSONInspector.swift` with an internal Sendable evidence model:
 
@@ -1070,7 +1070,7 @@ Dependency resolution rules for S0:
 Do not read optional external Wallpaper Engine assets in S0.
 Every `.unresolved` dependency increments `.unresolvedAsset`.
 
-- [ ] **Step 4: Implement package-level orchestration**
+- [x] **Step 4: Implement package-level orchestration**
 
 Create `SceneAuditor.swift`:
 
@@ -1170,7 +1170,7 @@ SceneAuditReport(
 )
 ```
 
-- [ ] **Step 5: Run focused Scene audit regression**
+- [x] **Step 5: Run focused Scene audit regression**
 
 Run:
 
@@ -1183,7 +1183,7 @@ swift test --filter SceneRenderPlanTests
 Expected: all focused tests pass and existing Scene parsing behavior remains
 unchanged.
 
-- [ ] **Step 6: Commit the package auditor**
+- [x] **Step 6: Commit the package auditor**
 
 ```bash
 git add Sources/MacWallCore/Scene/SceneJSONInspector.swift Sources/MacWallCore/Scene/SceneAuditor.swift Tests/MacWallCoreTests/SceneAuditorTests.swift
