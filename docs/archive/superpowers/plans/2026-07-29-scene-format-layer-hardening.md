@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- 설계 기준은 `docs/superpowers/specs/2026-07-29-scene-format-layer-hardening-design.md`입니다.
+- 설계 기준은 `docs/archive/superpowers/specs/2026-07-29-scene-format-layer-hardening-design.md`입니다.
 - 지원 플랫폼은 기존 package 기준인 macOS 14+입니다.
 - `MacWallSceneFormats`는 Foundation/Darwin 외에 Audit/Core/AppKit/Metal에 의존하지 않습니다.
 - `MacWallSceneAudit`는 `MacWallSceneFormats`에만 의존합니다.
@@ -1809,7 +1809,7 @@ git commit -m "refactor(scene): remove legacy format implementation"
 - Sets: next Scene phase to S2 Asset Resolver and Typed Scene Graph
 - Starts no S2 implementation
 
-- [ ] **Step 1: Write the implemented record**
+- [x] **Step 1: Write the implemented record**
 
 Create the implemented document with:
 
@@ -1824,7 +1824,7 @@ Create the implemented document with:
 - exact focused/full test counts copied from Task 10 output
 - explicit exclusions: S2, Metal, Native Scene, fallback, SceneScript/effects
 
-- [ ] **Step 2: Update roadmap, engine spec, index, and timestamped log**
+- [x] **Step 2: Update roadmap, engine spec, index, and timestamped log**
 
 Obtain the log time with:
 
@@ -1839,7 +1839,7 @@ record to `docs/README.md`.
 In the Scene Engine design, link the S1 implemented record without changing
 the S2/S3 architecture.
 
-- [ ] **Step 3: Archive completed active documents**
+- [x] **Step 3: Archive completed active documents**
 
 Move:
 
@@ -1852,7 +1852,7 @@ git mv docs/superpowers/plans/2026-07-29-scene-format-layer-hardening.md docs/ar
 Update all links to the archived design/plan or the implemented record.
 Keep the overall Scene Engine design active.
 
-- [ ] **Step 4: Verify documents and repository state**
+- [x] **Step 4: Verify documents and repository state**
 
 Run:
 
@@ -1871,7 +1871,7 @@ Expected:
 - no code/test files changed after Task 10 verification
 - no `dist` or packaging artifact exists
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add docs
@@ -1882,27 +1882,27 @@ git commit -m "docs: record scene format layer implementation"
 
 ## Final Acceptance Checklist
 
-- [ ] `MacWallSceneFormats` and `MacWallSceneAudit` are independent targets.
-- [ ] Formats has no Audit/Core/AppKit/Metal dependency.
-- [ ] Audit depends only on Formats.
-- [ ] Core depends on Formats but not Audit.
-- [ ] App still depends on Core rather than Formats/Audit.
-- [ ] CLI depends on Core and Audit and adds no command.
-- [ ] Scene package paths use bounded random-access reads.
-- [ ] No unbounded package entry read API exists.
-- [ ] No whole-package `Data(contentsOf:)` exists in the Scene format path.
-- [ ] PKGV0008/0018/0023 and unverified numeric versions are covered.
-- [ ] Duplicate path, invalid range, overlap, and resource limits are distinct.
-- [ ] TEX B0001...B0004, video metadata, animation, and trailing bytes are covered.
-- [ ] Unknown version/container/format/flag evidence is not discarded.
-- [ ] Decoder reads only the selected mip.
-- [ ] Audit output is schema 2, deterministic, and path-redacted.
-- [ ] S0 aggregate local fixture catalog still matches.
-- [ ] Existing render-plan prototype behavior and 16-layer limit remain.
-- [ ] Existing `scene-info` and `scene-render-info` command names remain.
-- [ ] Old Core format/audit implementation and tests are removed.
-- [ ] No compatibility facade, typealias, or re-export remains.
-- [ ] Focused tests pass.
-- [ ] Full `swift test` passes with zero failures.
-- [ ] No `swift build`, GUI, packaging, notarization, or `dist` operation runs.
-- [ ] S2, Metal, Native Scene, Scene fallback, and SceneScript/effect execution are not started.
+- [x] `MacWallSceneFormats` and `MacWallSceneAudit` are independent targets.
+- [x] Formats has no Audit/Core/AppKit/Metal dependency.
+- [x] Audit depends only on Formats.
+- [x] Core depends on Formats but not Audit.
+- [x] App still depends on Core rather than Formats/Audit.
+- [x] CLI depends on Core and Audit and adds no command.
+- [x] Scene package paths use bounded random-access reads.
+- [x] No unbounded package entry read API exists.
+- [x] No whole-package `Data(contentsOf:)` exists in the Scene format path.
+- [x] PKGV0008/0018/0023 and unverified numeric versions are covered.
+- [x] Duplicate path, invalid range, overlap, and resource limits are distinct.
+- [x] TEX B0001...B0004, video metadata, animation, and trailing bytes are covered.
+- [x] Unknown version/container/format/flag evidence is not discarded.
+- [x] Decoder reads only the selected mip.
+- [x] Audit output is schema 2, deterministic, and path-redacted.
+- [x] S0 aggregate local fixture catalog still matches.
+- [x] Existing render-plan prototype behavior and 16-layer limit remain.
+- [x] Existing `scene-info` and `scene-render-info` command names remain.
+- [x] Old Core format/audit implementation and tests are removed.
+- [x] No compatibility facade, typealias, or re-export remains.
+- [x] Focused tests pass.
+- [x] Full `swift test` passes with zero failures.
+- [x] No `swift build`, GUI, packaging, notarization, or `dist` operation runs.
+- [x] S2, Metal, Native Scene, Scene fallback, and SceneScript/effect execution are not started.

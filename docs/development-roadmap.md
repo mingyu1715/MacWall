@@ -1,6 +1,6 @@
 # MacWall 개발 로드맵
 
-수정일: 2026-07-29
+수정일: 2026-07-30
 
 이 문서는 현재 활성 제품 개발 방향과 Scene 개발 방향을 정리합니다. 완료된 세부 구현 계획은 `docs/implemented/`에 기록하고, 과거 계획은 `docs/archive/`에 보관합니다.
 
@@ -40,6 +40,9 @@ MacWall은 사용자가 Windows에서 직접 복사해 온 Wallpaper Engine proj
 - desktop이 가려졌을 때 Web은 CSS animation을 pause하되 embedded Web video는 계속 보이게 유지합니다.
 - Scene은 Metal runtime 전까지 experimental `CALayer` prototype 뒤에서만 제한적으로 다루며, system-wallpaper fallback을 만들지 않습니다.
 - `scene.pkg` parsing, 일부 `.tex` decode, 일부 2D layer `CALayer` prototype rendering이 experimental toggle 뒤에 있습니다.
+- Scene S1 Format Layer Hardening으로 bounded random-access PKG/TEX parsing,
+  selected-mip decode, deterministic Audit schema 2를 독립 모듈로
+  분리했습니다.
 - bundled macOS screen saver path로 animated Lock Screen playback을 실행합니다.
 - Video, Image, Web wallpaper에 대해 asset별 `Derived/desktop-fallback.png` cache를 유지합니다.
 - Space 변경 후 active Video/Web fallback cache를 live output에서 refresh합니다.
@@ -420,23 +423,35 @@ module은 AppKit/Metal desktop rendering 없이 test와 non-GUI code에서 사�
   inline SceneScript evidence를 deterministic report로 만듭니다.
 - 세 local fixture의 aggregate count만
   `Tests/Fixtures/SceneAudit/local-scene-catalog.json`에 추적합니다.
-- S0 구현은 S1에서 `MacWallSceneFormats`/`MacWallSceneAudit` module을
-  추출할 때까지 `MacWallCore`에만 유지합니다.
+- S0 구현은 S1에서 `MacWallSceneFormats`/`MacWallSceneAudit` module로
+  교체됐으며 기존 Core format/audit 구현은 제거했습니다.
 - focused Scene 검증은 25 tests, 전체 검증은 267 tests로 실패 없이
   통과했습니다.
 
 ### S1: Format Layer Hardening
 
-상태: 다음 구현 단계
+상태: 구현 완료. 세부 기록은
+`docs/implemented/2026-07-29-scene-format-layer-hardening.md`에 있습니다.
 
-- package, texture, compression, pixel-format parsing을 focused file로 분리합니다.
-- path traversal protection을 유지합니다.
-- 필요하면 eager whole-package loading을 bounded random-access read로 바꿉니다.
-- `PKGV0008`, `PKGV0018`, `PKGV0023` sample을 parse/report합니다.
-- TEX container와 format metadata를 보존합니다.
-- software decode는 test와 screenshot fallback으로 유지합니다.
+- `MacWallSceneFormats`와 `MacWallSceneAudit`을 독립 target으로 분리했습니다.
+- package 전체 loading을 file descriptor/`pread` 기반 bounded random-access
+  archive로 교체했습니다.
+- `PKGV0008`, `PKGV0018`, `PKGV0023`과 미확인 numeric version evidence를
+  parse/report합니다.
+- `TEXB0001`부터 `TEXB0004`, multi-image/mipmap, video/animation/trailing
+  metadata를 보존합니다.
+- software decoder는 선택된 image/mip만 읽고 LZ4, RGBA/RG/R8,
+  DXT1/DXT3/DXT5를 bounded decode합니다.
+- deterministic/path-redacted Audit schema 2와 S0 aggregate fixture gate를
+  구현했습니다.
+- Core render plan, App consumer, 기존 `scene-info`를 새 모듈로 전환하고
+  기존 Core format/audit 구현을 제거했습니다.
+- focused Formats 49 tests, Audit 17 tests, RenderPlan 2 tests와 전체
+  310 tests가 실패 없이 통과했습니다.
 
 ### S2: Asset Resolver and Typed Scene Graph
+
+상태: 다음 Scene planning phase. 구현은 시작하지 않았습니다.
 
 - package-local, clean-room built-in, optional staged compatibility asset
   순서의 resolver를 추가합니다.
@@ -555,14 +570,12 @@ local fixture는 `test/` 아래에 있습니다. 사용자가 직접 복사한 l
 
 ## 7. 기존 코드 지도
 
-현재 prototype file:
+현재 Scene code:
 
 | Path | 현재 책임 |
 | --- | --- |
-| `Sources/MacWallCore/Scene/ScenePackage.swift` | PKG reader와 lightweight analysis |
-| `Sources/MacWallCore/Scene/SceneTexture.swift` | TEX reader와 software decode path |
-| `Sources/MacWallCore/Scene/SceneLZ4BlockDecoder.swift` | LZ4 block decode |
-| `Sources/MacWallCore/Scene/SceneDXTDecoder.swift` | DXT1, DXT3, DXT5 software decode |
+| `Sources/MacWallSceneFormats/` | bounded PKG/TEX format, selected-mip software decode |
+| `Sources/MacWallSceneAudit/` | deterministic Audit schema 2와 support policy |
 | `Sources/MacWallCore/Scene/SceneRenderPlan.swift` | prototype image-layer extraction과 basic animation parsing |
 | `Sources/MacWallApp/Playback/SceneWallpaperView.swift` | prototype `CALayer` rendering |
 
@@ -632,8 +645,8 @@ Scene runtime work:
 
 ```text
 S0 Format Research and Fixture Catalog (완료)
--> S1 Format Layer Hardening (다음)
--> S2 Asset Resolver and Typed Scene Graph
+-> S1 Format Layer Hardening (완료)
+-> S2 Asset Resolver and Typed Scene Graph (다음 planning)
 -> S3 GPU Texture Pipeline
 -> S4 Headless 2D Metal Renderer
 -> S5 Native Scene Frame Adapter
@@ -655,7 +668,10 @@ S5에서 common 2D Scene은 extension 내부의 실제 Metal output으로 재생
 다음 planning:
 
 1. 별도 사용자 gate에서 Native auto-pause, sleep/wake, 1회 recovery의 실제 Desktop 동작을 확인합니다.
-2. 완료된 [S0 실행 계획](superpowers/plans/2026-07-29-scene-format-research-and-fixture-catalog.md)을 입력으로 S1 Format Layer Hardening 설계와 실행 계획을 작성합니다.
-3. S1/S2 format과 graph contract가 검증되기 전에는 Metal renderer, Scene fallback, Native Scene surface 구현을 시작하지 않습니다.
+2. 완료된 [S1 구현 기록](implemented/2026-07-29-scene-format-layer-hardening.md)을
+   입력으로 S2 Asset Resolver and Typed Scene Graph 설계와 실행 계획을
+   작성합니다.
+3. S2 graph contract가 검증되기 전에는 Metal renderer, Scene fallback,
+   Native Scene surface 구현을 시작하지 않습니다.
 4. snapshot/export는 `docs/superpowers/plans/2026-06-15-native-wallpaper-snapshot-export-gate.md`, BGRA IOSurface memory는 별도 최적화 작업으로 유지합니다.
 5. proper Apple signing/provisioning 기반 App Group runtime QA는 release 전 별도 gate로 유지합니다.

@@ -2,13 +2,44 @@
 
 모든 시간은 Asia/Seoul 기준입니다.
 
+## 2026-07-30
+
+### 00:32 KST
+
+- 완료: Scene Engine S1 Format Layer Hardening 구현
+- 문서: [S1 구현 기록](implemented/2026-07-29-scene-format-layer-hardening.md)
+- 구현:
+  - Foundation-only `MacWallSceneFormats`와 Formats-only
+    `MacWallSceneAudit` target 분리
+  - file descriptor/`pread` 기반 bounded random-access PKG archive
+  - versioned TEX descriptor, selected image/mip software decoder,
+    LZ4/DXT 및 resource limit 구현
+  - deterministic/path-redacted Audit schema 2와 S0 aggregate catalog gate
+  - Core render plan, App consumer, `macwallctl scene-info`를 새 모듈로 전환
+  - 기존 Core format/audit 구현과 중복 테스트 제거
+- local fixture:
+  - `PKGV0008`, `PKGV0018`, `PKGV0023` fixture 3개 audit 통과
+  - skip 0, failure 0, whole-package read 없음, 최대 read 16 MiB 이하
+- 검증:
+  - Formats: `49 tests, 0 failures`
+  - Audit: `17 tests, 0 failures`
+  - RenderPlan: `2 tests, 0 failures`
+  - 전체 `swift test`: `310 tests, 0 failures`
+  - `git diff --check` 통과
+- 다음:
+  - S2 Asset Resolver and Typed Scene Graph 설계 및 실행 계획 작성
+- 미실행:
+  - `swift build`, `xcodebuild build`, 앱/GUI/System Settings 실행
+  - S2, Metal, Native Scene, Scene fallback, SceneScript/effect 실행
+  - package, DMG, notarization, `dist` 작업
+
 ## 2026-07-29
 
 ### 23:46 KST
 
 - 완료: Scene Engine S1 Format Layer Hardening 실행 계획 작성 및 자체 검수
 - 계획:
-  - [S1 실행 계획](superpowers/plans/2026-07-29-scene-format-layer-hardening.md)
+  - [S1 실행 계획](archive/superpowers/plans/2026-07-29-scene-format-layer-hardening.md)
   - random-access source, PKG archive, TEX inspection, selected-mip decoder,
     Audit v2, local fixture gate, Core/App/CLI migration, 기존 구현 삭제,
     완료 문서 정리의 11개 review gate로 분해
@@ -31,7 +62,7 @@
 
 - 완료: Scene Engine S1 Format Layer Hardening 설계 문서 작성 및 자체 검수
 - 설계:
-  - [S1 Format Layer Hardening 설계](superpowers/specs/2026-07-29-scene-format-layer-hardening-design.md)
+  - [S1 Format Layer Hardening 설계](archive/superpowers/specs/2026-07-29-scene-format-layer-hardening-design.md)
   - `MacWallSceneFormats`와 `MacWallSceneAudit` target으로 format/audit 책임 분리
   - file descriptor와 `pread` 기반 random-access package source 및 bounded entry 계약
   - PKG/TEX unknown layout evidence 보존, strict descriptor API, selected mip software decode
@@ -84,7 +115,7 @@
 
 - 완료: Scene Engine S0 Format Research 및 Fixture Catalog 실행 계획 작성
 - 계획:
-  - [S0 실행 계획](superpowers/plans/2026-07-29-scene-format-research-and-fixture-catalog.md)
+  - [S0 실행 계획](archive/superpowers/plans/2026-07-29-scene-format-research-and-fixture-catalog.md)
   - versioned audit schema, canonical JSON, bounded TEX metadata, Scene JSON/
     dependency/script inspector, local fixture catalog 순서로 분해
   - 새 CLI 없이 `MacWallCore` internal API와 tests로만 S0를 구현

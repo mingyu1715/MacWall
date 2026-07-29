@@ -1,6 +1,6 @@
 # MacWall Scene Engine Design
 
-상태: Approved design / S0 implemented
+상태: Approved design / S0-S1 implemented / S2 planning next
 
 작성일: 2026-07-29
 대상: Wallpaper Engine Scene compatibility runtime
@@ -30,13 +30,24 @@ Workshop Scene project
 
 ### S0 implementation evidence
 
-S0는 [실행 계획](../plans/2026-07-29-scene-format-research-and-fixture-catalog.md)에
+S0는 [보관된 실행 계획](../../archive/superpowers/plans/2026-07-29-scene-format-research-and-fixture-catalog.md)에
 따라 구현했습니다. Schema version 1 audit contract, bounded TEX metadata
 inspection, Scene JSON/dependency/script evidence, stable diagnostics를
-`MacWallCore`에 추가했고, 세 local fixture는 저작물 payload 없이
+처음 `MacWallCore`에 추가했고, 세 local fixture는 저작물 payload 없이
 [aggregate catalog](../../../Tests/Fixtures/SceneAudit/local-scene-catalog.json)로
 검증합니다. Focused Scene 25 tests와 전체 267 tests가 실패 없이 통과했으며,
-S1 module extraction과 S2 이후 renderer 작업은 시작하지 않았습니다.
+이 결과는 S1에서 독립 모듈로 교체했습니다.
+
+### S1 implementation evidence
+
+S1은 [구현 기록](../../implemented/2026-07-29-scene-format-layer-hardening.md)에
+따라 완료했습니다. `MacWallSceneFormats`와 `MacWallSceneAudit`을 분리하고,
+bounded random-access PKG/TEX parsing, selected-mip software decode,
+deterministic Audit schema 2를 구현했습니다. Core/App/CLI consumer를 새
+모듈로 전환한 뒤 기존 Core format/audit 구현을 제거했습니다. 세 local
+fixture와 S0 aggregate catalog가 일치했고, Formats 49 tests, Audit 17 tests,
+RenderPlan 2 tests 및 전체 310 tests가 실패 없이 통과했습니다. S2, Metal,
+Native Scene, Scene fallback, SceneScript/effect 실행은 시작하지 않았습니다.
 
 ## 2. 확정 정책
 
@@ -239,15 +250,15 @@ Scene staging은 기존 video `source.mp4` 단일 파일 규칙과 분리합니�
 | `MacWallSceneNativeAdapter` | Metal, NativeRuntimeSupport | CVPixelBuffer/sample buffer output |
 | `MacWallSceneSnapshot` | Metal | final render target image export |
 
-`MacWallCore`는 최종 Metal renderer를 소유하지 않습니다. 기존 Scene parser는
-단계적으로 새 module로 이동하고 migration 기간에 compatibility facade만
-둘 수 있습니다.
+`MacWallCore`는 최종 Metal renderer를 소유하지 않습니다. S1에서 기존 Scene
+format/audit 구현을 제거했으며 compatibility facade, typealias, re-export를
+두지 않습니다.
 
 ## 7. Format layer
 
 ### 7.1 Random-access package
 
-`ScenePackageReader`는 package 전체 `Data(contentsOf:)` 대신 bounded
+`ScenePackageArchiveReader`는 package 전체 `Data(contentsOf:)` 대신 bounded
 random-access reader를 사용합니다.
 
 - file size, entry count, path length, entry size limit
@@ -629,12 +640,17 @@ transition은 사용자가 직접 확인합니다. 자동화가 대신 조작하
 
 ### S1: Format Layer
 
+상태: implemented / completed
+
 - random-access PKG
 - versioned TEX descriptor
 - all image/mip metadata
 - strict limits and errors
+- [구현 기록](../../implemented/2026-07-29-scene-format-layer-hardening.md)
 
 ### S2: Asset Resolver and Typed Graph
+
+상태: next planning phase
 
 - canonical virtual paths
 - clean-room built-in contract
