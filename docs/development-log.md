@@ -4,6 +4,23 @@
 
 ## 2026-07-29
 
+### 16:16 KST
+
+- 완료: 실패한 ad-hoc production Native Wallpaper QA 환경 정리
+- 사용자 확인:
+  - MacWall이 아닌 기존 macOS 배경화면으로 전환
+- 정리:
+  - production/Spike `MacWallNativeWallpaperExtension` process만 종료
+  - `WallpaperAgent` process는 유지
+  - `/tmp/macwall-native-backend-dd/Build/Products/Debug/MacWall.app` LaunchServices 등록 해제
+- 검증:
+  - process 목록에 MacWall extension 없음
+  - 시스템 로그에서 `io.github.mingyu1715.MacWall`의 `applicationUnregistered` 확인
+  - launchd에서 production extension instance 제거 확인
+- 변경:
+  - 사용자 wallpaper와 `WallpaperAgent`를 강제로 변경하거나 종료하지 않음
+  - 코드 변경 없음
+
 ### 16:09 KST
 
 - 진행: production Native Wallpaper discovery 및 App Group runtime QA
