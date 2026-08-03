@@ -2,6 +2,29 @@
 
 모든 시간은 Asia/Seoul 기준입니다.
 
+## 2026-08-03
+
+### 23:52 KST
+
+- 완료: Scene Engine S2 Asset Resolver and Typed Scene Graph 설계 작성
+- 설계:
+  - [S2 Asset Resolver and Typed Scene Graph 설계](superpowers/specs/2026-08-03-scene-asset-resolver-typed-graph-design.md)
+  - `MacWallSceneFormats -> MacWallSceneAssets -> MacWallSceneGraph` 독립
+    module dependency와 기존 CALayer prototype 병행 유지 확정
+  - exact case/Unicode virtual path, root/owner reference, texture shorthand,
+    package/built-in/external/unresolved provenance 계약 정의
+  - 모든 node kind, hierarchy, instance/override, material/pass/texture graph,
+    animation과 unknown JSON을 typed/Sendable value로 보존
+  - deterministic status/diagnostic, resource limit, synthetic/local fixture
+    aggregate catalog acceptance 정의
+- 다음:
+  - 작성된 설계 문서 검토 승인 후 S2 executable implementation plan 작성
+- 미실행:
+  - S2 코드 구현 및 test 실행
+  - Metal, Native Scene surface, Scene fallback, external assets integration
+  - `swift build`, `xcodebuild build`, 앱/GUI/System Settings 실행
+  - package, DMG, notarization, `dist` 작업
+
 ## 2026-07-30
 
 ### 00:32 KST

@@ -451,10 +451,13 @@ module은 AppKit/Metal desktop rendering 없이 test와 non-GUI code에서 사�
 
 ### S2: Asset Resolver and Typed Scene Graph
 
-상태: 다음 Scene planning phase. 구현은 시작하지 않았습니다.
+상태: 설계 완료, written review 대기. 구현 계획과 코드는 시작하지 않았습니다.
+세부 설계는
+`docs/superpowers/specs/2026-08-03-scene-asset-resolver-typed-graph-design.md`에
+있습니다.
 
-- package-local, clean-room built-in, optional staged compatibility asset
-  순서의 resolver를 추가합니다.
+- S2 resolver는 package-local source를 실제 해석하고 clean-room built-in과
+  optional external asset은 provenance/candidate만 보존합니다.
 - canonical virtual path와 asset provenance를 기록합니다.
 - model, material, pass, texture dependency를 graph로 만듭니다.
 - image, text, particle, sound, unknown node를 모두 보존합니다.
@@ -646,7 +649,7 @@ Scene runtime work:
 ```text
 S0 Format Research and Fixture Catalog (완료)
 -> S1 Format Layer Hardening (완료)
--> S2 Asset Resolver and Typed Scene Graph (다음 planning)
+-> S2 Asset Resolver and Typed Scene Graph (설계 완료 / written review 대기)
 -> S3 GPU Texture Pipeline
 -> S4 Headless 2D Metal Renderer
 -> S5 Native Scene Frame Adapter
@@ -668,10 +671,9 @@ S5에서 common 2D Scene은 extension 내부의 실제 Metal output으로 재생
 다음 planning:
 
 1. 별도 사용자 gate에서 Native auto-pause, sleep/wake, 1회 recovery의 실제 Desktop 동작을 확인합니다.
-2. 완료된 [S1 구현 기록](implemented/2026-07-29-scene-format-layer-hardening.md)을
-   입력으로 S2 Asset Resolver and Typed Scene Graph 설계와 실행 계획을
-   작성합니다.
-3. S2 graph contract가 검증되기 전에는 Metal renderer, Scene fallback,
+2. [S2 Asset Resolver and Typed Scene Graph 설계](superpowers/specs/2026-08-03-scene-asset-resolver-typed-graph-design.md)를
+   검토 승인한 뒤 executable implementation plan을 작성합니다.
+3. S2 graph contract가 구현/검증되기 전에는 Metal renderer, Scene fallback,
    Native Scene surface 구현을 시작하지 않습니다.
 4. snapshot/export는 `docs/superpowers/plans/2026-06-15-native-wallpaper-snapshot-export-gate.md`, BGRA IOSurface memory는 별도 최적화 작업으로 유지합니다.
 5. proper Apple signing/provisioning 기반 App Group runtime QA는 release 전 별도 gate로 유지합니다.

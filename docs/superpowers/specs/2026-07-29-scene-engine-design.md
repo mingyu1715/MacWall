@@ -1,6 +1,6 @@
 # MacWall Scene Engine Design
 
-상태: Approved design / S0-S1 implemented / S2 planning next
+상태: Approved design / S0-S1 implemented / S2 design written review pending
 
 작성일: 2026-07-29
 대상: Wallpaper Engine Scene compatibility runtime
