@@ -13,35 +13,52 @@ public enum SceneJSONValue: Equatable, Sendable {
 
 extension SceneJSONValue: Codable {
     public init(from decoder: any Decoder) throws {
-        let container = try decoder.singleValueContainer()
+        let container = try decoder.container(
+            keyedBy: SceneJSONValueCodingKey.self
+        )
+        let kind = try container.decode(
+            SceneJSONValueKind.self,
+            forKey: .kind
+        )
 
-        if container.decodeNil() {
+        switch kind {
+        case .null:
             self = .null
-        } else if let value = try? container.decode(Bool.self) {
-            self = .bool(value)
-        } else if let value = try? container.decode(Int64.self) {
-            self = .integer(value)
-        } else if let value = try? container.decode(Double.self) {
+        case .bool:
+            self = .bool(try container.decode(Bool.self, forKey: .value))
+        case .integer:
+            self = .integer(try container.decode(Int64.self, forKey: .value))
+        case .number:
+            let value = try container.decode(Double.self, forKey: .value)
             guard value.isFinite else {
                 throw DecodingError.dataCorruptedError(
+                    forKey: .value,
                     in: container,
                     debugDescription: "JSON numbers must be finite."
                 )
             }
             self = .number(value)
-        } else if let value = try? container.decode(String.self) {
-            self = .string(value)
-        } else if let value = try? container.decode([SceneJSONValue].self) {
-            self = .array(value)
-        } else {
-            let objectContainer = try decoder.container(
-                keyedBy: SceneJSONCodingKey.self
+        case .string:
+            self = .string(try container.decode(String.self, forKey: .value))
+        case .array:
+            var valueContainer = try container.nestedUnkeyedContainer(
+                forKey: .value
+            )
+            var values: [SceneJSONValue] = []
+            while !valueContainer.isAtEnd {
+                values.append(try valueContainer.decode(SceneJSONValue.self))
+            }
+            self = .array(values)
+        case .object:
+            let valueContainer = try container.nestedContainer(
+                keyedBy: SceneJSONCodingKey.self,
+                forKey: .value
             )
             var object: [String: SceneJSONValue] = [:]
-            object.reserveCapacity(objectContainer.allKeys.count)
+            object.reserveCapacity(valueContainer.allKeys.count)
 
-            for key in objectContainer.allKeys {
-                object[key.stringValue] = try objectContainer.decode(
+            for key in valueContainer.allKeys {
+                object[key.stringValue] = try valueContainer.decode(
                     SceneJSONValue.self,
                     forKey: key
                 )
@@ -51,16 +68,17 @@ extension SceneJSONValue: Codable {
     }
 
     public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: SceneJSONValueCodingKey.self)
+
         switch self {
         case .null:
-            var container = encoder.singleValueContainer()
-            try container.encodeNil()
+            try container.encode(SceneJSONValueKind.null, forKey: .kind)
         case let .bool(value):
-            var container = encoder.singleValueContainer()
-            try container.encode(value)
+            try container.encode(SceneJSONValueKind.bool, forKey: .kind)
+            try container.encode(value, forKey: .value)
         case let .integer(value):
-            var container = encoder.singleValueContainer()
-            try container.encode(value)
+            try container.encode(SceneJSONValueKind.integer, forKey: .kind)
+            try container.encode(value, forKey: .value)
         case let .number(value):
             guard value.isFinite else {
                 throw EncodingError.invalidValue(
@@ -71,18 +89,25 @@ extension SceneJSONValue: Codable {
                     )
                 )
             }
-            var container = encoder.singleValueContainer()
-            try container.encode(value)
+            try container.encode(SceneJSONValueKind.number, forKey: .kind)
+            try container.encode(value, forKey: .value)
         case let .string(value):
-            var container = encoder.singleValueContainer()
-            try container.encode(value)
+            try container.encode(SceneJSONValueKind.string, forKey: .kind)
+            try container.encode(value, forKey: .value)
         case let .array(value):
-            var container = encoder.singleValueContainer()
-            try container.encode(value)
+            try container.encode(SceneJSONValueKind.array, forKey: .kind)
+            var valueContainer = container.nestedUnkeyedContainer(forKey: .value)
+            for child in value {
+                try valueContainer.encode(child)
+            }
         case let .object(value):
-            var container = encoder.container(keyedBy: SceneJSONCodingKey.self)
+            try container.encode(SceneJSONValueKind.object, forKey: .kind)
+            var valueContainer = container.nestedContainer(
+                keyedBy: SceneJSONCodingKey.self,
+                forKey: .value
+            )
             for (key, child) in value {
-                try container.encode(child, forKey: SceneJSONCodingKey(key))
+                try valueContainer.encode(child, forKey: SceneJSONCodingKey(key))
             }
         }
     }
@@ -216,4 +241,19 @@ private struct SceneJSONCodingKey: CodingKey {
         self.stringValue = String(intValue)
         self.intValue = intValue
     }
+}
+
+private enum SceneJSONValueCodingKey: String, CodingKey {
+    case kind
+    case value
+}
+
+private enum SceneJSONValueKind: String, Codable {
+    case null
+    case bool
+    case integer
+    case number
+    case string
+    case array
+    case object
 }

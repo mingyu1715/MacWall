@@ -28,11 +28,25 @@ final class SceneJSONValueTests: XCTestCase {
                 .number(1.25),
                 .string("value")
             ]),
-            "object": .object(["key": .string("nested")])
+            "object": .object([
+                "kind": .string("arbitrary object key"),
+                "value": .string("arbitrary object key")
+            ])
         ])
 
         let encoded = try JSONEncoder().encode(original)
         XCTAssertEqual(try JSONDecoder().decode(SceneJSONValue.self, from: encoded), original)
+    }
+
+    func testCodableRoundTripPreservesIntegralValuedDouble() throws {
+        let original: SceneJSONValue = .number(1.0)
+
+        let encoded = try JSONEncoder().encode(original)
+
+        XCTAssertEqual(
+            try JSONDecoder().decode(SceneJSONValue.self, from: encoded),
+            original
+        )
     }
 
     func testJSONEncoderSortsObjectKeysWhenRequested() throws {
@@ -43,7 +57,10 @@ final class SceneJSONValueTests: XCTestCase {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
 
-        XCTAssertEqual(String(decoding: try encoder.encode(value), as: UTF8.self), #"{"a":2,"z":1}"#)
+        XCTAssertEqual(
+            String(decoding: try encoder.encode(value), as: UTF8.self),
+            #"{"kind":"object","value":{"a":{"kind":"integer","value":2},"z":{"kind":"integer","value":1}}}"#
+        )
     }
 
     func testDocumentDecoderRejectsMalformedJSON() {
