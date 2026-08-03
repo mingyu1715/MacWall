@@ -1,6 +1,6 @@
 # MacWall Scene Asset Resolver and Typed Graph Design
 
-상태: Design approved / written review pending / implementation plan not started
+상태: Design approved / implementation plan ready / code not started
 
 작성일: 2026-08-03
 대상: Scene Engine S2 Asset Resolver and Typed Scene Graph
