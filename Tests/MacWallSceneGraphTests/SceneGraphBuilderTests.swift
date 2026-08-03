@@ -35,6 +35,14 @@ final class SceneGraphBuilderTests: XCTestCase {
         )
         XCTAssertEqual(result.status, .unsupported)
         XCTAssertTrue(result.diagnostics.contains { $0.code == "graph.unknown-node" })
+
+        let document = try XCTUnwrap(result.document)
+        XCTAssertTrue(document.hierarchyEdges.isEmpty)
+        XCTAssertTrue(document.instanceEdges.isEmpty)
+        XCTAssertTrue(document.resources.isEmpty)
+        XCTAssertTrue(document.dependencies.isEmpty)
+        XCTAssertTrue(document.animations.isEmpty)
+        XCTAssertTrue(document.scripts.isEmpty)
     }
 
     func testBuildPreservesIdentifiersAndCommonTypedProperties() throws {
@@ -114,6 +122,59 @@ final class SceneGraphBuilderTests: XCTestCase {
             "type": .string("sound")
         ])
         XCTAssertEqual(result.status, .unsupported)
+    }
+
+    func testBuildRetainsMalformedWinningReferenceClassifiers() throws {
+        let result = try build(#"""
+        {
+          "objects":[
+            {"image":42},
+            {"particle":false},
+            {"sound":["invalid"]},
+            {"model":{"value":7}},
+            {"composition":null},
+            {"image":"images/valid.json"},
+            {"particle":{"value":"particles/valid.json"}},
+            {"sound":"sounds/valid.json"},
+            {"model":{"value":"models/valid.json"}},
+            {"composition":"compositions/valid.json"}
+          ]
+        }
+        """#)
+
+        let nodes = try XCTUnwrap(result.document?.nodes)
+        XCTAssertEqual(nodes.map(\.payload.kind), [
+            .image, .particle, .sound, .model, .composition,
+            .image, .particle, .sound, .model, .composition
+        ])
+        XCTAssertEqual(nodes[0].unknownFields, ["image": .integer(42)])
+        XCTAssertEqual(nodes[1].unknownFields, ["particle": .bool(false)])
+        XCTAssertEqual(nodes[2].unknownFields, [
+            "sound": .array([.string("invalid")])
+        ])
+        XCTAssertEqual(nodes[3].unknownFields, [
+            "model": .object(["value": .integer(7)])
+        ])
+        XCTAssertEqual(nodes[4].unknownFields, ["composition": .null])
+        XCTAssertEqual(nodes.dropFirst(5).map(\.unknownFields),
+                       Array(repeating: [:], count: 5))
+        XCTAssertEqual(nodes[5].payload, .image(reference: "images/valid.json"))
+        XCTAssertEqual(nodes[6].payload, .particle(reference: "particles/valid.json"))
+        XCTAssertEqual(nodes[7].payload, .sound(reference: "sounds/valid.json"))
+        XCTAssertEqual(nodes[8].payload, .model(reference: "models/valid.json"))
+        XCTAssertEqual(nodes[9].payload, .composition(
+            reference: "compositions/valid.json"
+        ))
+        XCTAssertEqual(result.diagnostics.filter {
+            $0.code == "graph.invalid-property"
+        }.map(\.jsonPath), [
+            "objects[0].image",
+            "objects[1].particle",
+            "objects[2].sound",
+            "objects[3].model",
+            "objects[4].composition"
+        ])
+        XCTAssertEqual(result.status, .degraded)
     }
 
     func testBuildDoesNotApplyHistoricalNodeCountCap() throws {
@@ -290,6 +351,74 @@ final class SceneGraphBuilderTests: XCTestCase {
         ])
         XCTAssertEqual(result.diagnostics.map(\.severity), [
             .warning, .warning, .warning, .warning
+        ])
+    }
+
+    func testDiagnosticOrderingUsesEverySpecifiedKey() throws {
+        let aPath = try SceneVirtualPath(canonicalPath: "a.json")
+        let bPath = try SceneVirtualPath(canonicalPath: "b.json")
+        let zPath = try SceneVirtualPath(canonicalPath: "z.json")
+        let node0 = SceneNodeID(documentPath: bPath, objectIndex: 0)
+        let node1 = SceneNodeID(documentPath: bPath, objectIndex: 1)
+        let node9 = SceneNodeID(documentPath: zPath, objectIndex: 9)
+
+        func diagnostic(
+            _ severity: SceneGraphDiagnosticSeverity,
+            _ sourcePath: SceneVirtualPath?,
+            _ nodeID: SceneNodeID?,
+            _ jsonPath: String?,
+            _ code: String,
+            _ arguments: [String]
+        ) -> SceneGraphParserDiagnostic {
+            SceneGraphParserDiagnostic(
+                severity: severity,
+                code: code,
+                sourcePath: sourcePath,
+                nodeID: nodeID,
+                jsonPath: jsonPath,
+                arguments: arguments,
+                status: .degraded
+            )
+        }
+
+        let diagnostics = [
+            diagnostic(.info, nil, nil, nil, "a", ["a"]),
+            diagnostic(.warning, bPath, node1, "b", "b", ["b"]),
+            diagnostic(.warning, aPath, nil, nil, "z", ["z"]),
+            diagnostic(.error, zPath, node9, "z", "z", ["z"]),
+            diagnostic(.warning, bPath, node0, nil, "z", ["z"]),
+            diagnostic(.warning, nil, nil, nil, "z", ["z"]),
+            diagnostic(.warning, bPath, node1, "b", "a", ["z"]),
+            diagnostic(.warning, bPath, nil, nil, "z", ["z"]),
+            diagnostic(.warning, bPath, node1, "a", "z", ["z"]),
+            diagnostic(.warning, bPath, node1, nil, "z", ["z"]),
+            diagnostic(.warning, bPath, node1, "b", "b", ["a"])
+        ]
+        var accumulator = SceneGraphStatusAccumulator()
+        accumulator.append(contentsOf: diagnostics)
+
+        let actual = accumulator.sortedDiagnostics.map { diagnostic in
+            [
+                diagnostic.severity.rawValue,
+                diagnostic.sourcePath?.rawValue ?? "nil",
+                diagnostic.nodeID.map { String($0.objectIndex) } ?? "nil",
+                diagnostic.jsonPath ?? "nil",
+                diagnostic.code,
+                diagnostic.arguments.joined(separator: ",")
+            ].joined(separator: "|")
+        }
+        XCTAssertEqual(actual, [
+            "error|z.json|9|z|z|z",
+            "warning|nil|nil|nil|z|z",
+            "warning|a.json|nil|nil|z|z",
+            "warning|b.json|nil|nil|z|z",
+            "warning|b.json|0|nil|z|z",
+            "warning|b.json|1|nil|z|z",
+            "warning|b.json|1|a|z|z",
+            "warning|b.json|1|b|a|z",
+            "warning|b.json|1|b|b|a",
+            "warning|b.json|1|b|b|b",
+            "info|nil|nil|nil|a|a"
         ])
     }
 

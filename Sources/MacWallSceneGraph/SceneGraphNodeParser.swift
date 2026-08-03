@@ -292,7 +292,9 @@ struct SceneGraphNodeParser: Sendable {
     ) -> SceneNodePayload {
         for kind in SceneGraphNodeKind.ordered {
             if let value = fields[kind.key] {
-                fields.removeValue(forKey: kind.key)
+                if isValidClassifierValue(value, for: kind) {
+                    fields.removeValue(forKey: kind.key)
+                }
                 return payload(kind: kind, value: value, rawValue: rawValue)
             }
         }
@@ -304,6 +306,18 @@ struct SceneGraphNodeParser: Sendable {
             return .unknown(typeName: typeName, rawValue: rawValue)
         }
         return .unknown(typeName: nil, rawValue: rawValue)
+    }
+
+    private func isValidClassifierValue(
+        _ value: SceneJSONValue,
+        for kind: SceneGraphNodeKind
+    ) -> Bool {
+        switch kind {
+        case .image, .particle, .sound, .model, .composition:
+            optionalReference(from: value) != nil
+        case .text, .fullscreen:
+            true
+        }
     }
 
     private func payload(
