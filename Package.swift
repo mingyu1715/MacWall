@@ -29,6 +29,10 @@ let package = Package(
             dependencies: ["MacWallSceneFormats"]
         ),
         .target(
+            name: "MacWallSceneGraph",
+            dependencies: ["MacWallSceneAssets"]
+        ),
+        .target(
             name: "MacWallSceneTestSupport",
             dependencies: ["MacWallSceneFormats"],
             path: "Tests/MacWallSceneTestSupport"
@@ -86,6 +90,15 @@ let package = Package(
         .testTarget(
             name: "MacWallSceneAssetsTests",
             dependencies: [
+                "MacWallSceneAssets",
+                "MacWallSceneFormats",
+                "MacWallSceneTestSupport"
+            ]
+        ),
+        .testTarget(
+            name: "MacWallSceneGraphTests",
+            dependencies: [
+                "MacWallSceneGraph",
                 "MacWallSceneAssets",
                 "MacWallSceneFormats",
                 "MacWallSceneTestSupport"
