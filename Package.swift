@@ -19,7 +19,10 @@ let package = Package(
         .target(name: "MacWallSceneFormats"),
         .target(
             name: "MacWallSceneAudit",
-            dependencies: ["MacWallSceneFormats"]
+            dependencies: [
+                "MacWallSceneFormats",
+                "MacWallSceneAssets"
+            ]
         ),
         .target(
             name: "MacWallSceneAssets",

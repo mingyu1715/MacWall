@@ -113,6 +113,25 @@ final class SceneAuditorTests: XCTestCase {
         XCTAssertEqual(report.status, .unsupported)
     }
 
+    func testResolvesOwnerRelativeDocumentDependency() {
+        let report = audit(entries: [
+            jsonEntry("scene.json", #"{"objects":[]}"#),
+            jsonEntry(
+                "models/sub/model.json",
+                #"{"material":"../materials/base.json"}"#
+            ),
+            jsonEntry("models/materials/base.json", #"{}"#)
+        ])
+
+        XCTAssertEqual(report.schemaVersion, 2)
+        XCTAssertTrue(report.dependencies.contains {
+            $0.ownerPath == "models/sub/model.json"
+                && $0.requestedPath == "../materials/base.json"
+                && $0.resolvedPath == "models/materials/base.json"
+                && $0.resolution == .package
+        })
+    }
+
     func testMalformedPackageReturnsInvalidReportWithoutThrowing() {
         let report = SceneAuditor().audit(
             source: SceneDataByteSource(

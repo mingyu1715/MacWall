@@ -113,6 +113,7 @@ public enum SceneAuditDependencyResolution:
 {
     case package
     case builtInCandidate
+    case externalCandidate
     case unresolved
 }
 

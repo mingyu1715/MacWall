@@ -1,4 +1,5 @@
 import Foundation
+import MacWallSceneAssets
 import MacWallSceneFormats
 
 public struct SceneAuditLimits: Equatable, Sendable {
@@ -172,11 +173,11 @@ public struct SceneAuditor: Sendable {
             }
         }
 
-        let packagePaths = Set(archive.entries.map(\.path))
+        let resolver = ScenePackageAssetResolver(archive: archive)
         let evidence = SceneJSONInspector().inspect(
             scene: scene,
             documents: documents,
-            packagePaths: packagePaths
+            resolver: resolver
         )
         diagnostics.append(contentsOf: evidence.diagnostics)
 

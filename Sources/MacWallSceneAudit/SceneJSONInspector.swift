@@ -1,4 +1,5 @@
 import Foundation
+import MacWallSceneAssets
 
 struct SceneJSONAuditEvidence: Sendable {
     var canvas: SceneAuditCanvas?
@@ -10,24 +11,24 @@ struct SceneJSONAuditEvidence: Sendable {
 }
 
 struct SceneJSONInspector: Sendable {
-    private static let assetReferenceKeys: Set<String> = [
-        "effect",
-        "file",
-        "font",
-        "image",
-        "material",
-        "model",
-        "particle",
-        "shader",
-        "sound",
-        "texture",
-        "textures"
+    private static let assetReferenceRoles: [String: SceneAssetRole] = [
+        "effect": .effect,
+        "file": .document,
+        "font": .font,
+        "image": .model,
+        "material": .material,
+        "model": .model,
+        "particle": .particle,
+        "shader": .shader,
+        "sound": .sound,
+        "texture": .texture,
+        "textures": .texture
     ]
 
     func inspect(
         scene: [String: Any],
         documents: [String: Any],
-        packagePaths: Set<String>
+        resolver: ScenePackageAssetResolver
     ) -> SceneJSONAuditEvidence {
         var evidence = SceneJSONAuditEvidence()
         evidence.canvas = canvas(from: scene)
@@ -40,7 +41,7 @@ struct SceneJSONInspector: Sendable {
             inspectDocument(
                 document,
                 ownerPath: ownerPath,
-                packagePaths: packagePaths,
+                resolver: resolver,
                 evidence: &evidence
             )
         }
@@ -146,7 +147,7 @@ struct SceneJSONInspector: Sendable {
     private func inspectDocument(
         _ value: Any,
         ownerPath: String,
-        packagePaths: Set<String>,
+        resolver: ScenePackageAssetResolver,
         evidence: inout SceneJSONAuditEvidence
     ) {
         if let dictionary = value as? [String: Any] {
@@ -164,7 +165,7 @@ struct SceneJSONInspector: Sendable {
                         to: &evidence.scriptHandlers
                     )
                 }
-                if Self.assetReferenceKeys.contains(key) {
+                if let role = Self.assetReferenceRoles[key] {
                     let references = assetReferences(
                         for: key,
                         value: child
@@ -175,7 +176,8 @@ struct SceneJSONInspector: Sendable {
                                 requestedPath: $0,
                                 ownerPath: ownerPath,
                                 key: key,
-                                packagePaths: packagePaths
+                                role: role,
+                                resolver: resolver
                             )
                         }
                     )
@@ -183,7 +185,7 @@ struct SceneJSONInspector: Sendable {
                 inspectDocument(
                     child,
                     ownerPath: ownerPath,
-                    packagePaths: packagePaths,
+                    resolver: resolver,
                     evidence: &evidence
                 )
             }
@@ -192,7 +194,7 @@ struct SceneJSONInspector: Sendable {
                 inspectDocument(
                     child,
                     ownerPath: ownerPath,
-                    packagePaths: packagePaths,
+                    resolver: resolver,
                     evidence: &evidence
                 )
             }
@@ -216,43 +218,28 @@ struct SceneJSONInspector: Sendable {
         requestedPath: String,
         ownerPath: String,
         key: String,
-        packagePaths: Set<String>
+        role: SceneAssetRole,
+        resolver: ScenePackageAssetResolver
     ) -> SceneAuditDependency {
-        if packagePaths.contains(requestedPath) {
+        let request = SceneAssetRequest(
+            requestedPath: requestedPath,
+            ownerPath: try? SceneVirtualPath(
+                canonicalPath: ownerPath
+            ),
+            role: role,
+            key: key
+        )
+        let resolution = resolver.resolve(request)
+        switch resolution.kind {
+        case .package:
             return SceneAuditDependency(
                 ownerPath: ownerPath,
                 key: key,
                 requestedPath: requestedPath,
-                resolvedPath: requestedPath,
+                resolvedPath: resolution.selected?.canonicalPath.rawValue,
                 resolution: .package
             )
-        }
-
-        if key == "texture" || key == "textures" {
-            let candidates = [
-                "materials/\(requestedPath).tex",
-                "\(requestedPath).tex",
-                requestedPath
-            ]
-            if let resolved = candidates.first(
-                where: packagePaths.contains
-            ) {
-                return SceneAuditDependency(
-                    ownerPath: ownerPath,
-                    key: key,
-                    requestedPath: requestedPath,
-                    resolvedPath: resolved,
-                    resolution: .package
-                )
-            }
-        }
-
-        let pathExtension = URL(
-            filePath: requestedPath
-        ).pathExtension
-        if key == "shader",
-           !requestedPath.contains("/"),
-           pathExtension.isEmpty {
+        case .builtInCandidate:
             return SceneAuditDependency(
                 ownerPath: ownerPath,
                 key: key,
@@ -260,25 +247,23 @@ struct SceneJSONInspector: Sendable {
                 resolvedPath: nil,
                 resolution: .builtInCandidate
             )
-        }
-        if requestedPath.hasPrefix("util/")
-            || requestedPath.hasPrefix("models/util/")
-            || requestedPath.hasPrefix("shaders/") {
+        case .externalCandidate:
             return SceneAuditDependency(
                 ownerPath: ownerPath,
                 key: key,
                 requestedPath: requestedPath,
                 resolvedPath: nil,
-                resolution: .builtInCandidate
+                resolution: .externalCandidate
+            )
+        case .unresolved, .invalid:
+            return SceneAuditDependency(
+                ownerPath: ownerPath,
+                key: key,
+                requestedPath: requestedPath,
+                resolvedPath: nil,
+                resolution: .unresolved
             )
         }
-        return SceneAuditDependency(
-            ownerPath: ownerPath,
-            key: key,
-            requestedPath: requestedPath,
-            resolvedPath: nil,
-            resolution: .unresolved
-        )
     }
 
     private func addScriptHandlers(
