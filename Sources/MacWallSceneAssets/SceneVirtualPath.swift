@@ -12,6 +12,8 @@ public enum SceneVirtualPathError: Error, Equatable, Sendable {
 public struct SceneVirtualPath: Codable, Comparable, Hashable, Sendable {
     public let rawValue: String
 
+    private static let maximumUTF8ByteCount = 4_096
+
     public init(canonicalPath: String) throws {
         let components = try Self.validatedComponents(
             in: canonicalPath,
@@ -77,6 +79,9 @@ public struct SceneVirtualPath: Codable, Comparable, Hashable, Sendable {
     ) throws -> [String] {
         guard !path.isEmpty else {
             throw SceneVirtualPathError.empty
+        }
+        guard path.utf8.count <= maximumUTF8ByteCount else {
+            throw SceneVirtualPathError.emptyComponent
         }
         guard !path.hasPrefix("/") else {
             throw SceneVirtualPathError.absolute

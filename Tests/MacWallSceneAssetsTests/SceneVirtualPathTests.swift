@@ -46,4 +46,33 @@ final class SceneVirtualPathTests: XCTestCase {
             }
         }
     }
+
+    func testRejectsPathsOver4096UTF8BytesNotCharacters() throws {
+        let multibytePath = String(repeating: "가", count: 1_366)
+        XCTAssertEqual(multibytePath.count, 1_366)
+        XCTAssertGreaterThan(multibytePath.utf8.count, 4_096)
+        XCTAssertThrowsError(try SceneVirtualPath(canonicalPath: multibytePath))
+        XCTAssertThrowsError(
+            try SceneVirtualPath.resolving(
+                reference: multibytePath,
+                relativeTo: nil
+            )
+        )
+
+        let owner = try SceneVirtualPath(
+            canonicalPath: String(repeating: "a", count: 4_091) + "/x"
+        )
+        let reference = "12345"
+        XCTAssertLessThanOrEqual(reference.utf8.count, 4_096)
+        XCTAssertGreaterThan(
+            owner.rawValue.dropLast(2).utf8.count + 1 + reference.utf8.count,
+            4_096
+        )
+        XCTAssertThrowsError(
+            try SceneVirtualPath.resolving(
+                reference: reference,
+                relativeTo: owner
+            )
+        )
+    }
 }
