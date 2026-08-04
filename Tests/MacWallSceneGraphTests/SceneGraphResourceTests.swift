@@ -377,6 +377,174 @@ final class SceneGraphResourceTests: XCTestCase {
         XCTAssertFalse(result.diagnostics.contains { $0.code == "graph.resource-limit" })
     }
 
+    func testRetainsMalformedKnownMetadataAndContinuesTopLevelTextures() throws {
+        let result = try build(entries: [
+            entry(
+                "scene.json",
+                #"{"objects":[{"image":"models/invalid.json"},{"image":"models/material.json"}]}"#
+            ),
+            entry("models/invalid.json", #"{"material":7,"mesh":"quad"}"#),
+            entry("models/material.json", #"{"material":"materials/bad-passes.json"}"#),
+            entry(
+                "materials/bad-passes.json",
+                #"{"passes":false,"texture":"base","kept":"metadata"}"#
+            ),
+            texture("materials/base.tex")
+        ])
+        let document = try XCTUnwrap(result.document)
+        let models = document.resources.compactMap { resource -> SceneModelResource? in
+            guard case let .model(model) = resource else { return nil }
+            return model
+        }
+        let material = try XCTUnwrap(document.resources.compactMap {
+            resource -> SceneMaterialResource? in
+            guard case let .material(material) = resource else { return nil }
+            return material
+        }.first)
+
+        XCTAssertEqual(models.first { $0.path.rawValue == "models/invalid.json" }?.unknownFields, [
+            "material": .integer(7),
+            "mesh": .string("quad")
+        ])
+        XCTAssertEqual(material.unknownFields, [
+            "kept": .string("metadata"),
+            "passes": .bool(false)
+        ])
+        let topLevelPass = try XCTUnwrap(material.passes.first)
+        XCTAssertEqual(material.passes.count, 1)
+        XCTAssertEqual(topLevelPass.textureBindings.first?.dependency.resolution.kind, .package)
+        XCTAssertEqual(
+            result.diagnostics.filter { $0.code == "graph.invalid-property" }.map(\.jsonPath),
+            ["passes", "material"]
+        )
+    }
+
+    func testPreservesPassSourceOffsetsAfterMalformedEntries() throws {
+        let result = try build(entries: [
+            entry("scene.json", #"{"objects":[{"image":"models/model.json"}]}"#),
+            entry("models/model.json", #"{"material":"materials/material.json"}"#),
+            entry(
+                "materials/material.json",
+                #"{"passes":[false,{"texture":"base"},"passes/referenced.json",42],"texture":"top"}"#
+            ),
+            entry("passes/referenced.json", #"{"shader":"genericimage4"}"#),
+            texture("materials/base.tex"),
+            texture("materials/top.tex")
+        ])
+        let document = try XCTUnwrap(result.document)
+        let material = try XCTUnwrap(document.resources.compactMap {
+            resource -> SceneMaterialResource? in
+            guard case let .material(material) = resource else { return nil }
+            return material
+        }.first)
+
+        XCTAssertEqual(material.passes.map(\.index), [1, 2, 4])
+        XCTAssertEqual(material.passes[1].documentDependency?.owner, .materialPass(
+            material: material.id,
+            index: 2
+        ))
+        XCTAssertEqual(
+            result.diagnostics.filter { $0.code == "graph.invalid-property" }.map(\.jsonPath),
+            ["passes[0]", "passes[3]"]
+        )
+    }
+
+    func testReservesFailedJSONReadsAndMemoizesTheirFailure() throws {
+        let scene = #"{"objects":[{"image":"models/fails.json"},{"image":"models/fails.json"},{"image":"models/later.json"}]}"#
+        let failedModel = #"{"material":"materials/unused.json"}"#
+        let laterModel = #"{"material":"materials/later.json"}"#
+        let packageData = ScenePackageFixtureBuilder.make(entries: [
+            entry("scene.json", scene),
+            entry("models/fails.json", failedModel),
+            entry("models/later.json", laterModel)
+        ])
+        let archive = try ScenePackageArchiveReader().read(
+            source: SceneDataByteSource(data: packageData)
+        )
+        let failedRange = try XCTUnwrap(archive.entry(named: "models/fails.json")).payloadRange
+        let laterRange = try XCTUnwrap(archive.entry(named: "models/later.json")).payloadRange
+        let source = FailingRangeSceneByteSource(
+            data: packageData,
+            failingRange: failedRange
+        )
+        let resolver = try ScenePackageAssetResolver.open(source: source)
+        source.resetReadRanges()
+
+        let result = SceneGraphBuilder(limits: SceneGraphLimits(
+            maximumJSONEntryBytes: 1_024,
+            maximumCumulativeJSONBytes: UInt64(scene.utf8.count + failedModel.utf8.count)
+        )).build(resolver: resolver)
+
+        XCTAssertEqual(source.readRanges.filter { $0.overlaps(failedRange) }.count, 1)
+        XCTAssertFalse(source.readRanges.contains { $0.overlaps(laterRange) })
+        XCTAssertEqual(result.status, .invalid)
+        XCTAssertTrue(result.diagnostics.contains { $0.code == "graph.resource-limit" })
+    }
+
+    func testDiagnosesMalformedTextureBindingSlotWithoutDroppingRawBinding() throws {
+        let result = try build(entries: [
+            entry("scene.json", #"{"objects":[{"image":"models/model.json"}]}"#),
+            entry("models/model.json", #"{"material":"materials/material.json"}"#),
+            entry(
+                "materials/material.json",
+                #"{"passes":[{"textures":[{"slot":7,"texture":"base"}]}]}"#
+            ),
+            texture("materials/base.tex")
+        ])
+        let material = try XCTUnwrap(result.document?.resources.compactMap {
+            resource -> SceneMaterialResource? in
+            guard case let .material(material) = resource else { return nil }
+            return material
+        }.first)
+
+        XCTAssertNil(material.passes[0].textureBindings[0].slot)
+        XCTAssertEqual(material.passes[0].textureBindings[0].rawValue, .object([
+            "slot": .integer(7),
+            "texture": .string("base")
+        ]))
+        XCTAssertTrue(result.diagnostics.contains {
+            $0.code == "graph.invalid-property" && $0.jsonPath == "textures[0].slot"
+        })
+        XCTAssertEqual(result.status, .unsupported)
+    }
+
+    func testDoesNotReadPackageTextureShaderOrEffectPayloadRanges() throws {
+        let entries = [
+            entry("scene.json", #"{"objects":[{"image":"models/model.json"}]}"#),
+            entry("models/model.json", #"{"material":"materials/material.json"}"#),
+            entry(
+                "materials/material.json",
+                #"{"passes":[{"shader":"shaders/custom.glsl","texture":"base","effect":"effects/custom.json"}]}"#
+            ),
+            .init(path: "shaders/custom.glsl", data: Data(repeating: 1, count: 4_096)),
+            texture("materials/base.tex"),
+            .init(path: "effects/custom.json", data: Data(repeating: 2, count: 4_096))
+        ]
+        let packageData = ScenePackageFixtureBuilder.make(entries: entries)
+        let archive = try ScenePackageArchiveReader().read(
+            source: SceneDataByteSource(data: packageData)
+        )
+        let protectedRanges = try [
+            "materials/base.tex",
+            "shaders/custom.glsl",
+            "effects/custom.json"
+        ].map { path in
+            try XCTUnwrap(archive.entry(named: path)).payloadRange
+        }
+        let recording = RecordingSceneByteSource(
+            base: SceneDataByteSource(data: packageData)
+        )
+        let resolver = try ScenePackageAssetResolver.open(source: recording)
+        recording.resetReadRanges()
+
+        let result = SceneGraphBuilder().build(resolver: resolver)
+
+        XCTAssertNotNil(result.document)
+        XCTAssertFalse(recording.readRanges.contains { readRange in
+            protectedRanges.contains { readRange.overlaps($0) }
+        })
+    }
+
     private func standardChainEntries() -> [ScenePackageFixtureEntry] {
         [
             entry("scene.json", #"{"objects":[{"image":"models/background.json"}]}"#),
@@ -410,5 +578,31 @@ final class SceneGraphResourceTests: XCTestCase {
 
     private func texture(_ path: String) -> ScenePackageFixtureEntry {
         .init(path: path, data: Data([0x54, 0x45, 0x58]))
+    }
+}
+
+private final class FailingRangeSceneByteSource: SceneByteSource, @unchecked Sendable {
+    private let base: SceneDataByteSource
+    private let failingRange: Range<UInt64>
+    private var ranges: [Range<UInt64>] = []
+
+    var byteCount: UInt64 { base.byteCount }
+    var readRanges: [Range<UInt64>] { ranges }
+
+    init(data: Data, failingRange: Range<UInt64>) {
+        base = SceneDataByteSource(data: data)
+        self.failingRange = failingRange
+    }
+
+    func resetReadRanges() {
+        ranges.removeAll(keepingCapacity: true)
+    }
+
+    func read(range: Range<UInt64>) throws -> Data {
+        ranges.append(range)
+        guard !range.overlaps(failingRange) else {
+            throw SceneFormatError.outOfBounds
+        }
+        return try base.read(range: range)
     }
 }

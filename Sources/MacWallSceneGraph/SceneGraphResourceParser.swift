@@ -95,7 +95,7 @@ struct SceneGraphResourceParser: Sendable {
         let id = SceneResourceID(kind: .model, path: asset.canonicalPath)
         var fields = object
         let materialDependency: SceneDependencyEdge?
-        if let material = fields.removeValue(forKey: "material") {
+        if let material = fields["material"] {
             guard case let .string(reference) = material else {
                 appendInvalidProperty(sourcePath: asset.canonicalPath, jsonPath: "material")
                 resources[id] = .model(
@@ -108,6 +108,7 @@ struct SceneGraphResourceParser: Sendable {
                 )
                 return
             }
+            fields.removeValue(forKey: "material")
             materialDependency = addDependency(
                 owner: .resource(id),
                 key: "material",
@@ -166,46 +167,40 @@ struct SceneGraphResourceParser: Sendable {
 
         let id = SceneResourceID(kind: .material, path: asset.canonicalPath)
         var fields = object
-        let rawPasses = fields.removeValue(forKey: "passes")
+        let rawPasses = fields["passes"]
         var passes: [SceneMaterialPass] = []
+        var nextSyntheticPassIndex = 0
 
         if let rawPasses {
-            guard case let .array(values) = rawPasses else {
-                appendInvalidProperty(sourcePath: asset.canonicalPath, jsonPath: "passes")
-                resources[id] = .material(
-                    SceneMaterialResource(
-                        id: id,
-                        path: asset.canonicalPath,
-                        passes: passes,
-                        unknownFields: fields
-                    )
-                )
-                return
-            }
-            for value in values where !stopped {
-                let index = passes.count
-                switch value {
-                case let .object(pass):
-                    passes.append(parsePass(
-                        pass,
-                        index: index,
-                        materialID: id,
-                        sourcePath: asset.canonicalPath,
-                        documentDependency: nil
-                    ))
-                case let .string(reference):
-                    passes.append(parseReferencedPass(
-                        reference,
-                        index: index,
-                        materialID: id,
-                        ownerPath: asset.canonicalPath
-                    ))
-                default:
-                    appendInvalidProperty(
-                        sourcePath: asset.canonicalPath,
-                        jsonPath: "passes[\(index)]"
-                    )
+            if case let .array(values) = rawPasses {
+                fields.removeValue(forKey: "passes")
+                nextSyntheticPassIndex = values.count
+                for (index, value) in values.enumerated() where !stopped {
+                    switch value {
+                    case let .object(pass):
+                        passes.append(parsePass(
+                            pass,
+                            index: index,
+                            materialID: id,
+                            sourcePath: asset.canonicalPath,
+                            documentDependency: nil
+                        ))
+                    case let .string(reference):
+                        passes.append(parseReferencedPass(
+                            reference,
+                            index: index,
+                            materialID: id,
+                            ownerPath: asset.canonicalPath
+                        ))
+                    default:
+                        appendInvalidProperty(
+                            sourcePath: asset.canonicalPath,
+                            jsonPath: "passes[\(index)]"
+                        )
+                    }
                 }
+            } else {
+                appendInvalidProperty(sourcePath: asset.canonicalPath, jsonPath: "passes")
             }
         }
 
@@ -219,7 +214,7 @@ struct SceneGraphResourceParser: Sendable {
         if !topLevelBindings.isEmpty, !stopped {
             passes.append(parsePass(
                 topLevelBindings,
-                index: passes.count,
+                index: nextSyntheticPassIndex,
                 materialID: id,
                 sourcePath: asset.canonicalPath,
                 documentDependency: nil
@@ -411,8 +406,16 @@ struct SceneGraphResourceParser: Sendable {
                 return []
             }
             let slot: String?
-            if case let .string(value)? = object["slot"] {
-                slot = value
+            if let rawSlot = object["slot"] {
+                if case let .string(value) = rawSlot {
+                    slot = value
+                } else {
+                    slot = nil
+                    appendInvalidProperty(
+                        sourcePath: sourcePath,
+                        jsonPath: "\(jsonPath).slot"
+                    )
+                }
             } else {
                 slot = nil
             }
@@ -535,6 +538,7 @@ struct SceneGraphResourceParser: Sendable {
             appendResourceLimit(sourcePath: asset.canonicalPath)
             return nil
         }
+        cumulativeJSONBytes = next
         let data: Data
         do {
             data = try resolver.read(asset, maximumBytes: limits.maximumJSONEntryBytes)
@@ -542,7 +546,6 @@ struct SceneGraphResourceParser: Sendable {
             appendInvalidProperty(sourcePath: asset.canonicalPath, jsonPath: nil)
             return nil
         }
-        cumulativeJSONBytes = next
         do {
             guard case let .object(object) = try SceneJSONDocumentDecoder(
                 maximumDepth: limits.maximumJSONDepth
