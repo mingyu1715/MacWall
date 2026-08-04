@@ -315,7 +315,7 @@ final class SceneGraphResourceTests: XCTestCase {
         XCTAssertEqual(result.status, .unsupported)
     }
 
-    func testRecordsPassEffectsWithoutCreatingEffectResources() throws {
+    func testRecordsPassEffectsAsUnsupportedMetadataResources() throws {
         let result = try build(entries: [
             entry("scene.json", #"{"objects":[{"image":"models/model.json"}]}"#),
             entry("models/model.json", #"{"material":"materials/material.json"}"#),
@@ -323,8 +323,8 @@ final class SceneGraphResourceTests: XCTestCase {
                 "materials/material.json",
                 #"{"passes":[{"effect":"effects/one.json","effects":["effects/two.json"],"kept":true}]}"#
             ),
-            .init(path: "effects/one.json", data: Data([1])),
-            .init(path: "effects/two.json", data: Data([2]))
+            entry("effects/one.json", #"{"strength":1}"#),
+            entry("effects/two.json", #"{"strength":2}"#)
         ])
         let document = try XCTUnwrap(result.document)
         let material = try XCTUnwrap(document.resources.compactMap {
@@ -338,11 +338,104 @@ final class SceneGraphResourceTests: XCTestCase {
             "effects/two.json"
         ])
         XCTAssertEqual(material.passes[0].unknownFields, ["kept": .bool(true)])
-        XCTAssertFalse(document.resources.contains {
+        XCTAssertEqual(document.resources.filter {
             if case .effect = $0 { return true }
             return false
+        }.map(\.id.rawValue), ["effect:effects/one.json", "effect:effects/two.json"])
+        XCTAssertEqual(
+            result.diagnostics.filter { $0.code == "graph.unsupported-effect" }.count,
+            2
+        )
+        XCTAssertEqual(result.status, .unsupported)
+    }
+
+    func testPreservesEffectShaderAndSceneScriptMetadataWithoutExecution() throws {
+        let sceneScript = """
+        // function ignoredFromLineComment() {}
+        function update() {}
+        function init() {}
+        /* function ignoredFromBlockComment() {} */
+        let text = \"function ignoredFromString() {}\";
+        function update() {}
+        """
+        let nodeScript = "function init() {}"
+        let materialScript = "function applyUserProperties() {}"
+        let effectScript = "function arbitraryHandler() {}"
+        let result = try build(entries: [
+            entry(
+                "scene.json",
+                "{\"script\":\"\(escaped(sceneScript))\",\"objects\":[{\"image\":\"models/background.json\",\"script\":\"\(escaped(nodeScript))\"}]}"
+            ),
+            entry("models/background.json", #"{"material":"materials/background.json"}"#),
+            entry(
+                "materials/background.json",
+                "{\"script\":\"\(escaped(materialScript))\",\"passes\":[{\"shader\":\"shaders/custom.glsl\",\"effect\":\"effects/glow/effect.json\"},{\"shader\":\"genericimage4\"}]}"
+            ),
+            entry(
+                "effects/glow/effect.json",
+                "{\"script\":\"\(escaped(effectScript))\",\"texture\":\"textures/glow.tex\"}"
+            ),
+            .init(path: "shaders/custom.glsl", data: Data(repeating: 1, count: 4_096)),
+            texture("effects/glow/textures/glow.tex")
+        ])
+        let document = try XCTUnwrap(result.document)
+
+        XCTAssertEqual(document.scripts.count, 4)
+        XCTAssertTrue(document.scripts.contains {
+            $0.ownerPath.rawValue == "scene.json" && $0.jsonPath == "$.script"
         })
-        XCTAssertEqual(result.status, .exact)
+        XCTAssertTrue(document.scripts.contains {
+            $0.ownerPath.rawValue == "scene.json" && $0.jsonPath == "$.objects[0].script"
+        })
+        XCTAssertTrue(document.scripts.contains {
+            $0.ownerPath.rawValue == "materials/background.json" && $0.jsonPath == "$.script"
+        })
+        XCTAssertTrue(document.scripts.contains {
+            $0.ownerPath.rawValue == "effects/glow/effect.json" && $0.jsonPath == "$.script"
+        })
+        XCTAssertEqual(
+            document.scripts.first {
+                $0.ownerPath.rawValue == "scene.json" && $0.jsonPath == "$.script"
+            }?.source,
+            sceneScript
+        )
+        XCTAssertEqual(
+            document.scripts.first {
+                $0.ownerPath.rawValue == "scene.json" && $0.jsonPath == "$.script"
+            }?.handlerNames,
+            ["init", "update"]
+        )
+        XCTAssertEqual(
+            document.scripts.first { $0.jsonPath == "$.objects[0].script" }?.handlerNames,
+            ["init"]
+        )
+        XCTAssertEqual(
+            document.scripts.first { $0.ownerPath.rawValue == "materials/background.json" }?.handlerNames,
+            ["applyUserProperties"]
+        )
+        XCTAssertEqual(
+            document.scripts.first { $0.ownerPath.rawValue == "effects/glow/effect.json" }?.handlerNames,
+            ["arbitraryHandler"]
+        )
+        XCTAssertTrue(document.resources.contains {
+            if case let .effect(effect) = $0 {
+                return effect.path.rawValue == "effects/glow/effect.json"
+                    && effect.dependencies.contains {
+                        $0.request.role == .texture
+                            && $0.request.requestedPath == "textures/glow.tex"
+                    }
+            }
+            return false
+        })
+        XCTAssertEqual(document.resources.filter {
+            if case .shader = $0 { return true }
+            return false
+        }.map(\.id.rawValue), ["shader:genericimage4", "shader:shaders/custom.glsl"])
+        XCTAssertTrue(result.diagnostics.contains {
+            $0.code == "graph.scenescript-preserved-not-executed"
+        })
+        XCTAssertTrue(result.diagnostics.contains { $0.code == "graph.unsupported-effect" })
+        XCTAssertEqual(result.status, .unsupported)
     }
 
     func testMemoizesReferencedPassDocumentsWithinCumulativeLimit() throws {
@@ -508,7 +601,7 @@ final class SceneGraphResourceTests: XCTestCase {
         XCTAssertEqual(result.status, .unsupported)
     }
 
-    func testDoesNotReadPackageTextureShaderOrEffectPayloadRanges() throws {
+    func testDoesNotReadPackageTextureOrShaderPayloadRanges() throws {
         let entries = [
             entry("scene.json", #"{"objects":[{"image":"models/model.json"}]}"#),
             entry("models/model.json", #"{"material":"materials/material.json"}"#),
@@ -518,7 +611,7 @@ final class SceneGraphResourceTests: XCTestCase {
             ),
             .init(path: "shaders/custom.glsl", data: Data(repeating: 1, count: 4_096)),
             texture("materials/base.tex"),
-            .init(path: "effects/custom.json", data: Data(repeating: 2, count: 4_096))
+            entry("effects/custom.json", #"{"texture":"base"}"#)
         ]
         let packageData = ScenePackageFixtureBuilder.make(entries: entries)
         let archive = try ScenePackageArchiveReader().read(
@@ -526,8 +619,7 @@ final class SceneGraphResourceTests: XCTestCase {
         )
         let protectedRanges = try [
             "materials/base.tex",
-            "shaders/custom.glsl",
-            "effects/custom.json"
+            "shaders/custom.glsl"
         ].map { path in
             try XCTUnwrap(archive.entry(named: path)).payloadRange
         }
@@ -578,6 +670,13 @@ final class SceneGraphResourceTests: XCTestCase {
 
     private func texture(_ path: String) -> ScenePackageFixtureEntry {
         .init(path: path, data: Data([0x54, 0x45, 0x58]))
+    }
+
+    private func escaped(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\n", with: "\\n")
+            .replacingOccurrences(of: "\"", with: "\\\"")
     }
 }
 

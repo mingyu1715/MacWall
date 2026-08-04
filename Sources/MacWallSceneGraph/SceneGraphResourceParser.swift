@@ -4,6 +4,7 @@ import MacWallSceneAssets
 struct SceneGraphResourceParseResult: Sendable {
     let resources: [SceneGraphResource]
     let dependencies: [SceneDependencyEdge]
+    let scripts: [SceneScriptMetadata]
     let diagnostics: [SceneGraphParserDiagnostic]
 }
 
@@ -13,6 +14,10 @@ struct SceneGraphResourceParser: Sendable {
     private var cumulativeJSONBytes: UInt64
     private var resources: [SceneResourceID: SceneGraphResource] = [:]
     private var dependencies: [SceneDependencyEdge] = []
+    private var dependencyKeys: Set<SceneGraphDependencyKey> = []
+    private var dependencyEdges: [SceneGraphDependencyKey: SceneDependencyEdge] = [:]
+    private var scripts: [SceneScriptMetadata] = []
+    private var scriptKeys: Set<SceneGraphScriptKey> = []
     private var diagnostics: [SceneGraphParserDiagnostic] = []
     private var parsedDocuments: Set<SceneGraphResourceCacheKey> = []
     private var parsedPassDocuments: [SceneGraphResourceCacheKey: SceneGraphPassDocument] = [:]
@@ -28,7 +33,17 @@ struct SceneGraphResourceParser: Sendable {
         cumulativeJSONBytes = initialCumulativeJSONBytes
     }
 
-    mutating func parse(nodes: [SceneGraphNode]) -> SceneGraphResourceParseResult {
+    mutating func parse(
+        root: [String: SceneJSONValue],
+        sourcePath: SceneVirtualPath,
+        nodes: [SceneGraphNode]
+    ) -> SceneGraphResourceParseResult {
+        inspectMetadata(
+            in: .object(root),
+            sourcePath: sourcePath,
+            defaultOwner: nil,
+            rootNodeIDs: nodes.map(\.id)
+        )
         for node in nodes where !stopped {
             parse(node: node)
         }
@@ -36,6 +51,7 @@ struct SceneGraphResourceParser: Sendable {
         return SceneGraphResourceParseResult(
             resources: resources.values.sorted { $0.id < $1.id },
             dependencies: dependencies,
+            scripts: scripts.sorted(by: Self.scriptPrecedes),
             diagnostics: diagnostics
         )
     }
@@ -91,6 +107,13 @@ struct SceneGraphResourceParser: Sendable {
         guard let object = readJSONObject(asset) else {
             return
         }
+
+        inspectMetadata(
+            in: .object(object),
+            sourcePath: asset.canonicalPath,
+            defaultOwner: .resource(SceneResourceID(kind: .model, path: asset.canonicalPath)),
+            rootNodeIDs: []
+        )
 
         let id = SceneResourceID(kind: .model, path: asset.canonicalPath)
         var fields = object
@@ -164,6 +187,13 @@ struct SceneGraphResourceParser: Sendable {
         guard let object = readJSONObject(asset) else {
             return
         }
+
+        inspectMetadata(
+            in: .object(object),
+            sourcePath: asset.canonicalPath,
+            defaultOwner: .resource(SceneResourceID(kind: .material, path: asset.canonicalPath)),
+            rootNodeIDs: []
+        )
 
         let id = SceneResourceID(kind: .material, path: asset.canonicalPath)
         var fields = object
@@ -284,6 +314,14 @@ struct SceneGraphResourceParser: Sendable {
     ) -> SceneMaterialPass {
         var fields = object
         let owner = SceneDependencyOwner.materialPass(material: materialID, index: index)
+        if documentDependency != nil {
+            inspectMetadata(
+                in: .object(object),
+                sourcePath: sourcePath,
+                defaultOwner: owner,
+                rootNodeIDs: []
+            )
+        }
         let shaderDependency = parseSingleReference(
             key: "shader",
             role: .shader,
@@ -336,6 +374,7 @@ struct SceneGraphResourceParser: Sendable {
             jsonPath: "effect"
         ) {
             effectDependencies.append(effect)
+            followEffectIfPackageResolved(effect)
         }
         if let effects = fields.removeValue(forKey: "effects") {
             let values: [SceneJSONValue]
@@ -366,6 +405,7 @@ struct SceneGraphResourceParser: Sendable {
                     jsonPath: "effects[\(effectIndex)]"
                 ) {
                     effectDependencies.append(edge)
+                    followEffectIfPackageResolved(edge)
                 }
             }
         }
@@ -502,6 +542,15 @@ struct SceneGraphResourceParser: Sendable {
         guard !stopped else {
             return nil
         }
+        let dependencyKey = SceneGraphDependencyKey(
+            owner: owner,
+            jsonPath: jsonPath,
+            role: request.role,
+            requestedPath: request.requestedPath
+        )
+        guard dependencyKeys.insert(dependencyKey).inserted else {
+            return dependencyEdges[dependencyKey]
+        }
         let resolution = resolver.resolve(request)
         appendResolutionDiagnostics(
             resolution,
@@ -520,7 +569,444 @@ struct SceneGraphResourceParser: Sendable {
             resolution: resolution
         )
         dependencies.append(edge)
+        dependencyEdges[dependencyKey] = edge
         return edge
+    }
+
+    private mutating func followEffectIfPackageResolved(_ edge: SceneDependencyEdge) {
+        guard edge.request.role == .effect,
+              edge.resolution.kind == .package,
+              let asset = edge.resolution.selected,
+              !stopped else {
+            return
+        }
+        followEffect(asset)
+    }
+
+    private mutating func followEffect(_ asset: SceneResolvedAsset) {
+        let cacheKey = SceneGraphResourceCacheKey(role: .effect, path: asset.canonicalPath)
+        guard parsedDocuments.insert(cacheKey).inserted, !stopped else {
+            return
+        }
+
+        let id = SceneResourceID(kind: .effect, path: asset.canonicalPath)
+        appendDiagnostic(
+            severity: .warning,
+            code: "graph.unsupported-effect",
+            sourcePath: asset.canonicalPath,
+            nodeID: nil,
+            jsonPath: nil,
+            arguments: [],
+            status: .unsupported
+        )
+        guard let object = readJSONObject(asset) else {
+            resources[id] = .effect(SceneEffectResource(
+                id: id,
+                path: asset.canonicalPath,
+                dependencies: [],
+                unknownFields: [:]
+            ))
+            return
+        }
+
+        let effectDependencies = inspectMetadata(
+            in: .object(object),
+            sourcePath: asset.canonicalPath,
+            defaultOwner: .resource(id),
+            rootNodeIDs: []
+        )
+        resources[id] = .effect(SceneEffectResource(
+            id: id,
+            path: asset.canonicalPath,
+            dependencies: effectDependencies,
+            unknownFields: object
+        ))
+    }
+
+    @discardableResult
+    private mutating func inspectMetadata(
+        in root: SceneJSONValue,
+        sourcePath: SceneVirtualPath,
+        defaultOwner: SceneDependencyOwner?,
+        rootNodeIDs: [SceneNodeID]
+    ) -> [SceneDependencyEdge] {
+        var discoveredDependencies: [SceneDependencyEdge] = []
+        var stack = [SceneGraphMetadataStackEntry(
+            value: root,
+            jsonPath: "$",
+            owner: defaultOwner,
+            nodeID: nil,
+            parentKey: nil
+        )]
+
+        while let entry = stack.popLast(), !stopped {
+            switch entry.value {
+            case let .object(object):
+                for key in object.keys.sorted() {
+                    guard let value = object[key] else { continue }
+                    let jsonPath = Self.jsonPath(entry.jsonPath, appending: key)
+                    if key == "script", case let .string(source) = value {
+                        preserveScript(
+                            source,
+                            ownerPath: sourcePath,
+                            nodeID: entry.nodeID,
+                            jsonPath: jsonPath
+                        )
+                    }
+                    if let owner = entry.owner,
+                       let role = Self.assetRole(for: key, parentKey: entry.parentKey),
+                       !Self.isTypedMaterialTopLevelBinding(
+                           key: key,
+                           owner: owner,
+                           jsonPath: entry.jsonPath
+                       ) {
+                        discoveredDependencies.append(contentsOf: inspectAssetReference(
+                            value,
+                            key: key,
+                            role: role,
+                            owner: owner,
+                            sourcePath: sourcePath,
+                            nodeID: entry.nodeID,
+                            jsonPath: jsonPath
+                        ))
+                    }
+                    stack.append(SceneGraphMetadataStackEntry(
+                        value: value,
+                        jsonPath: jsonPath,
+                        owner: entry.owner,
+                        nodeID: entry.nodeID,
+                        parentKey: key
+                    ))
+                }
+            case let .array(values):
+                for index in values.indices.reversed() {
+                    let isRootObject = entry.jsonPath == "$.objects"
+                    let nodeID = isRootObject ? rootNodeIDs[safe: index] : entry.nodeID
+                    let owner: SceneDependencyOwner?
+                    if let materialID = Self.materialID(for: entry.owner),
+                       entry.jsonPath == "$.passes" {
+                        owner = .materialPass(material: materialID, index: index)
+                    } else {
+                        owner = nodeID.map(SceneDependencyOwner.node) ?? entry.owner
+                    }
+                    stack.append(SceneGraphMetadataStackEntry(
+                        value: values[index],
+                        jsonPath: "\(entry.jsonPath)[\(index)]",
+                        owner: owner,
+                        nodeID: nodeID,
+                        parentKey: entry.parentKey
+                    ))
+                }
+            default:
+                break
+            }
+        }
+        return discoveredDependencies
+    }
+
+    private mutating func inspectAssetReference(
+        _ value: SceneJSONValue,
+        key: String,
+        role: SceneAssetRole,
+        owner: SceneDependencyOwner,
+        sourcePath: SceneVirtualPath,
+        nodeID: SceneNodeID?,
+        jsonPath: String
+    ) -> [SceneDependencyEdge] {
+        let references = Self.assetReferences(in: value, role: role, jsonPath: jsonPath)
+        var edges: [SceneDependencyEdge] = []
+        for (referencePath, reference) in references where !stopped {
+            let request = SceneAssetRequest(
+                requestedPath: reference,
+                ownerPath: sourcePath,
+                role: role,
+                key: key
+            )
+            guard let edge = addDependency(
+                owner: owner,
+                key: key,
+                request: request,
+                sourcePath: sourcePath,
+                nodeID: nodeID,
+                jsonPath: referencePath
+            ) else {
+                continue
+            }
+            edges.append(edge)
+            recordResolvedResource(edge, sourcePath: sourcePath, jsonPath: referencePath)
+        }
+        return edges
+    }
+
+    private mutating func recordResolvedResource(
+        _ edge: SceneDependencyEdge,
+        sourcePath: SceneVirtualPath,
+        jsonPath: String
+    ) {
+        guard let asset = edge.resolution.selected else {
+            return
+        }
+        switch edge.request.role {
+        case .model where edge.resolution.kind == .package:
+            followModel(asset)
+        case .material where edge.resolution.kind == .package:
+            followMaterial(asset)
+        case .effect where edge.resolution.kind == .package:
+            followEffect(asset)
+        case .shader where edge.resolution.kind == .package || edge.resolution.kind == .builtInCandidate:
+            let id = SceneResourceID(kind: .shader, path: asset.canonicalPath)
+            if resources[id] == nil {
+                resources[id] = .shader(SceneShaderResource(
+                    id: id,
+                    path: asset.canonicalPath,
+                    resolution: edge.resolution
+                ))
+                if edge.resolution.kind == .package {
+                    appendDiagnostic(
+                        severity: .warning,
+                        code: "graph.unsupported-shader",
+                        sourcePath: sourcePath,
+                        nodeID: nil,
+                        jsonPath: jsonPath,
+                        arguments: [edge.request.requestedPath],
+                        status: .unsupported
+                    )
+                }
+            }
+        case .texture where edge.resolution.kind == .package:
+            let id = SceneResourceID(kind: .texture, path: asset.canonicalPath)
+            resources[id] = .texture(SceneTextureResource(
+                id: id,
+                path: asset.canonicalPath,
+                resolution: edge.resolution
+            ))
+        default:
+            break
+        }
+    }
+
+    private static func assetRole(for key: String, parentKey: String?) -> SceneAssetRole? {
+        switch key {
+        case "image", "model":
+            .model
+        case "material":
+            .material
+        case "effect":
+            .effect
+        case "file":
+            parentKey == "texture" || parentKey == "textures" ? .texture : .document
+        case "font":
+            .font
+        case "particle":
+            .particle
+        case "shader":
+            .shader
+        case "sound":
+            .sound
+        case "texture", "textures":
+            .texture
+        default:
+            nil
+        }
+    }
+
+    private static func isTypedMaterialTopLevelBinding(
+        key: String,
+        owner: SceneDependencyOwner,
+        jsonPath: String
+    ) -> Bool {
+        materialID(for: owner) != nil
+            && jsonPath == "$"
+            && (key == "texture" || key == "textures")
+    }
+
+    private static func materialID(for owner: SceneDependencyOwner?) -> SceneResourceID? {
+        guard case let .resource(resourceID)? = owner,
+              resourceID.kind == .material else {
+            return nil
+        }
+        return resourceID
+    }
+
+    private static func assetReferences(
+        in value: SceneJSONValue,
+        role: SceneAssetRole,
+        jsonPath: String = ""
+    ) -> [(String, String)] {
+        switch value {
+        case let .string(reference):
+            [(jsonPath, reference)]
+        case let .array(values):
+            values.enumerated().flatMap { index, element in
+                assetReferences(
+                    in: element,
+                    role: role,
+                    jsonPath: "\(jsonPath)[\(index)]"
+                )
+            }
+        case let .object(object) where role == .texture:
+            if case let .string(reference)? = object["texture"] {
+                [(jsonPath, reference)]
+            } else if case let .string(reference)? = object["file"] {
+                [(jsonPath, reference)]
+            } else {
+                []
+            }
+        default:
+            []
+        }
+    }
+
+    private static func jsonPath(_ base: String, appending key: String) -> String {
+        "\(base).\(key)"
+    }
+
+    private static func handlerNames(in source: String) -> [String] {
+        let scalars = Array(source.unicodeScalars)
+        var names: Set<String> = []
+        var index = 0
+        var isInString: Unicode.Scalar?
+        var isLineComment = false
+        var isBlockComment = false
+
+        while index < scalars.count {
+            let scalar = scalars[index]
+            let next = index + 1 < scalars.count ? scalars[index + 1] : nil
+            if let quote = isInString {
+                if scalar == "\\" {
+                    index += 2
+                    continue
+                }
+                if scalar == quote {
+                    isInString = nil
+                }
+                index += 1
+                continue
+            }
+            if isLineComment {
+                if scalar == "\n" || scalar == "\r" {
+                    isLineComment = false
+                }
+                index += 1
+                continue
+            }
+            if isBlockComment {
+                if scalar == "*", next == "/" {
+                    isBlockComment = false
+                    index += 2
+                    continue
+                }
+                index += 1
+                continue
+            }
+            if scalar == "/", next == "/" {
+                isLineComment = true
+                index += 2
+                continue
+            }
+            if scalar == "/", next == "*" {
+                isBlockComment = true
+                index += 2
+                continue
+            }
+            if scalar == "\"" || scalar == "'" || scalar == "`" {
+                isInString = scalar
+                index += 1
+                continue
+            }
+            if Self.isIdentifierStart(scalar),
+               Self.matches("function", in: scalars, at: index) {
+                var cursor = index + "function".unicodeScalars.count
+                while cursor < scalars.count, Self.isWhitespace(scalars[cursor]) {
+                    cursor += 1
+                }
+                guard cursor < scalars.count, Self.isIdentifierStart(scalars[cursor]) else {
+                    index += 1
+                    continue
+                }
+                let nameStart = cursor
+                cursor += 1
+                while cursor < scalars.count, Self.isIdentifierContinue(scalars[cursor]) {
+                    cursor += 1
+                }
+                let name = String(String.UnicodeScalarView(scalars[nameStart..<cursor]))
+                names.insert(name)
+                index = cursor
+                continue
+            }
+            index += 1
+        }
+        return names.sorted()
+    }
+
+    private static func matches(
+        _ keyword: String,
+        in scalars: [Unicode.Scalar],
+        at index: Int
+    ) -> Bool {
+        let keywordScalars = Array(keyword.unicodeScalars)
+        guard index + keywordScalars.count <= scalars.count,
+              scalars[index..<(index + keywordScalars.count)].elementsEqual(keywordScalars) else {
+            return false
+        }
+        let before = index > 0 ? scalars[index - 1] : nil
+        let afterIndex = index + keywordScalars.count
+        let after = afterIndex < scalars.count ? scalars[afterIndex] : nil
+        return !(before.map(Self.isIdentifierContinue) ?? false)
+            && !(after.map(Self.isIdentifierContinue) ?? false)
+    }
+
+    private static func isIdentifierStart(_ scalar: Unicode.Scalar) -> Bool {
+        scalar == "_" || scalar.properties.isAlphabetic
+    }
+
+    private static func isIdentifierContinue(_ scalar: Unicode.Scalar) -> Bool {
+        isIdentifierStart(scalar) || scalar.properties.numericType != nil
+    }
+
+    private static func isWhitespace(_ scalar: Unicode.Scalar) -> Bool {
+        scalar.properties.isWhitespace
+    }
+
+    private static func scriptPrecedes(
+        _ first: SceneScriptMetadata,
+        _ second: SceneScriptMetadata
+    ) -> Bool {
+        if first.ownerPath != second.ownerPath {
+            return first.ownerPath.rawValue < second.ownerPath.rawValue
+        }
+        if first.nodeID != second.nodeID {
+            return (first.nodeID?.rawValue ?? "") < (second.nodeID?.rawValue ?? "")
+        }
+        return first.jsonPath < second.jsonPath
+    }
+
+    private mutating func preserveScript(
+        _ source: String,
+        ownerPath: SceneVirtualPath,
+        nodeID: SceneNodeID?,
+        jsonPath: String
+    ) {
+        let key = SceneGraphScriptKey(ownerPath: ownerPath, nodeID: nodeID, jsonPath: jsonPath)
+        guard scriptKeys.insert(key).inserted else {
+            return
+        }
+        scripts.append(SceneScriptMetadata(
+            ownerPath: ownerPath,
+            nodeID: nodeID,
+            jsonPath: jsonPath,
+            source: source,
+            handlerNames: Self.handlerNames(in: source)
+        ))
+        appendDiagnostic(
+            severity: .warning,
+            code: "graph.scenescript-preserved-not-executed",
+            sourcePath: ownerPath,
+            nodeID: nodeID,
+            jsonPath: jsonPath,
+            arguments: [],
+            status: .unsupported
+        )
     }
 
     private mutating func readJSONObject(
@@ -705,6 +1191,62 @@ struct SceneGraphResourceParser: Sendable {
 private struct SceneGraphResourceCacheKey: Hashable, Sendable {
     let role: SceneAssetRole
     let path: SceneVirtualPath
+}
+
+private struct SceneGraphDependencyKey: Hashable, Sendable {
+    let owner: String
+    let jsonPath: String
+    let role: SceneAssetRole
+    let requestedPath: String
+
+    init(
+        owner: SceneDependencyOwner,
+        jsonPath: String,
+        role: SceneAssetRole,
+        requestedPath: String
+    ) {
+        switch owner {
+        case let .node(nodeID):
+            self.owner = "node:\(nodeID.rawValue)"
+        case let .resource(resourceID):
+            self.owner = "resource:\(resourceID.rawValue)"
+        case let .materialPass(materialID, index):
+            self.owner = "pass:\(materialID.rawValue):\(index)"
+        }
+        let normalizedPath = jsonPath.hasPrefix("$.")
+            ? String(jsonPath.dropFirst(2))
+            : jsonPath
+        if case .materialPass = owner,
+           normalizedPath.hasPrefix("passes["),
+           let passPathEnd = normalizedPath.firstIndex(of: "]") {
+            self.jsonPath = String(normalizedPath[normalizedPath.index(after: passPathEnd)...])
+                .trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        } else {
+            self.jsonPath = normalizedPath
+        }
+        self.role = role
+        self.requestedPath = requestedPath
+    }
+}
+
+private struct SceneGraphScriptKey: Hashable, Sendable {
+    let ownerPath: SceneVirtualPath
+    let nodeID: SceneNodeID?
+    let jsonPath: String
+}
+
+private struct SceneGraphMetadataStackEntry: Sendable {
+    let value: SceneJSONValue
+    let jsonPath: String
+    let owner: SceneDependencyOwner?
+    let nodeID: SceneNodeID?
+    let parentKey: String?
+}
+
+private extension Array {
+    subscript(safe index: Index) -> Element? {
+        indices.contains(index) ? self[index] : nil
+    }
 }
 
 private struct SceneGraphPassDocument: Sendable {

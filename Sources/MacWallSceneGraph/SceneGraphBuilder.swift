@@ -138,7 +138,11 @@ public struct SceneGraphBuilder: Sendable {
             limits: limits,
             initialCumulativeJSONBytes: identity.byteCount
         )
-        let resourceGraph = resourceParser.parse(nodes: nodes)
+        let resourceGraph = resourceParser.parse(
+            root: root,
+            sourcePath: asset.canonicalPath,
+            nodes: nodes
+        )
         accumulator.append(contentsOf: resourceGraph.diagnostics)
 
         var sceneMetadata = root
@@ -154,7 +158,7 @@ public struct SceneGraphBuilder: Sendable {
             resources: resourceGraph.resources,
             dependencies: resourceGraph.dependencies,
             animations: [],
-            scripts: []
+            scripts: resourceGraph.scripts
         )
         return SceneGraphBuildResult(
             document: document,
