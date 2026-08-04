@@ -25,6 +25,9 @@ struct SceneGraphHierarchyResolver: Sendable {
             guard case let .object(fields) = rawObject else {
                 continue
             }
+            let overrideResult = fields["instanceoverride"].map {
+                overrides(from: $0, node: node, sourcePath: sourcePath)
+            }
             if let rawParent = fields["parent"] {
                 if let parent = SceneSourceIdentifier(scalar: rawParent) {
                     let resolution = resolve(parent, in: sourceIDs)
@@ -55,18 +58,15 @@ struct SceneGraphHierarchyResolver: Sendable {
             if let rawInstance = fields["instance"] {
                 if let source = SceneSourceIdentifier(scalar: rawInstance) {
                     let resolution = resolve(source, in: sourceIDs)
-                    let overrideResult = overrides(
-                        from: fields["instanceoverride"],
-                        node: node,
-                        sourcePath: sourcePath
-                    )
                     instanceEdges.append(SceneInstanceEdge(
                         instanceID: node.id,
                         requestedSource: source,
                         resolution: resolution,
-                        overrides: overrideResult.overrides
+                        overrides: overrideResult?.overrides ?? []
                     ))
-                    diagnostics.append(contentsOf: overrideResult.diagnostics)
+                    if let overrideResult {
+                        diagnostics.append(contentsOf: overrideResult.diagnostics)
+                    }
                     if let diagnostic = referenceDiagnostic(
                         resolution: resolution,
                         node: node,
@@ -83,7 +83,20 @@ struct SceneGraphHierarchyResolver: Sendable {
                         sourcePath: sourcePath,
                         jsonPath: "objects[\(node.sourceOrder)].instance"
                     ))
+                    appendUnrepresentedOverrideDiagnostics(
+                        overrideResult,
+                        node: node,
+                        sourcePath: sourcePath,
+                        to: &diagnostics
+                    )
                 }
+            } else {
+                appendUnrepresentedOverrideDiagnostics(
+                    overrideResult,
+                    node: node,
+                    sourcePath: sourcePath,
+                    to: &diagnostics
+                )
             }
         }
 
@@ -188,53 +201,51 @@ struct SceneGraphHierarchyResolver: Sendable {
     }
 
     private func overrides(
-        from rawValue: SceneJSONValue?,
+        from rawValue: SceneJSONValue,
         node: SceneGraphNode,
         sourcePath: SceneVirtualPath
     ) -> SceneGraphOverrideParseResult {
-        guard let rawValue else {
-            return .init(overrides: [], diagnostics: [])
-        }
-        switch rawValue {
-        case let .object(values):
-            return .init(
-                overrides: values.keys.sorted().compactMap { property in
-                    values[property].map {
-                        ScenePropertyOverride(propertyPath: property, value: $0)
-                    }
-                },
-                diagnostics: []
-            )
-        case let .array(records):
-            var overrides: [ScenePropertyOverride] = []
-            var diagnostics: [SceneGraphParserDiagnostic] = []
-            overrides.reserveCapacity(records.count)
-            for (index, record) in records.enumerated() {
-                guard case let .object(fields) = record,
-                      case let .string(property)? = fields["property"],
-                      let value = fields["value"] else {
-                    diagnostics.append(invalidProperty(
-                        node: node,
-                        sourcePath: sourcePath,
-                        jsonPath: "objects[\(node.sourceOrder)].instanceoverride[\(index)]"
-                    ))
-                    continue
-                }
-                overrides.append(ScenePropertyOverride(
-                    propertyPath: property,
-                    value: value
-                ))
-            }
-            return .init(overrides: overrides, diagnostics: diagnostics)
-        default:
-            return .init(
-                overrides: [],
-                diagnostics: [invalidProperty(
+        let parsed = SceneGraphInstanceOverrideParser.parse(rawValue)
+        let diagnostics: [SceneGraphParserDiagnostic]
+        if parsed.hasInvalidShape {
+            diagnostics = [invalidProperty(
+                node: node,
+                sourcePath: sourcePath,
+                jsonPath: "objects[\(node.sourceOrder)].instanceoverride"
+            )]
+        } else {
+            diagnostics = parsed.invalidRecordIndices.map { index in
+                invalidProperty(
                     node: node,
                     sourcePath: sourcePath,
-                    jsonPath: "objects[\(node.sourceOrder)].instanceoverride"
-                )]
-            )
+                    jsonPath: "objects[\(node.sourceOrder)].instanceoverride[\(index)]"
+                )
+            }
+        }
+        return .init(
+            overrides: parsed.overrides,
+            diagnostics: diagnostics,
+            isComplete: parsed.isComplete
+        )
+    }
+
+    private func appendUnrepresentedOverrideDiagnostics(
+        _ overrideResult: SceneGraphOverrideParseResult?,
+        node: SceneGraphNode,
+        sourcePath: SceneVirtualPath,
+        to diagnostics: inout [SceneGraphParserDiagnostic]
+    ) {
+        guard let overrideResult else {
+            return
+        }
+        if overrideResult.isComplete {
+            diagnostics.append(invalidProperty(
+                node: node,
+                sourcePath: sourcePath,
+                jsonPath: "objects[\(node.sourceOrder)].instanceoverride"
+            ))
+        } else {
+            diagnostics.append(contentsOf: overrideResult.diagnostics)
         }
     }
 
@@ -436,6 +447,63 @@ struct SceneGraphResolvedHierarchy: Sendable {
 private struct SceneGraphOverrideParseResult: Sendable {
     let overrides: [ScenePropertyOverride]
     let diagnostics: [SceneGraphParserDiagnostic]
+    let isComplete: Bool
+}
+
+struct SceneGraphParsedInstanceOverrides: Sendable {
+    let overrides: [ScenePropertyOverride]
+    let invalidRecordIndices: [Int]
+    let hasInvalidShape: Bool
+
+    var isComplete: Bool {
+        !hasInvalidShape && invalidRecordIndices.isEmpty
+    }
+}
+
+enum SceneGraphInstanceOverrideParser {
+    static func parse(
+        _ rawValue: SceneJSONValue
+    ) -> SceneGraphParsedInstanceOverrides {
+        switch rawValue {
+        case let .object(values):
+            return .init(
+                overrides: values.keys.sorted().compactMap { property in
+                    values[property].map {
+                        ScenePropertyOverride(propertyPath: property, value: $0)
+                    }
+                },
+                invalidRecordIndices: [],
+                hasInvalidShape: false
+            )
+        case let .array(records):
+            var overrides: [ScenePropertyOverride] = []
+            var invalidRecordIndices: [Int] = []
+            overrides.reserveCapacity(records.count)
+            for (index, record) in records.enumerated() {
+                guard case let .object(fields) = record,
+                      case let .string(property)? = fields["property"],
+                      let value = fields["value"] else {
+                    invalidRecordIndices.append(index)
+                    continue
+                }
+                overrides.append(ScenePropertyOverride(
+                    propertyPath: property,
+                    value: value
+                ))
+            }
+            return .init(
+                overrides: overrides,
+                invalidRecordIndices: invalidRecordIndices,
+                hasInvalidShape: false
+            )
+        default:
+            return .init(
+                overrides: [],
+                invalidRecordIndices: [],
+                hasInvalidShape: true
+            )
+        }
+    }
 }
 
 private enum SceneGraphHierarchyEdgeKind: Sendable {

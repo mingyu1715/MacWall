@@ -30,9 +30,7 @@ struct SceneGraphNodeParser: Sendable {
             nodeID: nodeID,
             index: index
         )
-        fields.removeValue(forKey: "parent")
-        fields.removeValue(forKey: "instance")
-        fields.removeValue(forKey: "instanceoverride")
+        consumeRepresentedHierarchyMetadata(from: &fields)
         let name = parseString(
             key: "name",
             from: &fields,
@@ -122,6 +120,7 @@ struct SceneGraphNodeParser: Sendable {
         let unknownFields = fields
         diagnostics.append(contentsOf: fields.keys.filter {
             !SceneGraphNodeParser.consumedKeys.contains($0)
+                && !SceneGraphNodeParser.resolverManagedKeys.contains($0)
         }.sorted().map {
             invalidProperty(
                 nodeID: nodeID,
@@ -157,7 +156,11 @@ struct SceneGraphNodeParser: Sendable {
         "id", "name", "visible", "enabled", "origin", "pivot", "position",
         "scale", "angles", "size", "alpha", "color", "zorder", "zindex",
         "image", "text", "particle", "sound", "model", "composition",
-        "fullscreen", "type", "parent", "instance", "instanceoverride"
+        "fullscreen", "type"
+    ]
+
+    private static let resolverManagedKeys: Set<String> = [
+        "parent", "instance", "instanceoverride"
     ]
 
     private func parseSourceIdentifier(
@@ -173,6 +176,26 @@ struct SceneGraphNodeParser: Sendable {
             return .init(value: identifier, isValid: true)
         }
         return .init(value: nil, isValid: false)
+    }
+
+    private func consumeRepresentedHierarchyMetadata(
+        from fields: inout [String: SceneJSONValue]
+    ) {
+        if let parent = fields["parent"],
+           SceneSourceIdentifier(scalar: parent) != nil {
+            fields.removeValue(forKey: "parent")
+        }
+
+        guard let instance = fields["instance"],
+              SceneSourceIdentifier(scalar: instance) != nil else {
+            return
+        }
+        fields.removeValue(forKey: "instance")
+
+        if let overrides = fields["instanceoverride"],
+           SceneGraphInstanceOverrideParser.parse(overrides).isComplete {
+            fields.removeValue(forKey: "instanceoverride")
+        }
     }
 
     private func parseString(
