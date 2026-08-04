@@ -145,6 +145,15 @@ public struct SceneGraphBuilder: Sendable {
         )
         accumulator.append(contentsOf: resourceGraph.diagnostics)
 
+        let animationGraph = SceneGraphAnimationParser(
+            limits: limits,
+            sourcePath: asset.canonicalPath
+        ).parse(
+            nodes: nodes,
+            rawObjects: phaseState.rawObjects
+        )
+        accumulator.append(contentsOf: animationGraph.diagnostics)
+
         var sceneMetadata = root
         sceneMetadata.removeValue(forKey: "objects")
         let document = SceneGraphDocument(
@@ -157,7 +166,7 @@ public struct SceneGraphBuilder: Sendable {
             instanceEdges: hierarchy.instanceEdges,
             resources: resourceGraph.resources,
             dependencies: resourceGraph.dependencies,
-            animations: [],
+            animations: animationGraph.animations,
             scripts: resourceGraph.scripts
         )
         return SceneGraphBuildResult(
