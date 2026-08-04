@@ -93,7 +93,7 @@ final class SceneGraphResourceTests: XCTestCase {
             result.diagnostics.filter { $0.code == "asset.ambiguous-resolution" }.count,
             1
         )
-        XCTAssertEqual(result.status, .unsupported)
+        XCTAssertEqual(result.status, .degraded)
     }
 
     func testParsesTopLevelTexturesInlineAndReferencedPassesInSourceOrder() throws {
@@ -312,7 +312,7 @@ final class SceneGraphResourceTests: XCTestCase {
                 "asset.path-escape"
             ]
         )
-        XCTAssertEqual(result.status, .unsupported)
+        XCTAssertEqual(result.status, .invalid)
     }
 
     func testRecordsPassEffectsAsUnsupportedMetadataResources() throws {

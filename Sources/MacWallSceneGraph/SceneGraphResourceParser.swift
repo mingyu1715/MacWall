@@ -167,7 +167,7 @@ struct SceneGraphResourceParser: Sendable {
                 nodeID: nil,
                 jsonPath: "material",
                 arguments: [materialDependency.request.requestedPath],
-                status: .unsupported
+                evidence: .unsupported
             )
         }
         guard let materialDependency,
@@ -495,7 +495,7 @@ struct SceneGraphResourceParser: Sendable {
                 nodeID: nil,
                 jsonPath: jsonPath,
                 arguments: [binding.reference],
-                status: .unsupported
+                evidence: .unsupported
             )
         }
         return [SceneTextureBinding(slot: binding.slot, rawValue: value, dependency: edge)]
@@ -558,8 +558,16 @@ struct SceneGraphResourceParser: Sendable {
             nodeID: nodeID,
             jsonPath: jsonPath
         )
+        guard !stopped else {
+            return nil
+        }
         guard dependencies.count < limits.maximumDependencyEdgeCount else {
-            appendResourceLimit(sourcePath: sourcePath)
+            appendResourceLimit(
+                name: "maximumDependencyEdgeCount",
+                sourcePath: sourcePath,
+                nodeID: nodeID,
+                jsonPath: jsonPath
+            )
             return nil
         }
         let edge = SceneDependencyEdge(
@@ -597,7 +605,7 @@ struct SceneGraphResourceParser: Sendable {
             nodeID: nil,
             jsonPath: nil,
             arguments: [],
-            status: .unsupported
+            evidence: .unsupported
         )
         guard let object = readJSONObject(asset) else {
             resources[id] = .effect(SceneEffectResource(
@@ -773,7 +781,7 @@ struct SceneGraphResourceParser: Sendable {
                         nodeID: nil,
                         jsonPath: jsonPath,
                         arguments: [edge.request.requestedPath],
-                        status: .unsupported
+                        evidence: .unsupported
                     )
                 }
             }
@@ -1050,7 +1058,7 @@ struct SceneGraphResourceParser: Sendable {
             nodeID: nodeID,
             jsonPath: jsonPath,
             arguments: [],
-            status: .unsupported
+            evidence: .unsupported
         )
     }
 
@@ -1061,12 +1069,18 @@ struct SceneGraphResourceParser: Sendable {
             return nil
         }
         guard identity.byteCount <= limits.maximumJSONEntryBytes else {
-            appendResourceLimit(sourcePath: asset.canonicalPath)
+            appendResourceLimit(
+                name: "maximumJSONEntryBytes",
+                sourcePath: asset.canonicalPath
+            )
             return nil
         }
         let (next, overflow) = cumulativeJSONBytes.addingReportingOverflow(identity.byteCount)
         guard !overflow, next <= limits.maximumCumulativeJSONBytes else {
-            appendResourceLimit(sourcePath: asset.canonicalPath)
+            appendResourceLimit(
+                name: "maximumCumulativeJSONBytes",
+                sourcePath: asset.canonicalPath
+            )
             return nil
         }
         cumulativeJSONBytes = next
@@ -1085,6 +1099,12 @@ struct SceneGraphResourceParser: Sendable {
                 return nil
             }
             return object
+        } catch SceneJSONDocumentError.depthLimit {
+            appendResourceLimit(
+                name: "maximumJSONDepth",
+                sourcePath: asset.canonicalPath
+            )
+            return nil
         } catch {
             appendInvalidProperty(sourcePath: asset.canonicalPath, jsonPath: nil)
             return nil
@@ -1111,7 +1131,7 @@ struct SceneGraphResourceParser: Sendable {
     ) {
         for issue in resolution.issues {
             switch issue {
-            case .invalidReference, .candidateLimit:
+            case .invalidReference:
                 appendDiagnostic(
                     severity: .warning,
                     code: "asset.invalid-reference",
@@ -1119,17 +1139,24 @@ struct SceneGraphResourceParser: Sendable {
                     nodeID: nodeID,
                     jsonPath: jsonPath,
                     arguments: [resolution.request.requestedPath],
-                    status: .unsupported
+                    evidence: .unsupported
+                )
+            case .candidateLimit:
+                appendResourceLimit(
+                    name: "maximumCandidatesPerRequest",
+                    sourcePath: sourcePath,
+                    nodeID: nodeID,
+                    jsonPath: jsonPath
                 )
             case .pathEscape:
                 appendDiagnostic(
-                    severity: .warning,
+                    severity: .error,
                     code: "asset.path-escape",
                     sourcePath: sourcePath,
                     nodeID: nodeID,
                     jsonPath: jsonPath,
                     arguments: [resolution.request.requestedPath],
-                    status: .unsupported
+                    evidence: .invalid
                 )
             case let .ambiguous(selected, alternatives):
                 appendDiagnostic(
@@ -1139,9 +1166,12 @@ struct SceneGraphResourceParser: Sendable {
                     nodeID: nodeID,
                     jsonPath: jsonPath,
                     arguments: [selected.rawValue] + alternatives.map(\.rawValue),
-                    status: .unsupported
+                    evidence: .degraded
                 )
             }
+        }
+        guard !stopped else {
+            return
         }
         switch resolution.kind {
         case .builtInCandidate:
@@ -1152,7 +1182,7 @@ struct SceneGraphResourceParser: Sendable {
                 nodeID: nodeID,
                 jsonPath: jsonPath,
                 arguments: [resolution.request.requestedPath],
-                status: .unsupported
+                evidence: .unsupported
             )
         case .externalCandidate:
             appendDiagnostic(
@@ -1162,7 +1192,7 @@ struct SceneGraphResourceParser: Sendable {
                 nodeID: nodeID,
                 jsonPath: jsonPath,
                 arguments: [resolution.request.requestedPath],
-                status: .unsupported
+                evidence: .unsupported
             )
         case .unresolved:
             appendDiagnostic(
@@ -1172,7 +1202,7 @@ struct SceneGraphResourceParser: Sendable {
                 nodeID: nodeID,
                 jsonPath: jsonPath,
                 arguments: [resolution.request.requestedPath],
-                status: .unsupported
+                evidence: .unsupported
             )
         default:
             break
@@ -1190,11 +1220,16 @@ struct SceneGraphResourceParser: Sendable {
             nodeID: nil,
             jsonPath: jsonPath,
             arguments: [],
-            status: .unsupported
+            evidence: .unsupported
         )
     }
 
-    private mutating func appendResourceLimit(sourcePath: SceneVirtualPath) {
+    private mutating func appendResourceLimit(
+        name: String,
+        sourcePath: SceneVirtualPath,
+        nodeID: SceneNodeID? = nil,
+        jsonPath: String? = nil
+    ) {
         guard !stopped else {
             return
         }
@@ -1203,10 +1238,10 @@ struct SceneGraphResourceParser: Sendable {
             severity: .error,
             code: "graph.resource-limit",
             sourcePath: sourcePath,
-            nodeID: nil,
-            jsonPath: nil,
-            arguments: [],
-            status: .invalid
+            nodeID: nodeID,
+            jsonPath: jsonPath,
+            arguments: [name],
+            evidence: .invalid
         )
     }
 
@@ -1217,7 +1252,7 @@ struct SceneGraphResourceParser: Sendable {
         nodeID: SceneNodeID?,
         jsonPath: String?,
         arguments: [String],
-        status: SceneGraphStatus
+        evidence: SceneGraphStatusEvidence
     ) {
         diagnostics.append(
             SceneGraphParserDiagnostic(
@@ -1227,7 +1262,7 @@ struct SceneGraphResourceParser: Sendable {
                 nodeID: nodeID,
                 jsonPath: jsonPath,
                 arguments: arguments,
-                status: status
+                evidence: evidence
             )
         )
     }

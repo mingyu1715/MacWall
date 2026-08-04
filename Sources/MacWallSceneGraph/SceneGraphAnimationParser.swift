@@ -405,7 +405,7 @@ private struct SceneGraphAnimationParseState {
                 nodeID: node.id,
                 jsonPath: jsonPath,
                 arguments: [],
-                status: .degraded
+                evidence: .degraded
             )
         )
     }
@@ -425,8 +425,8 @@ private struct SceneGraphAnimationParseState {
                 sourcePath: sourcePath,
                 nodeID: node.id,
                 jsonPath: jsonPath,
-                arguments: [],
-                status: .invalid
+                arguments: ["maximumAnimationKeyframeCount"],
+                evidence: .invalid
             )
         )
     }

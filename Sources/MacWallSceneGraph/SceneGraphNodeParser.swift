@@ -447,7 +447,7 @@ struct SceneGraphNodeParser: Sendable {
             nodeID: nodeID,
             jsonPath: path,
             arguments: [],
-            status: .degraded
+            evidence: .degraded
         )
     }
 
@@ -462,7 +462,7 @@ struct SceneGraphNodeParser: Sendable {
             nodeID: nodeID,
             jsonPath: "objects[\(nodeID.objectIndex)]",
             arguments: typeName.map { [$0] } ?? [],
-            status: .unsupported
+            evidence: .unsupported
         )
     }
 
@@ -522,7 +522,7 @@ struct SceneGraphParserDiagnostic: Sendable {
     let nodeID: SceneNodeID?
     let jsonPath: String?
     let arguments: [String]
-    let status: SceneGraphStatus
+    let evidence: SceneGraphStatusEvidence
 }
 
 private enum SceneGraphNodeKind: String, CaseIterable {

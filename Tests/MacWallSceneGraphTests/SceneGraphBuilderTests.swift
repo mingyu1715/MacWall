@@ -318,7 +318,8 @@ final class SceneGraphBuilderTests: XCTestCase {
             limits: SceneGraphLimits(maximumJSONDepth: 2)
         )
         XCTAssertNil(depth.document)
-        XCTAssertEqual(depth.diagnostics.map(\.code), ["graph.malformed-scene-json"])
+        XCTAssertEqual(depth.diagnostics.map(\.code), ["graph.resource-limit"])
+        XCTAssertEqual(depth.diagnostics.first?.arguments, ["maximumJSONDepth"])
 
         let nonObjectRoot = try build("[]")
         XCTAssertNil(nonObjectRoot.document)
@@ -383,7 +384,7 @@ final class SceneGraphBuilderTests: XCTestCase {
                 nodeID: nodeID,
                 jsonPath: jsonPath,
                 arguments: arguments,
-                status: .degraded
+                evidence: .degraded
             )
         }
 

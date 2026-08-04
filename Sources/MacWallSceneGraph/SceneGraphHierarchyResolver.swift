@@ -148,7 +148,7 @@ struct SceneGraphHierarchyResolver: Sendable {
                 nodeID: nil,
                 jsonPath: nil,
                 arguments: candidates.sorted().map(\.rawValue),
-                status: .degraded
+                evidence: .degraded
             )
         }
     }
@@ -185,7 +185,7 @@ struct SceneGraphHierarchyResolver: Sendable {
                 nodeID: node.id,
                 jsonPath: jsonPath,
                 arguments: [],
-                status: .unsupported
+                evidence: .unsupported
             )
         case let .ambiguous(candidates):
             .init(
@@ -195,7 +195,7 @@ struct SceneGraphHierarchyResolver: Sendable {
                 nodeID: node.id,
                 jsonPath: jsonPath,
                 arguments: candidates.sorted().map(\.rawValue),
-                status: .unsupported
+                evidence: .unsupported
             )
         }
     }
@@ -401,7 +401,7 @@ struct SceneGraphHierarchyResolver: Sendable {
             nodeID: nil,
             jsonPath: nil,
             arguments: cycle.map(\.rawValue),
-            status: .invalid
+            evidence: .invalid
         )
     }
 
@@ -416,8 +416,8 @@ struct SceneGraphHierarchyResolver: Sendable {
             sourcePath: sourcePath,
             nodeID: nodeID,
             jsonPath: "objects[\(nodeID.objectIndex)].\(edgeKind.key)",
-            arguments: [],
-            status: .invalid
+            arguments: ["maximumHierarchyDepth"],
+            evidence: .invalid
         )
     }
 
@@ -433,7 +433,7 @@ struct SceneGraphHierarchyResolver: Sendable {
             nodeID: node.id,
             jsonPath: jsonPath,
             arguments: [],
-            status: .degraded
+            evidence: .degraded
         )
     }
 }

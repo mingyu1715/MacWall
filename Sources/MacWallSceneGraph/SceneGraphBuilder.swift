@@ -56,11 +56,17 @@ public struct SceneGraphBuilder: Sendable {
             )
         }
 
-        guard case let .package(identity) = asset.provenance,
-              canReadRootEntry(byteCount: identity.byteCount) else {
+        guard case let .package(identity) = asset.provenance else {
+            return accumulator.invalidResult(
+                code: "graph.malformed-scene-json",
+                sourcePath: asset.canonicalPath
+            )
+        }
+        if let limitName = exceededRootLimit(byteCount: identity.byteCount) {
             return accumulator.invalidResult(
                 code: "graph.resource-limit",
-                sourcePath: asset.canonicalPath
+                sourcePath: asset.canonicalPath,
+                arguments: [limitName]
             )
         }
 
@@ -88,6 +94,12 @@ public struct SceneGraphBuilder: Sendable {
                 )
             }
             root = value
+        } catch SceneJSONDocumentError.depthLimit {
+            return accumulator.invalidResult(
+                code: "graph.resource-limit",
+                sourcePath: asset.canonicalPath,
+                arguments: ["maximumJSONDepth"]
+            )
         } catch {
             return accumulator.invalidResult(
                 code: "graph.malformed-scene-json",
@@ -111,7 +123,8 @@ public struct SceneGraphBuilder: Sendable {
         guard rawObjects.count <= limits.maximumNodeCount else {
             return accumulator.invalidResult(
                 code: "graph.resource-limit",
-                sourcePath: asset.canonicalPath
+                sourcePath: asset.canonicalPath,
+                arguments: ["maximumNodeCount"]
             )
         }
 
@@ -125,6 +138,9 @@ public struct SceneGraphBuilder: Sendable {
             let parsed = parser.parse(rawObject, at: index)
             nodes.append(parsed.node)
             accumulator.append(contentsOf: parsed.diagnostics)
+            if !parsed.node.unknownFields.isEmpty {
+                accumulator.record(.degraded)
+            }
         }
         let hierarchy = SceneGraphHierarchyResolver(limits: limits).resolve(
             nodes: nodes,
@@ -176,12 +192,14 @@ public struct SceneGraphBuilder: Sendable {
         )
     }
 
-    private func canReadRootEntry(byteCount: UInt64) -> Bool {
+    private func exceededRootLimit(byteCount: UInt64) -> String? {
         guard byteCount <= limits.maximumJSONEntryBytes else {
-            return false
+            return "maximumJSONEntryBytes"
         }
-        let (_, overflow) = UInt64.zero.addingReportingOverflow(byteCount)
-        return !overflow && byteCount <= limits.maximumCumulativeJSONBytes
+        guard byteCount <= limits.maximumCumulativeJSONBytes else {
+            return "maximumCumulativeJSONBytes"
+        }
+        return nil
     }
 
     private func canvas(
@@ -212,7 +230,7 @@ public struct SceneGraphBuilder: Sendable {
                     nodeID: nil,
                     jsonPath: nil,
                     arguments: [version],
-                    status: .degraded
+                    evidence: .degraded
                 )
             case let .overlappingEntryRange(first, second):
                 accumulator.append(
@@ -222,7 +240,7 @@ public struct SceneGraphBuilder: Sendable {
                     nodeID: nil,
                     jsonPath: nil,
                     arguments: [first.rawValue, second.rawValue],
-                    status: .degraded
+                    evidence: .degraded
                 )
             }
         }
@@ -233,9 +251,16 @@ struct SceneGraphBuildPhaseState: Sendable {
     let rawObjects: [SceneJSONValue]
 }
 
+enum SceneGraphStatusEvidence: Sendable {
+    case degraded
+    case unsupported
+    case invalid
+}
+
 struct SceneGraphStatusAccumulator: Sendable {
     private(set) var status: SceneGraphStatus = .exact
     private var diagnostics: [SceneGraphDiagnostic] = []
+    private var reportedResourceLimits: Set<String> = []
 
     var sortedDiagnostics: [SceneGraphDiagnostic] {
         diagnostics.sorted(by: Self.precedes)
@@ -250,9 +275,13 @@ struct SceneGraphStatusAccumulator: Sendable {
                 nodeID: diagnostic.nodeID,
                 jsonPath: diagnostic.jsonPath,
                 arguments: diagnostic.arguments,
-                status: diagnostic.status
+                evidence: diagnostic.evidence
             )
         }
+    }
+
+    mutating func record(_ evidence: SceneGraphStatusEvidence) {
+        status = Self.combined(status, evidence)
     }
 
     mutating func append(
@@ -262,8 +291,14 @@ struct SceneGraphStatusAccumulator: Sendable {
         nodeID: SceneNodeID?,
         jsonPath: String?,
         arguments: [String],
-        status: SceneGraphStatus
+        evidence: SceneGraphStatusEvidence
     ) {
+        if code == "graph.resource-limit",
+           let limitName = arguments.first,
+           !reportedResourceLimits.insert(limitName).inserted {
+            record(evidence)
+            return
+        }
         diagnostics.append(
             SceneGraphDiagnostic(
                 severity: severity,
@@ -275,12 +310,13 @@ struct SceneGraphStatusAccumulator: Sendable {
                 arguments: arguments
             )
         )
-        self.status = Self.combined(self.status, status)
+        record(evidence)
     }
 
     mutating func invalidResult(
         code: String,
-        sourcePath: SceneVirtualPath?
+        sourcePath: SceneVirtualPath?,
+        arguments: [String] = []
     ) -> SceneGraphBuildResult {
         append(
             severity: .error,
@@ -288,8 +324,8 @@ struct SceneGraphStatusAccumulator: Sendable {
             sourcePath: sourcePath,
             nodeID: nil,
             jsonPath: nil,
-            arguments: [],
-            status: .invalid
+            arguments: arguments,
+            evidence: .invalid
         )
         return SceneGraphBuildResult(
             document: nil,
@@ -300,9 +336,18 @@ struct SceneGraphStatusAccumulator: Sendable {
 
     private static func combined(
         _ first: SceneGraphStatus,
-        _ second: SceneGraphStatus
+        _ evidence: SceneGraphStatusEvidence
     ) -> SceneGraphStatus {
-        rank(first) >= rank(second) ? first : second
+        let second: SceneGraphStatus
+        switch evidence {
+        case .degraded:
+            second = .degraded
+        case .unsupported:
+            second = .unsupported
+        case .invalid:
+            second = .invalid
+        }
+        return rank(first) >= rank(second) ? first : second
     }
 
     private static func rank(_ status: SceneGraphStatus) -> Int {
