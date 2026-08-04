@@ -67,6 +67,50 @@ final class ScenePackageAssetResolverTests: XCTestCase {
         XCTAssertEqual(resolution.selected?.canonicalPath.rawValue, "scene.json")
     }
 
+    func testDocumentRootReferenceCanonicalizesEmbeddedDotSegments() throws {
+        let resolution = try makeResolver().resolve(
+            SceneAssetRequest(
+                requestedPath: "models/../scene.json",
+                ownerPath: try SceneVirtualPath(
+                    canonicalPath: "models/sub/model.json"
+                ),
+                role: .document,
+                key: nil
+            )
+        )
+
+        XCTAssertEqual(
+            resolution.candidates.map(\.path.rawValue),
+            ["scene.json", "models/sub/scene.json"]
+        )
+        XCTAssertEqual(resolution.kind, .package)
+        XCTAssertEqual(resolution.selected?.canonicalPath.rawValue, "scene.json")
+    }
+
+    func testTextureOwnerReferenceCanonicalizesEmbeddedDotSegments() throws {
+        let resolution = try makeResolver().resolve(
+            SceneAssetRequest(
+                requestedPath: "nested/../base.tex",
+                ownerPath: try SceneVirtualPath(
+                    canonicalPath: "models/sub/model.json"
+                ),
+                role: .texture,
+                key: "textures"
+            )
+        )
+
+        XCTAssertEqual(
+            resolution.candidates.map(\.path.rawValue),
+            ["base.tex", "models/sub/base.tex"]
+        )
+        XCTAssertEqual(resolution.kind, .package)
+        XCTAssertEqual(
+            resolution.selected?.canonicalPath.rawValue,
+            "models/sub/base.tex"
+        )
+        XCTAssertEqual(resolution.selected?.candidateOrigin, .ownerRelative)
+    }
+
     func testExplicitDotReferencesAreOwnerRelativeOnly() throws {
         let resolver = try makeResolver()
         let owner = try SceneVirtualPath(
@@ -291,6 +335,23 @@ final class ScenePackageAssetResolverTests: XCTestCase {
                 requestedPath: "../outside.tex",
                 ownerPath: try SceneVirtualPath(canonicalPath: "model.json"),
                 role: .texture,
+                key: nil
+            )
+        )
+
+        XCTAssertEqual(resolution.kind, .invalid)
+        XCTAssertEqual(resolution.selected, nil)
+        XCTAssertEqual(resolution.issues, [.pathEscape])
+    }
+
+    func testEmbeddedRootEscapeReturnsInvalidPathEscapeIssue() throws {
+        let resolution = try makeResolver().resolve(
+            SceneAssetRequest(
+                requestedPath: "models/../../outside.json",
+                ownerPath: try SceneVirtualPath(
+                    canonicalPath: "models/sub/model.json"
+                ),
+                role: .document,
                 key: nil
             )
         )

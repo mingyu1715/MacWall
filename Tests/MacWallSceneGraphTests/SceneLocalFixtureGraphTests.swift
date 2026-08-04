@@ -38,6 +38,15 @@ final class SceneLocalFixtureGraphTests: XCTestCase {
         XCTAssertThrowsError(try validatedFixtures(in: catalog))
     }
 
+    func testPartialLocalFixtureAvailabilityReportsEveryMissingFixedID() {
+        XCTAssertEqual(
+            localFixtureAvailability(
+                availableIDs: [.fixture2174863503]
+            ),
+            .partial(missingIDs: ["2834933421", "3516106265"])
+        )
+    }
+
     func testLocalSceneFixturesMatchTrackedAggregateCatalog() throws {
         if ProcessInfo.processInfo.environment[
             "MACWALL_UPDATE_LOCAL_SCENE_GRAPH_CATALOG"
@@ -51,16 +60,33 @@ final class SceneLocalFixtureGraphTests: XCTestCase {
         )
         let fixtures = try validatedFixtures(in: catalog)
 
-        let availableFixtures = fixtures.filter {
+        let availableIDs = Set(fixtures.compactMap { fixture in
             FileManager.default.fileExists(
-                atPath: packageURL(for: $0.workshopID).path
+                atPath: packageURL(for: fixture.workshopID).path
             )
-        }
-        guard !availableFixtures.isEmpty else {
+                ? fixture.workshopID
+                : nil
+        })
+        let activeFixtureIDs: [FixedWorkshopID]
+        switch localFixtureAvailability(availableIDs: availableIDs) {
+        case .absent:
             throw XCTSkip(
                 "Local Workshop scene fixtures are not available."
             )
+        case let .partial(missingIDs):
+            XCTFail(
+                "Local Workshop scene fixtures are partially available; "
+                    + "missing fixed fixture IDs: "
+                    + missingIDs.joined(separator: ", ")
+            )
+            return
+        case let .complete(workshopIDs):
+            activeFixtureIDs = workshopIDs
         }
+        let fixturesByID = Dictionary(
+            uniqueKeysWithValues: fixtures.map { ($0.workshopID, $0) }
+        )
+        let availableFixtures = activeFixtureIDs.compactMap { fixturesByID[$0] }
 
         for fixture in availableFixtures {
             let first = try buildFixture(for: fixture.workshopID)
@@ -300,6 +326,12 @@ private struct ValidatedLocalSceneGraphFixture {
     let fixture: LocalSceneGraphFixture
 }
 
+private enum LocalFixtureAvailability: Equatable {
+    case absent
+    case partial(missingIDs: [String])
+    case complete([FixedWorkshopID])
+}
+
 private enum LocalFixtureCatalogError: Error {
     case invalidSchemaVersion(Int)
     case invalidFixtureIDs([String])
@@ -309,6 +341,21 @@ private enum LocalFixtureCatalogError: Error {
 private struct BuiltFixture {
     let summary: SceneGraphSummary
     let summaryBytes: Data
+}
+
+private func localFixtureAvailability(
+    availableIDs: Set<FixedWorkshopID>
+) -> LocalFixtureAvailability {
+    guard !availableIDs.isEmpty else {
+        return .absent
+    }
+    let missingIDs = FixedWorkshopID.sorted.filter {
+        !availableIDs.contains($0)
+    }
+    guard missingIDs.isEmpty else {
+        return .partial(missingIDs: missingIDs.map(\.rawValue))
+    }
+    return .complete(FixedWorkshopID.sorted)
 }
 
 private func validatedFixtures(

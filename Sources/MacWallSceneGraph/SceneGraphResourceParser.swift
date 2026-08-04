@@ -43,7 +43,7 @@ struct SceneGraphResourceParser: Sendable {
         inspectMetadata(
             in: .object(root),
             sourcePath: sourcePath,
-            defaultOwner: nil,
+            defaultOwner: .document(sourcePath),
             rootNodeIDs: nodes.map(\.id)
         )
         for node in nodes where !stopped {
@@ -912,7 +912,53 @@ struct SceneGraphResourceParser: Sendable {
     }
 
     private static func jsonPath(_ base: String, appending key: String) -> String {
-        "\(base).\(key)"
+        guard requiresQuotedJSONPathKey(key) else {
+            return "\(base).\(key)"
+        }
+        return "\(base)[\"\(escapedJSONPathKey(key))\"]"
+    }
+
+    private static func requiresQuotedJSONPathKey(_ key: String) -> Bool {
+        key.isEmpty || key.unicodeScalars.contains { scalar in
+            switch scalar {
+            case ".", "[", "]", "\"", "\\":
+                true
+            default:
+                scalar.value < 0x20
+            }
+        }
+    }
+
+    private static func escapedJSONPathKey(_ key: String) -> String {
+        var escaped = ""
+        escaped.reserveCapacity(key.utf8.count)
+        for scalar in key.unicodeScalars {
+            switch scalar {
+            case "\"":
+                escaped.append(contentsOf: "\\\"")
+            case "\\":
+                escaped.append(contentsOf: "\\\\")
+            case "\u{08}":
+                escaped.append(contentsOf: "\\b")
+            case "\u{0C}":
+                escaped.append(contentsOf: "\\f")
+            case "\n":
+                escaped.append(contentsOf: "\\n")
+            case "\r":
+                escaped.append(contentsOf: "\\r")
+            case "\t":
+                escaped.append(contentsOf: "\\t")
+            default:
+                if scalar.value < 0x20 {
+                    escaped.append(
+                        contentsOf: String(format: "\\u%04X", scalar.value)
+                    )
+                } else {
+                    escaped.unicodeScalars.append(scalar)
+                }
+            }
+        }
+        return escaped
     }
 
     private static func handlerNames(in source: String) -> [String] {
@@ -1302,6 +1348,8 @@ private struct SceneGraphDependencyKey: Hashable, Sendable {
         requestedPath: String
     ) {
         switch owner {
+        case let .document(sourcePath):
+            self.owner = "document:\(sourcePath.rawValue)"
         case let .node(nodeID):
             self.owner = "node:\(nodeID.rawValue)"
         case let .resource(resourceID):

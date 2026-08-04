@@ -4,6 +4,7 @@ import MacWallSceneAssets
 struct SceneGraphAnimationParseResult: Sendable {
     let animations: [SceneAnimationTrack]
     let diagnostics: [SceneGraphParserDiagnostic]
+    let evidence: [SceneGraphStatusEvidence]
 }
 
 struct SceneGraphAnimationParser: Sendable {
@@ -38,9 +39,13 @@ struct SceneGraphAnimationParser: Sendable {
             }
         }
 
+        let animations = state.animations.sorted(by: Self.trackPrecedes)
         return SceneGraphAnimationParseResult(
-            animations: state.animations.sorted(by: Self.trackPrecedes),
-            diagnostics: state.diagnostics
+            animations: animations,
+            diagnostics: state.diagnostics,
+            evidence: animations.contains { $0.status == .degraded }
+                ? [.degraded]
+                : []
         )
     }
 
@@ -101,11 +106,15 @@ private struct SceneGraphAnimationParseState {
         if stopped {
             status = .degraded
         }
+        let valueKind = valueKind(channels: channels)
+        if valueKind == .raw {
+            status = .degraded
+        }
         animations.append(
             SceneAnimationTrack(
                 nodeID: node.id,
                 propertyPath: propertyPath,
-                valueKind: valueKind(channels: channels),
+                valueKind: valueKind,
                 fps: options.fps,
                 duration: options.duration,
                 isRelative: options.isRelative,

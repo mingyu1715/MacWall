@@ -89,6 +89,42 @@ final class SceneGraphAnimationTests: XCTestCase {
         ]))
     }
 
+    func testKnownPropertyRawAndFourComponentTracksDegradeBuild() throws {
+        let result = try build(#"""
+        {
+          "objects": [
+            {
+              "fullscreen": true,
+              "origin": {
+                "value": "0 0 0",
+                "animation": {
+                  "x": [{"value": 0}],
+                  "y": [{"value": 0}],
+                  "z": [{"value": 0}]
+                }
+              },
+              "color": {
+                "value": "1 1 1 1",
+                "animation": {
+                  "c0": [{"value": 1}],
+                  "c1": [{"value": 1}],
+                  "c2": [{"value": 1}],
+                  "c3": [{"value": 1}]
+                }
+              }
+            }
+          ]
+        }
+        """#)
+
+        let tracks = try XCTUnwrap(result.document?.animations)
+        XCTAssertEqual(tracks.map(\.propertyPath), ["color", "origin"])
+        XCTAssertEqual(tracks.map(\.valueKind), [.raw, .raw])
+        XCTAssertEqual(tracks.map(\.status), [.degraded, .degraded])
+        XCTAssertEqual(result.diagnostics, [])
+        XCTAssertEqual(result.status, .degraded)
+    }
+
     func testBuildPreservesFractionalExplicitAndUnknownKeyframeFields() throws {
         let result = try build(#"""
         {

@@ -32,8 +32,9 @@ struct SceneAssetCandidatePolicy: Sendable {
                 )
             } else {
                 candidates = [
-                    try SceneAssetCandidate(
-                        path: SceneVirtualPath(canonicalPath: reference),
+                    try candidate(
+                        reference: reference,
+                        owner: nil,
                         origin: .rootExact
                     ),
                     try candidate(
@@ -81,14 +82,14 @@ struct SceneAssetCandidatePolicy: Sendable {
                 owner: owner,
                 origin: .ownerTextureExtension
             ),
-            try SceneAssetCandidate(
-                path: SceneVirtualPath(
-                    canonicalPath: "materials/" + textureReference
-                ),
+            try candidate(
+                reference: "materials/" + textureReference,
+                owner: nil,
                 origin: .materialsTextureExtension
             ),
-            try SceneAssetCandidate(
-                path: SceneVirtualPath(canonicalPath: textureReference),
+            try candidate(
+                reference: textureReference,
+                owner: nil,
                 origin: .rootTextureExtension
             )
         ]

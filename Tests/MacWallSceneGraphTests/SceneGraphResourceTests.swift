@@ -270,6 +270,52 @@ final class SceneGraphResourceTests: XCTestCase {
         XCTAssertEqual(result.status, .exact)
     }
 
+    func testPreservesSceneDocumentMetadataDependenciesWithProvenance() throws {
+        let result = try build(entries: [
+            entry(
+                "scene.json",
+                #"{"effect":"effects/root.json","file":"documents/root.json","model":"models/root.json","objects":[],"shader":"shaders/root.glsl","texture":"textures/root.tex"}"#
+            ),
+            entry("effects/root.json", "{}"),
+            entry("documents/root.json", "{}"),
+            entry("models/root.json", "{}"),
+            .init(path: "shaders/root.glsl", data: Data([0x53])),
+            texture("textures/root.tex")
+        ])
+        let document = try XCTUnwrap(result.document)
+
+        XCTAssertEqual(document.dependencies.map(\.request.role), [
+            .effect,
+            .document,
+            .model,
+            .shader,
+            .texture
+        ])
+        XCTAssertEqual(
+            document.dependencies.map(\.resolution.kind),
+            Array(repeating: .package, count: 5)
+        )
+        XCTAssertTrue(document.dependencies.allSatisfy { dependency in
+            guard dependency.request.ownerPath?.rawValue == "scene.json",
+                  case .package? = dependency.resolution.selected?.provenance,
+                  case let .document(ownerPath) = dependency.owner else {
+                return false
+            }
+            return ownerPath.rawValue == "scene.json"
+        })
+        XCTAssertEqual(document.resources.map(\.id.rawValue), [
+            "effect:effects/root.json",
+            "model:models/root.json",
+            "shader:shaders/root.glsl",
+            "texture:textures/root.tex"
+        ])
+        XCTAssertEqual(result.status, .unsupported)
+        XCTAssertEqual(
+            Set(result.diagnostics.map(\.code)),
+            ["graph.unsupported-effect", "graph.unsupported-shader"]
+        )
+    }
+
     func testPreservesInvalidPathEscapeAndExternalResolverStates() throws {
         let entries = [
             entry(
@@ -467,6 +513,36 @@ final class SceneGraphResourceTests: XCTestCase {
             }.count,
             1
         )
+    }
+
+    func testMetadataKeysWithPathDelimitersDoNotCollide() throws {
+        let result = try build(entries: [
+            entry(
+                "scene.json",
+                #"{"a":{"b":{"texture":"missing.tex"}},"a.b":{"texture":"missing.tex"},"items":[{"texture":"missing.tex"}],"items[0]":{"texture":"missing.tex"},"objects":[]}"#
+            )
+        ])
+        let document = try XCTUnwrap(result.document)
+        let missingDependencies = document.dependencies.filter {
+            $0.request.requestedPath == "missing.tex"
+        }
+        let missingDiagnostics = result.diagnostics.filter {
+            $0.code == "asset.unresolved"
+                && $0.arguments == ["missing.tex"]
+        }
+
+        XCTAssertEqual(missingDependencies.count, 4)
+        XCTAssertTrue(missingDependencies.allSatisfy {
+            guard case .document = $0.owner else { return false }
+            return $0.request.role == .texture
+        })
+        XCTAssertEqual(Set(missingDiagnostics.compactMap(\.jsonPath)), [
+            "$.a.b.texture",
+            #"$["a.b"].texture"#,
+            "$.items[0].texture",
+            #"$["items[0]"].texture"#
+        ])
+        XCTAssertEqual(result.status, .unsupported)
     }
 
     func testStructuredTextureBindingRetainsNestedShaderAndScriptMetadata() throws {

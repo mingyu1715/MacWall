@@ -172,6 +172,9 @@ public struct SceneGraphBuilder: Sendable {
             rawObjects: phaseState.rawObjects
         )
         accumulator.append(contentsOf: animationGraph.diagnostics)
+        for evidence in animationGraph.evidence {
+            accumulator.record(evidence)
+        }
 
         var sceneMetadata = root
         sceneMetadata.removeValue(forKey: "objects")

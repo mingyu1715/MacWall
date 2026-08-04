@@ -27,6 +27,7 @@ public struct SceneResourceID: Codable, Comparable, Hashable, Sendable {
 }
 
 public enum SceneDependencyOwner: Equatable, Sendable {
+    case document(SceneVirtualPath)
     case node(SceneNodeID)
     case resource(SceneResourceID)
     case materialPass(material: SceneResourceID, index: Int)

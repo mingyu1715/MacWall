@@ -47,9 +47,13 @@ effect/shader dependency는 provenance와 함께 남고, parent/instance/overrid
 flatten하지 않는 reference edge입니다. Cycle은 deterministic diagnostic으로
 처리합니다. Typed `SceneJSONValue`는 unknown JSON, effect, shader, script,
 animation metadata를 보존하며 SceneScript, effect, custom shader, texture
-payload는 실행, decode, upload하지 않습니다.
+payload는 실행, decode, upload하지 않습니다. Scene document 자체도 typed
+dependency owner이며 root metadata의 effect, shader, texture, model, file
+reference를 provenance와 함께 보존합니다.
 
 상태 우선순위는 `invalid > unsupported > degraded > exact`입니다. 모든
+raw 또는 degraded animation track은 최소 `degraded` status evidence를
+기록합니다. 모든
 configured limit은 injected boundary test로 검증하고, summary는 sorted key와
 한 개 LF를 사용하는 deterministic, path-redacted schema 1 catalog result를
 생성합니다.
@@ -58,7 +62,9 @@ configured limit은 injected boundary test로 검증하고, summary는 sorted ke
 
 Tracked `Tests/Fixtures/SceneGraph/local-scene-graph-catalog.json`은 payload나
 local path 없이 aggregate summary만 기록합니다. Local fixture gate는 각
-fixture를 두 번 build하여 canonical summary bytes가 같은지 비교합니다.
+fixture를 두 번 build하여 canonical summary bytes가 같은지 비교합니다. 세
+fixed fixture가 모두 없을 때만 skip하고, 일부만 있으면 missing ID를 보고하며
+실패하므로 zero skip은 세 ID가 모두 비교됐다는 뜻입니다.
 
 | Workshop ID | Nodes | Resources | Dependencies | Status |
 | --- | ---: | ---: | ---: | --- |
@@ -74,9 +80,9 @@ not a claim of visual or renderer correctness.
 
 With the local-only `test` fixture symlink present:
 
-- `swift test --filter SceneLocalFixtureGraphTests`: 4 tests, 0 failures,
+- `swift test --filter SceneLocalFixtureGraphTests`: 5 tests, 0 failures,
   0 skips.
-- `swift test`: 407 tests, 0 failures, 0 skips.
+- `swift test`: 414 tests, 0 failures, 0 skips.
 - `git diff --check`: no whitespace errors.
 - Static searches found no prohibited framework imports, public `Any` or
   `[String: Any]` boundaries, or `Data(contentsOf:)`/preview/fallback references
