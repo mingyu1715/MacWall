@@ -6,6 +6,7 @@ struct SceneGraphResourceParseResult: Sendable {
     let dependencies: [SceneDependencyEdge]
     let scripts: [SceneScriptMetadata]
     let diagnostics: [SceneGraphParserDiagnostic]
+    let evidence: [SceneGraphStatusEvidence]
 }
 
 struct SceneGraphResourceParser: Sendable {
@@ -19,6 +20,7 @@ struct SceneGraphResourceParser: Sendable {
     private var scripts: [SceneScriptMetadata] = []
     private var scriptKeys: Set<SceneGraphScriptKey> = []
     private var diagnostics: [SceneGraphParserDiagnostic] = []
+    private var hasRetainedUnknownFields = false
     private var parsedDocuments: Set<SceneGraphResourceCacheKey> = []
     private var parsedPassDocuments: [SceneGraphResourceCacheKey: SceneGraphPassDocument] = [:]
     private var stopped = false
@@ -52,7 +54,8 @@ struct SceneGraphResourceParser: Sendable {
             resources: resources.values.sorted { $0.id < $1.id },
             dependencies: dependencies,
             scripts: scripts.sorted(by: Self.scriptPrecedes),
-            diagnostics: diagnostics
+            diagnostics: diagnostics,
+            evidence: hasRetainedUnknownFields ? [.degraded] : []
         )
     }
 
@@ -121,6 +124,7 @@ struct SceneGraphResourceParser: Sendable {
         if let material = fields["material"] {
             guard case let .string(reference) = material else {
                 appendInvalidProperty(sourcePath: asset.canonicalPath, jsonPath: "material")
+                recordRetainedUnknownFields(in: fields, excluding: ["material"])
                 resources[id] = .model(
                     SceneModelResource(
                         id: id,
@@ -149,6 +153,7 @@ struct SceneGraphResourceParser: Sendable {
             materialDependency = nil
         }
 
+        recordRetainedUnknownFields(in: fields, excluding: ["material"])
         resources[id] = .model(
             SceneModelResource(
                 id: id,
@@ -251,6 +256,7 @@ struct SceneGraphResourceParser: Sendable {
             ))
         }
 
+        recordRetainedUnknownFields(in: fields, excluding: ["passes"])
         resources[id] = .material(
             SceneMaterialResource(
                 id: id,
@@ -410,6 +416,7 @@ struct SceneGraphResourceParser: Sendable {
             }
         }
 
+        recordRetainedUnknownFields(in: fields)
         return SceneMaterialPass(
             index: index,
             sourcePath: sourcePath,
@@ -551,6 +558,15 @@ struct SceneGraphResourceParser: Sendable {
         guard dependencyKeys.insert(dependencyKey).inserted else {
             return dependencyEdges[dependencyKey]
         }
+        guard dependencies.count < limits.maximumDependencyEdgeCount else {
+            appendResourceLimit(
+                name: "maximumDependencyEdgeCount",
+                sourcePath: sourcePath,
+                nodeID: nodeID,
+                jsonPath: jsonPath
+            )
+            return nil
+        }
         let resolution = resolver.resolve(request)
         appendResolutionDiagnostics(
             resolution,
@@ -559,15 +575,6 @@ struct SceneGraphResourceParser: Sendable {
             jsonPath: jsonPath
         )
         guard !stopped else {
-            return nil
-        }
-        guard dependencies.count < limits.maximumDependencyEdgeCount else {
-            appendResourceLimit(
-                name: "maximumDependencyEdgeCount",
-                sourcePath: sourcePath,
-                nodeID: nodeID,
-                jsonPath: jsonPath
-            )
             return nil
         }
         let edge = SceneDependencyEdge(
@@ -1222,6 +1229,15 @@ struct SceneGraphResourceParser: Sendable {
             arguments: [],
             evidence: .unsupported
         )
+    }
+
+    private mutating func recordRetainedUnknownFields(
+        in fields: [String: SceneJSONValue],
+        excluding knownFields: Set<String> = []
+    ) {
+        if fields.keys.contains(where: { !knownFields.contains($0) }) {
+            hasRetainedUnknownFields = true
+        }
     }
 
     private mutating func appendResourceLimit(

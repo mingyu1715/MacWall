@@ -160,6 +160,9 @@ public struct SceneGraphBuilder: Sendable {
             nodes: nodes
         )
         accumulator.append(contentsOf: resourceGraph.diagnostics)
+        for evidence in resourceGraph.evidence {
+            accumulator.record(evidence)
+        }
 
         let animationGraph = SceneGraphAnimationParser(
             limits: limits,

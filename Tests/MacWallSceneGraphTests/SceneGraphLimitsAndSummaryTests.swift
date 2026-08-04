@@ -194,6 +194,79 @@ final class SceneGraphLimitsAndSummaryTests: XCTestCase {
         )
     }
 
+    func testRetainedUnknownResourceFieldsDegradeWithoutNoisyDiagnostics() throws {
+        let model = try build(
+            #"{"objects":[{"image":"models/model.json"}]}"#,
+            entries: [entry("models/model.json", #"{"futureModel":1}"#)]
+        )
+        XCTAssertEqual(model.status, .degraded)
+        XCTAssertEqual(model.diagnostics, [])
+        XCTAssertEqual(
+            model.document?.resources.first?.model?.unknownFields,
+            ["futureModel": .integer(1)]
+        )
+
+        let material = try build(
+            #"{"objects":[{"image":"models/model.json"}]}"#,
+            entries: [
+                entry("models/model.json", #"{"material":"materials/material.json"}"#),
+                entry("materials/material.json", #"{"passes":[],"futureMaterial":2}"#)
+            ]
+        )
+        XCTAssertEqual(material.status, .degraded)
+        XCTAssertEqual(material.diagnostics, [])
+        XCTAssertEqual(
+            material.document?.resources.first { $0.id.kind == .material }?.material?.unknownFields,
+            ["futureMaterial": .integer(2)]
+        )
+
+        let pass = try build(
+            #"{"objects":[{"image":"models/model.json"}]}"#,
+            entries: [
+                entry("models/model.json", #"{"material":"materials/material.json"}"#),
+                entry("materials/material.json", #"{"passes":[{"futurePass":3}]}"#)
+            ]
+        )
+        XCTAssertEqual(pass.status, .degraded)
+        XCTAssertEqual(pass.diagnostics, [])
+        XCTAssertEqual(
+            pass.document?.resources.first { $0.id.kind == .material }?
+                .material?.passes.first?.unknownFields,
+            ["futurePass": .integer(3)]
+        )
+
+        let malformedKnown = try build(
+            #"{"objects":[{"image":"models/model.json"}]}"#,
+            entries: [entry("models/model.json", #"{"material":42}"#)]
+        )
+        XCTAssertEqual(malformedKnown.status, .unsupported)
+        XCTAssertEqual(
+            malformedKnown.diagnostics.map(\.code),
+            ["graph.invalid-property"]
+        )
+    }
+
+    func testDependencyLimitWinsBeforeCollidingCandidateLimit() throws {
+        let result = try build(
+            #"{"objects":[{"image":"./models/model.json"}]}"#,
+            entries: [
+                entry("models/model.json", #"{"material":"base"}"#)
+            ],
+            limits: .init(maximumDependencyEdgeCount: 1),
+            resolverLimits: .init(maximumCandidatesPerRequest: 1)
+        )
+
+        assertLimit(
+            result,
+            name: "maximumDependencyEdgeCount",
+            retainsDocument: true
+        )
+        XCTAssertEqual(result.document?.dependencies.count, 1)
+        XCTAssertFalse(result.diagnostics.contains {
+            $0.arguments == ["maximumCandidatesPerRequest"]
+        })
+    }
+
     func testStatusPrecedenceIsIndependentOfEvidenceOrder() throws {
         let result = try build(#"{"objects":[{"mystery":true,"futureProperty":1},{"id":"self","parent":"self","fullscreen":true}]}"#)
         XCTAssertEqual(result.status, .invalid)
@@ -281,14 +354,54 @@ final class SceneGraphLimitsAndSummaryTests: XCTestCase {
     func testSummaryExcludesPrivateAndRetainedPayloadData() throws {
         let sensitive = "PRIVATE-WORKSHOP-HOST-PATH-RAW-SCRIPT-PAYLOAD"
         let result = try build("""
-        {"title":"\(sensitive)","script":"function hidden() { return '\(sensitive)' }","objects":[{"name":"\(sensitive)","fullscreen":true}]}
-        """)
+        {"title":"\(sensitive)","script":"function hidden() { return '\(sensitive)' }","objects":[{"name":"\(sensitive)","image":"private/\(sensitive)/model.json"}]}
+        """, entries: [
+            entry(
+                "private/\(sensitive)/model.json",
+                #"{"material":"missing.json"}"#
+            )
+        ])
         let encoded = try SceneGraphSummaryEncoder.encode(SceneGraphSummarizer.summarize(result))
         let string = String(decoding: encoded, as: UTF8.self)
 
         XCTAssertFalse(string.contains(sensitive))
         XCTAssertFalse(string.contains("scene.json"))
         XCTAssertFalse(string.contains("objects["))
+    }
+
+    func testCanonicalEncoderEscapesCountNamesAndEmitsExactlyOneLF() throws {
+        let summary = SceneGraphSummary(
+            schemaVersion: 1,
+            packageVersion: nil,
+            nodeKinds: [
+                .init(name: "slash/name", count: 1),
+                .init(name: "quote\"name", count: 1),
+                .init(name: "back\\slash", count: 1),
+                .init(name: "line\nbreak", count: 1)
+            ],
+            hierarchyEdgeCount: 0,
+            instanceEdgeCount: 0,
+            overrideCount: 0,
+            resourceKinds: [],
+            dependencyResolutions: [],
+            animationTrackCount: 0,
+            animationKeyframeCount: 0,
+            scriptCount: 0,
+            diagnosticCodes: [],
+            status: .exact
+        )
+
+        let first = try SceneGraphSummaryEncoder.encode(summary)
+        let repeated = try SceneGraphSummaryEncoder.encode(summary)
+        let string = String(decoding: first, as: UTF8.self)
+        XCTAssertEqual(first, repeated)
+        XCTAssertTrue(string.contains(#""name" : "slash/name""#))
+        XCTAssertTrue(string.contains(#""name" : "quote\"name""#))
+        XCTAssertTrue(string.contains(#""name" : "back\\slash""#))
+        XCTAssertTrue(string.contains(#""name" : "line\nbreak""#))
+        XCTAssertFalse(string.contains("line\nbreak"))
+        XCTAssertEqual(first.last, 0x0A)
+        XCTAssertNotEqual(first.dropLast().last, 0x0A)
     }
 
     private func assertLimit(
@@ -420,5 +533,21 @@ final class SceneGraphLimitsAndSummaryTests: XCTestCase {
         }
 
         """
+    }
+}
+
+private extension SceneGraphResource {
+    var model: SceneModelResource? {
+        guard case let .model(value) = self else {
+            return nil
+        }
+        return value
+    }
+
+    var material: SceneMaterialResource? {
+        guard case let .material(value) = self else {
+            return nil
+        }
+        return value
     }
 }
