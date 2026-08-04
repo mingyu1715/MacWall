@@ -1,6 +1,6 @@
 # MacWall Scene Asset Resolver and Typed Graph Design
 
-상태: Design approved / implementation plan ready / code not started
+상태: implemented / completed / archived
 
 작성일: 2026-08-03
 대상: Scene Engine S2 Asset Resolver and Typed Scene Graph
@@ -567,12 +567,11 @@ graph의 정확한 경계를 먼저 고정하기 위해 actual integration은 �
 
 ## 13. 후속 단계
 
-문서 검토 승인 후 S2 executable implementation plan을 작성합니다. 계획은
-target/API 추가, resolver, typed JSON, node/resource graph, validation,
-synthetic/local fixture gate, aggregate catalog, 전체 검증을 작은 TDD task와
-독립 review checkpoint로 나눕니다.
+S2 구현은 [구현 기록](../../../implemented/2026-08-04-scene-asset-resolver-typed-graph.md)과
+[보관된 실행 계획](../plans/2026-08-04-scene-asset-resolver-typed-graph.md)에
+기록했습니다. 다음 Scene planning phase는 S3 GPU Texture Pipeline입니다.
 
-S2 구현이 완료되기 전에는 다음을 시작하지 않습니다.
+S3 설계가 승인되기 전에는 다음을 시작하지 않습니다.
 
 - S3 GPU Texture Pipeline
 - S4 Headless 2D Metal Renderer

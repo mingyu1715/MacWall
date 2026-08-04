@@ -1,6 +1,6 @@
 # MacWall Scene Engine Design
 
-상태: Approved design / S0-S1 implemented / S2 implementation plan ready
+상태: Approved design / S0-S2 implemented / S3 planning next
 
 작성일: 2026-07-29
 대상: Wallpaper Engine Scene compatibility runtime
@@ -48,6 +48,17 @@ deterministic Audit schema 2를 구현했습니다. Core/App/CLI consumer를 새
 fixture와 S0 aggregate catalog가 일치했고, Formats 49 tests, Audit 17 tests,
 RenderPlan 2 tests 및 전체 310 tests가 실패 없이 통과했습니다. S2, Metal,
 Native Scene, Scene fallback, SceneScript/effect 실행은 시작하지 않았습니다.
+
+### S2 implementation evidence
+
+S2는 [구현 기록](../../implemented/2026-08-04-scene-asset-resolver-typed-graph.md)에
+따라 완료했습니다. `MacWallSceneAssets`와 `MacWallSceneGraph`을
+`MacWallSceneFormats` 위의 독립 target으로 추가하고, exact virtual path,
+candidate/provenance policy, typed graph, deterministic status/summary를
+구현했습니다. Audit는 같은 resolver policy를 사용하며 schema 2와 S1 aggregate
+catalog compatibility를 유지합니다. Local fixture graph gate 4 tests와 전체
+407 tests가 skip/failure 없이 통과했습니다. Metal, Native Scene, fallback,
+external assets, execution, renderer/main-app integration은 시작하지 않았습니다.
 
 ## 2. 확정 정책
 
@@ -650,14 +661,19 @@ transition은 사용자가 직접 확인합니다. 자동화가 대신 조작하
 
 ### S2: Asset Resolver and Typed Graph
 
-상태: next planning phase
+상태: implemented / completed
 
 - canonical virtual paths
 - clean-room built-in contract
 - model/material/pass dependency graph
 - typed nodes, parent, instance, animation
+- [구현 기록](../../implemented/2026-08-04-scene-asset-resolver-typed-graph.md)
 
 ### S3: GPU Texture Pipeline
+
+상태: planning next
+
+S3 GPU Texture Pipeline is the next Scene planning phase.
 
 - Metal capability mapping
 - direct compressed upload when supported

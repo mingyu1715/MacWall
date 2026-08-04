@@ -1,5 +1,7 @@
 # Scene Asset Resolver and Typed Graph Implementation Plan
 
+상태: implemented / completed / archived
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** `scene.pkg` 내부 reference를 안전하게 해석하는 `MacWallSceneAssets`와 모든 Scene object, dependency, hierarchy, instance, animation, unknown metadata를 deterministic하게 보존하는 `MacWallSceneGraph`를 구현한다.

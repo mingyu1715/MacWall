@@ -32,6 +32,7 @@ repository root에는 사용자와 외부 기여자가 바로 확인해야 하�
 - [macOS 26 Native Wallpaper Spike 구현 기록](implemented/2026-06-15-macos-26-native-wallpaper-spike.md)
 - [macOS 26 Native Auto-pause 및 Runtime Stability 구현 기록](implemented/2026-07-29-native-auto-pause-runtime-stability.md)
 - [Scene S1 Format Layer Hardening 구현 기록](implemented/2026-07-29-scene-format-layer-hardening.md)
+- [Scene S2 Asset Resolver and Typed Graph 구현 기록](implemented/2026-08-04-scene-asset-resolver-typed-graph.md)
 
 작은 버그 수정이나 판단은 [개발 로그](development-log.md)에만 남겨도 됩니다. 큰 기능은 구현 기록을 만들고 개발 로그에서 링크합니다.
 
@@ -48,12 +49,10 @@ repository root에는 사용자와 외부 기여자가 바로 확인해야 하�
 - [macOS 26 Native Wallpaper AdHocQA Transport 설계](superpowers/specs/2026-07-29-native-wallpaper-adhoc-qa-transport-design.md): provisioning 전 개발용 runtime transport
 - [macOS 26 Native Wallpaper AdHocQA Transport 실행 계획](superpowers/plans/2026-07-29-native-wallpaper-adhoc-qa-transport.md)
 - [Scene Engine 설계](superpowers/specs/2026-07-29-scene-engine-design.md): format, asset resolver, typed graph, Metal renderer, Native Wallpaper integration
-- [Scene S2 Asset Resolver and Typed Scene Graph 설계](superpowers/specs/2026-08-03-scene-asset-resolver-typed-graph-design.md): 승인 완료
-- [Scene S2 Asset Resolver and Typed Scene Graph 실행 계획](superpowers/plans/2026-08-04-scene-asset-resolver-typed-graph.md): 13개 TDD review gate, 실행 대기
 
 Scene S0/S1 계획은 구현 완료되어 `archive/superpowers/`로 이동했습니다.
-다음 Scene 작업은 승인된 S2 Asset Resolver and Typed Scene Graph 실행
-계획의 task별 구현입니다.
+Scene S2 설계와 실행 계획도 구현 완료되어 `archive/superpowers/`로 이동했습니다.
+다음 Scene planning phase는 S3 GPU Texture Pipeline입니다.
 
 ## 재사용 템플릿
 

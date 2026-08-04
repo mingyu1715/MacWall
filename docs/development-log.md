@@ -4,11 +4,43 @@
 
 ## 2026-08-04
 
+### 23:59 KST
+
+- 완료: Scene Engine S2 Asset Resolver and Typed Graph 구현 및 완료 문서화
+- 문서: [S2 구현 기록](implemented/2026-08-04-scene-asset-resolver-typed-graph.md)
+- 구현:
+  - `MacWallSceneFormats -> MacWallSceneAssets -> MacWallSceneGraph` 독립
+    target과 typed/Sendable resolver, graph, summary contract 확정
+  - Audit가 Assets candidate/provenance policy를 공유하면서 schema 2와 S1
+    aggregate catalog compatibility 유지
+  - node/resource/dependency/hierarchy/instance/override/animation/unknown
+    metadata를 보존하고 status/diagnostic ordering과 limits를 deterministic하게 고정
+- local fixture:
+  - `2174863503`, `2834933421`, `3516106265`가 각각 28, 98, 69 graph node로
+    보존되었고 catalog status는 모두 `unsupported`
+  - local graph fixture gate `4 tests, 0 failures, 0 skips`; source repository
+    clean 및 세 `scene.pkg` SHA-256 unchanged 확인
+- 검증:
+  - focused `SceneLocalFixtureGraphTests`: `4 tests, 0 failures`
+  - 전체 `swift test`: `407 tests, 0 failures, 0 skips`
+  - `git diff --check` 및 S2 target/framework/public-boundary/dependency/
+    bounded-read static checks 통과
+- commit: `74b03e2`, `222b144`, `203068c`, `9153402`, `1e888bb`, `862585b`,
+  `de2eab2`, `524f154`, `02fcbe5`, `19b5173`, `09f4294`, `27f2b3b`, `02053c6`,
+  `edadfa3`, `daab277`, `d3e0390`, `3ae0f7b`, `314e9f3`, `21c1b24`, `19f28f8`,
+  `688d515`, `770bb40`, `7706ec2`
+- 다음: S3 GPU Texture Pipeline design
+- 미실행:
+  - S3 Metal, Native Scene surface, Scene fallback, external asset integration,
+    SceneScript/effect/custom shader execution, renderer/main-app integration
+  - `swift build`, `xcodebuild build`, 앱/GUI/System Settings 실행
+  - package, DMG, notarization, `dist` 작업
+
 ### 00:27 KST
 
 - 완료: Scene Engine S2 Asset Resolver and Typed Scene Graph 실행 계획 작성
 - 계획:
-  - [S2 실행 계획](superpowers/plans/2026-08-04-scene-asset-resolver-typed-graph.md)
+  - [S2 실행 계획](archive/superpowers/plans/2026-08-04-scene-asset-resolver-typed-graph.md)
   - virtual path, package resolver, Audit 정책 통합, typed JSON, graph model,
     node/hierarchy/resource/effect/script/animation, limits/summary, local
     fixture catalog, 완료 문서의 13개 TDD review gate로 분해
@@ -36,7 +68,7 @@
 
 - 완료: Scene Engine S2 Asset Resolver and Typed Scene Graph 설계 작성
 - 설계:
-  - [S2 Asset Resolver and Typed Scene Graph 설계](superpowers/specs/2026-08-03-scene-asset-resolver-typed-graph-design.md)
+  - [S2 Asset Resolver and Typed Scene Graph 설계](archive/superpowers/specs/2026-08-03-scene-asset-resolver-typed-graph-design.md)
   - `MacWallSceneFormats -> MacWallSceneAssets -> MacWallSceneGraph` 독립
     module dependency와 기존 CALayer prototype 병행 유지 확정
   - exact case/Unicode virtual path, root/owner reference, texture shorthand,
