@@ -21,6 +21,17 @@ public struct SceneNodeID: Codable, Comparable, Hashable, Sendable {
 public enum SceneSourceIdentifier: Codable, Equatable, Hashable, Sendable {
     case integer(Int64)
     case string(String)
+
+    init?(scalar value: SceneJSONValue) {
+        switch value {
+        case let .integer(identifier):
+            self = .integer(identifier)
+        case let .string(identifier):
+            self = .string(identifier)
+        default:
+            return nil
+        }
+    }
 }
 
 public enum SceneNodePayload: Equatable, Sendable {

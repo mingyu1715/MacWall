@@ -126,6 +126,12 @@ public struct SceneGraphBuilder: Sendable {
             nodes.append(parsed.node)
             accumulator.append(contentsOf: parsed.diagnostics)
         }
+        let hierarchy = SceneGraphHierarchyResolver(limits: limits).resolve(
+            nodes: nodes,
+            rawObjects: phaseState.rawObjects,
+            sourcePath: asset.canonicalPath
+        )
+        accumulator.append(contentsOf: hierarchy.diagnostics)
 
         var sceneMetadata = root
         sceneMetadata.removeValue(forKey: "objects")
@@ -135,8 +141,8 @@ public struct SceneGraphBuilder: Sendable {
             canvas: canvas(from: root),
             sceneMetadata: sceneMetadata,
             nodes: nodes,
-            hierarchyEdges: [],
-            instanceEdges: [],
+            hierarchyEdges: hierarchy.hierarchyEdges,
+            instanceEdges: hierarchy.instanceEdges,
             resources: [],
             dependencies: [],
             animations: [],

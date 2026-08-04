@@ -30,6 +30,9 @@ struct SceneGraphNodeParser: Sendable {
             nodeID: nodeID,
             index: index
         )
+        fields.removeValue(forKey: "parent")
+        fields.removeValue(forKey: "instance")
+        fields.removeValue(forKey: "instanceoverride")
         let name = parseString(
             key: "name",
             from: &fields,
@@ -154,7 +157,7 @@ struct SceneGraphNodeParser: Sendable {
         "id", "name", "visible", "enabled", "origin", "pivot", "position",
         "scale", "angles", "size", "alpha", "color", "zorder", "zindex",
         "image", "text", "particle", "sound", "model", "composition",
-        "fullscreen", "type"
+        "fullscreen", "type", "parent", "instance", "instanceoverride"
     ]
 
     private func parseSourceIdentifier(
@@ -165,16 +168,11 @@ struct SceneGraphNodeParser: Sendable {
         guard let value = fields["id"] else {
             return .init(value: nil, isValid: true)
         }
-        switch value {
-        case let .integer(identifier):
+        if let identifier = SceneSourceIdentifier(scalar: value) {
             fields.removeValue(forKey: "id")
-            return .init(value: .integer(identifier), isValid: true)
-        case let .string(identifier):
-            fields.removeValue(forKey: "id")
-            return .init(value: .string(identifier), isValid: true)
-        default:
-            return .init(value: nil, isValid: false)
+            return .init(value: identifier, isValid: true)
         }
+        return .init(value: nil, isValid: false)
     }
 
     private func parseString(
