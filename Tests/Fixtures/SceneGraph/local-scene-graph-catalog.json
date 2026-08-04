@@ -1,0 +1,275 @@
+{
+  "fixtures" : [
+    {
+      "summary" : {
+        "animationKeyframeCount" : 0,
+        "animationTrackCount" : 0,
+        "dependencyResolutions" : [
+          {
+            "count" : 45,
+            "name" : "builtInCandidate"
+          },
+          {
+            "count" : 2,
+            "name" : "invalid"
+          },
+          {
+            "count" : 136,
+            "name" : "package"
+          }
+        ],
+        "diagnosticCodes" : [
+          {
+            "count" : 45,
+            "name" : "asset.builtin-candidate"
+          },
+          {
+            "count" : 2,
+            "name" : "asset.invalid-reference"
+          },
+          {
+            "count" : 256,
+            "name" : "graph.invalid-property"
+          }
+        ],
+        "hierarchyEdgeCount" : 0,
+        "instanceEdgeCount" : 0,
+        "nodeKinds" : [
+          {
+            "count" : 23,
+            "name" : "image"
+          },
+          {
+            "count" : 3,
+            "name" : "particle"
+          },
+          {
+            "count" : 2,
+            "name" : "sound"
+          }
+        ],
+        "overrideCount" : 0,
+        "packageVersion" : "PKGV0008",
+        "resourceKinds" : [
+          {
+            "count" : 18,
+            "name" : "material"
+          },
+          {
+            "count" : 18,
+            "name" : "model"
+          },
+          {
+            "count" : 1,
+            "name" : "shader"
+          },
+          {
+            "count" : 37,
+            "name" : "texture"
+          }
+        ],
+        "schemaVersion" : 1,
+        "scriptCount" : 0,
+        "status" : "unsupported"
+      },
+      "workshopID" : "2174863503"
+    },
+    {
+      "summary" : {
+        "animationKeyframeCount" : 0,
+        "animationTrackCount" : 0,
+        "dependencyResolutions" : [
+          {
+            "count" : 77,
+            "name" : "builtInCandidate"
+          },
+          {
+            "count" : 5,
+            "name" : "invalid"
+          },
+          {
+            "count" : 457,
+            "name" : "package"
+          },
+          {
+            "count" : 2,
+            "name" : "unresolved"
+          }
+        ],
+        "diagnosticCodes" : [
+          {
+            "count" : 77,
+            "name" : "asset.builtin-candidate"
+          },
+          {
+            "count" : 5,
+            "name" : "asset.invalid-reference"
+          },
+          {
+            "count" : 2,
+            "name" : "asset.unresolved"
+          },
+          {
+            "count" : 1054,
+            "name" : "graph.invalid-property"
+          },
+          {
+            "count" : 2,
+            "name" : "graph.scenescript-preserved-not-executed"
+          },
+          {
+            "count" : 1,
+            "name" : "graph.unresolved-texture"
+          }
+        ],
+        "hierarchyEdgeCount" : 0,
+        "instanceEdgeCount" : 0,
+        "nodeKinds" : [
+          {
+            "count" : 88,
+            "name" : "image"
+          },
+          {
+            "count" : 3,
+            "name" : "particle"
+          },
+          {
+            "count" : 5,
+            "name" : "sound"
+          },
+          {
+            "count" : 2,
+            "name" : "text"
+          }
+        ],
+        "overrideCount" : 0,
+        "packageVersion" : "PKGV0018",
+        "resourceKinds" : [
+          {
+            "count" : 76,
+            "name" : "material"
+          },
+          {
+            "count" : 76,
+            "name" : "model"
+          },
+          {
+            "count" : 1,
+            "name" : "shader"
+          },
+          {
+            "count" : 135,
+            "name" : "texture"
+          }
+        ],
+        "schemaVersion" : 1,
+        "scriptCount" : 2,
+        "status" : "unsupported"
+      },
+      "workshopID" : "2834933421"
+    },
+    {
+      "summary" : {
+        "animationKeyframeCount" : 8,
+        "animationTrackCount" : 2,
+        "dependencyResolutions" : [
+          {
+            "count" : 24,
+            "name" : "builtInCandidate"
+          },
+          {
+            "count" : 1,
+            "name" : "invalid"
+          },
+          {
+            "count" : 218,
+            "name" : "package"
+          },
+          {
+            "count" : 2,
+            "name" : "unresolved"
+          }
+        ],
+        "diagnosticCodes" : [
+          {
+            "count" : 24,
+            "name" : "asset.builtin-candidate"
+          },
+          {
+            "count" : 1,
+            "name" : "asset.invalid-reference"
+          },
+          {
+            "count" : 2,
+            "name" : "asset.unresolved"
+          },
+          {
+            "count" : 563,
+            "name" : "graph.invalid-property"
+          },
+          {
+            "count" : 119,
+            "name" : "graph.scenescript-preserved-not-executed"
+          },
+          {
+            "count" : 1,
+            "name" : "graph.unknown-node"
+          },
+          {
+            "count" : 2,
+            "name" : "graph.unresolved-material"
+          }
+        ],
+        "hierarchyEdgeCount" : 53,
+        "instanceEdgeCount" : 0,
+        "nodeKinds" : [
+          {
+            "count" : 49,
+            "name" : "image"
+          },
+          {
+            "count" : 7,
+            "name" : "particle"
+          },
+          {
+            "count" : 1,
+            "name" : "sound"
+          },
+          {
+            "count" : 11,
+            "name" : "text"
+          },
+          {
+            "count" : 1,
+            "name" : "unknown"
+          }
+        ],
+        "overrideCount" : 0,
+        "packageVersion" : "PKGV0023",
+        "resourceKinds" : [
+          {
+            "count" : 15,
+            "name" : "material"
+          },
+          {
+            "count" : 17,
+            "name" : "model"
+          },
+          {
+            "count" : 1,
+            "name" : "shader"
+          },
+          {
+            "count" : 25,
+            "name" : "texture"
+          }
+        ],
+        "schemaVersion" : 1,
+        "scriptCount" : 119,
+        "status" : "unsupported"
+      },
+      "workshopID" : "3516106265"
+    }
+  ],
+  "schemaVersion" : 1
+}
