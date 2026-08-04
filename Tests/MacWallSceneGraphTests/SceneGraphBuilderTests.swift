@@ -40,7 +40,13 @@ final class SceneGraphBuilderTests: XCTestCase {
         XCTAssertTrue(document.hierarchyEdges.isEmpty)
         XCTAssertTrue(document.instanceEdges.isEmpty)
         XCTAssertTrue(document.resources.isEmpty)
-        XCTAssertTrue(document.dependencies.isEmpty)
+        XCTAssertEqual(document.dependencies.map(\.request.role), [
+            .model,
+            .particle,
+            .sound,
+            .model,
+            .document
+        ])
         XCTAssertTrue(document.animations.isEmpty)
         XCTAssertTrue(document.scripts.isEmpty)
     }
@@ -92,7 +98,7 @@ final class SceneGraphBuilderTests: XCTestCase {
         XCTAssertEqual(first.unknownFields, ["custom": .object(["retained": .bool(true)])])
         XCTAssertEqual(document.nodes[1].sourceIdentifier, .string("second"))
         XCTAssertNil(document.nodes[2].sourceIdentifier)
-        XCTAssertEqual(result.status, .degraded)
+        XCTAssertEqual(result.status, .unsupported)
     }
 
     func testBuildUsesExactPayloadClassificationOrderAndLowercaseTypes() throws {
@@ -174,7 +180,7 @@ final class SceneGraphBuilderTests: XCTestCase {
             "objects[3].model",
             "objects[4].composition"
         ])
-        XCTAssertEqual(result.status, .degraded)
+        XCTAssertEqual(result.status, .unsupported)
     }
 
     func testBuildDoesNotApplyHistoricalNodeCountCap() throws {

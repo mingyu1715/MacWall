@@ -1,0 +1,414 @@
+import Foundation
+import XCTest
+@testable import MacWallSceneGraph
+import MacWallSceneAssets
+import MacWallSceneFormats
+import MacWallSceneTestSupport
+
+final class SceneGraphResourceTests: XCTestCase {
+    func testBuildsModelMaterialPassShaderTextureChain() throws {
+        let result = try build(entries: standardChainEntries())
+        let document = try XCTUnwrap(result.document)
+
+        XCTAssertEqual(document.resources.map(\.id.rawValue), [
+            "material:materials/background.json",
+            "model:models/background.json",
+            "shader:genericimage4",
+            "texture:materials/background.tex"
+        ])
+        XCTAssertEqual(
+            document.dependencies.map(\.resolution.kind),
+            [.package, .package, .builtInCandidate, .package]
+        )
+        XCTAssertEqual(result.status, .unsupported)
+        XCTAssertEqual(
+            result.diagnostics.filter { $0.code == "asset.builtin-candidate" }.count,
+            1
+        )
+
+        let model = try XCTUnwrap(document.resources.compactMap {
+            resource -> SceneModelResource? in
+            guard case let .model(model) = resource else { return nil }
+            return model
+        }.first)
+        let material = try XCTUnwrap(document.resources.compactMap {
+            resource -> SceneMaterialResource? in
+            guard case let .material(material) = resource else { return nil }
+            return material
+        }.first)
+        XCTAssertEqual(model.unknownFields, ["mesh": .string("quad")])
+        XCTAssertEqual(material.unknownFields, ["blend": .string("normal")])
+        XCTAssertEqual(material.passes.count, 1)
+        XCTAssertEqual(material.passes[0].shaderDependency?.request.role, .shader)
+        XCTAssertEqual(material.passes[0].textureBindings.count, 1)
+        XCTAssertEqual(material.passes[0].unknownFields, ["depth": .bool(false)])
+    }
+
+    func testSharedChainMemoizesResourcesAndKeepsSeparateNodeEdges() throws {
+        var entries = standardChainEntries()
+        entries[0] = entry(
+            "scene.json",
+            #"{"objects":[{"image":"models/background.json"},{"image":"models/background.json"}]}"#
+        )
+
+        let document = try XCTUnwrap(try build(entries: entries).document)
+
+        XCTAssertEqual(document.resources.map(\.id.rawValue), [
+            "material:materials/background.json",
+            "model:models/background.json",
+            "shader:genericimage4",
+            "texture:materials/background.tex"
+        ])
+        XCTAssertEqual(document.dependencies.count, 5)
+        XCTAssertEqual(document.dependencies.compactMap { edge -> SceneNodeID? in
+            guard case let .node(nodeID) = edge.owner else { return nil }
+            return nodeID
+        }.map(\.objectIndex), [0, 1])
+    }
+
+    func testResolvesOwnerRelativeDocumentsAndReportsRootOwnerAmbiguity() throws {
+        let result = try build(entries: [
+            entry("scene.json", #"{"objects":[{"image":"./models/model.json"}]}"#),
+            entry("models/model.json", #"{"material":"shared.json"}"#),
+            entry("shared.json", #"{"passes":[]}"#),
+            entry("models/shared.json", #"{"passes":[]}"#)
+        ])
+        let document = try XCTUnwrap(result.document)
+
+        XCTAssertEqual(document.resources.map(\.id.rawValue), [
+            "material:shared.json",
+            "model:models/model.json"
+        ])
+        let nodeEdge = try XCTUnwrap(document.dependencies.first {
+            if case .node = $0.owner { return true }
+            return false
+        })
+        let materialEdge = try XCTUnwrap(document.dependencies.first {
+            $0.request.role == .material
+        })
+        XCTAssertEqual(nodeEdge.request.ownerPath?.rawValue, "scene.json")
+        XCTAssertEqual(nodeEdge.resolution.selected?.candidateOrigin, .ownerRelative)
+        XCTAssertEqual(materialEdge.resolution.selected?.canonicalPath.rawValue, "shared.json")
+        XCTAssertEqual(
+            result.diagnostics.filter { $0.code == "asset.ambiguous-resolution" }.count,
+            1
+        )
+        XCTAssertEqual(result.status, .unsupported)
+    }
+
+    func testParsesTopLevelTexturesInlineAndReferencedPassesInSourceOrder() throws {
+        let result = try build(entries: [
+            entry("scene.json", #"{"objects":[{"image":"models/model.json"}]}"#),
+            entry("models/model.json", #"{"material":"materials/material.json"}"#),
+            entry(
+                "materials/material.json",
+                #"{"texture":"top","textures":[{"slot":"normal","texture":"normal"}],"passes":[{"textures":["base",{"slot":"albedo","texture":"detail"}]},"passes/extra.json"]}"#
+            ),
+            entry("passes/extra.json", #"{"texture":{"slot":"mask","file":"mask"},"kept":1}"#),
+            texture("materials/top.tex"),
+            texture("materials/normal.tex"),
+            texture("materials/base.tex"),
+            texture("materials/detail.tex"),
+            texture("materials/mask.tex")
+        ])
+        let document = try XCTUnwrap(result.document)
+        let material = try XCTUnwrap(document.resources.compactMap {
+            resource -> SceneMaterialResource? in
+            guard case let .material(material) = resource else { return nil }
+            return material
+        }.first)
+
+        XCTAssertEqual(material.passes.map(\.index), [0, 1, 2])
+        XCTAssertEqual(material.passes[0].textureBindings.map(\.slot), [nil, "albedo"])
+        XCTAssertEqual(material.passes[0].textureBindings.map {
+            $0.dependency.request.requestedPath
+        }, ["base", "detail"])
+        XCTAssertEqual(material.passes[1].sourcePath?.rawValue, "passes/extra.json")
+        XCTAssertEqual(material.passes[1].documentDependency?.request.role, .pass)
+        XCTAssertEqual(material.passes[1].textureBindings.map(\.slot), ["mask"])
+        XCTAssertEqual(material.passes[1].unknownFields, ["kept": .integer(1)])
+        XCTAssertEqual(material.passes[2].textureBindings.map(\.slot), [nil, "normal"])
+        XCTAssertEqual(material.passes[2].textureBindings.map {
+            $0.dependency.request.requestedPath
+        }, ["top", "normal"])
+        XCTAssertEqual(document.resources.filter {
+            if case .texture = $0 { return true }
+            return false
+        }.count, 5)
+    }
+
+    func testMissingModelMaterialAndTextureAreStableUnsupportedDiagnostics() throws {
+        let result = try build(entries: [
+            entry(
+                "scene.json",
+                #"{"objects":[{"image":"missing-model.json"},{"image":"models/no-material.json"},{"image":"models/no-texture.json"}]}"#
+            ),
+            entry("models/no-material.json", #"{"material":"missing-material.json"}"#),
+            entry("models/no-texture.json", #"{"material":"materials/no-texture.json"}"#),
+            entry("materials/no-texture.json", #"{"texture":"missing-texture"}"#)
+        ])
+
+        XCTAssertNotNil(result.document)
+        XCTAssertEqual(result.status, .unsupported)
+        XCTAssertEqual(
+            result.diagnostics.filter { $0.code == "asset.unresolved" }.count,
+            3
+        )
+        XCTAssertEqual(
+            result.diagnostics.filter { $0.code == "graph.unresolved-material" }.count,
+            1
+        )
+        XCTAssertEqual(
+            result.diagnostics.filter { $0.code == "graph.unresolved-texture" }.count,
+            1
+        )
+    }
+
+    func testMalformedAuxiliaryJSONRetainsNodeAndReturnsUnsupported() throws {
+        let result = try build(entries: [
+            entry("scene.json", #"{"objects":[{"image":"models/broken.json"}]}"#),
+            entry("models/broken.json", #"{"material":]"#)
+        ])
+
+        XCTAssertEqual(result.document?.nodes.count, 1)
+        XCTAssertTrue(result.document?.resources.isEmpty == true)
+        XCTAssertEqual(result.status, .unsupported)
+        XCTAssertTrue(result.diagnostics.contains { $0.code == "graph.invalid-property" })
+    }
+
+    func testAuxiliaryJSONEntryAndCumulativeLimitsRetainDocumentAsInvalid() throws {
+        let scene = #"{"objects":[{"image":"models/model.json"}]}"#
+        let model = #"{"material":"materials/material.json","padding":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}"#
+        let material = #"{"passes":[]}"#
+        let entries = [
+            entry("scene.json", scene),
+            entry("models/model.json", model),
+            entry("materials/material.json", material)
+        ]
+
+        let entryLimited = try build(
+            entries: entries,
+            limits: SceneGraphLimits(maximumJSONEntryBytes: UInt64(scene.utf8.count))
+        )
+        XCTAssertNotNil(entryLimited.document)
+        XCTAssertEqual(entryLimited.status, .invalid)
+        XCTAssertEqual(entryLimited.diagnostics.last?.code, "graph.resource-limit")
+
+        let cumulativeLimit = UInt64(scene.utf8.count + model.utf8.count)
+        let cumulative = try build(
+            entries: entries,
+            limits: SceneGraphLimits(
+                maximumJSONEntryBytes: 1_024,
+                maximumCumulativeJSONBytes: cumulativeLimit
+            )
+        )
+        XCTAssertNotNil(cumulative.document)
+        XCTAssertEqual(cumulative.status, .invalid)
+        XCTAssertEqual(cumulative.document?.resources.map(\.id.rawValue), [
+            "model:models/model.json"
+        ])
+        XCTAssertTrue(cumulative.diagnostics.contains { $0.code == "graph.resource-limit" })
+    }
+
+    func testDependencyEdgeLimitStopsBeforeOverflow() throws {
+        let result = try build(
+            entries: standardChainEntries(),
+            limits: SceneGraphLimits(maximumDependencyEdgeCount: 2)
+        )
+
+        XCTAssertEqual(result.document?.dependencies.count, 2)
+        XCTAssertEqual(result.status, .invalid)
+        XCTAssertTrue(result.diagnostics.contains { $0.code == "graph.resource-limit" })
+    }
+
+    func testTraversalIsOnDemandAndDoesNotReadTexturePayload() throws {
+        var entries = standardChainEntries()
+        entries.removeAll { $0.path == "materials/background.tex" }
+        entries.append(contentsOf: [
+            entry("unused/broken.json", #"{"broken":]"#),
+            .init(path: "materials/background.tex", data: Data(repeating: 7, count: 4_096))
+        ])
+        let packageData = ScenePackageFixtureBuilder.make(entries: entries)
+        let recording = RecordingSceneByteSource(
+            base: SceneDataByteSource(data: packageData)
+        )
+        let resolver = try ScenePackageAssetResolver.open(source: recording)
+        recording.resetReadRanges()
+
+        let result = SceneGraphBuilder().build(resolver: resolver)
+
+        XCTAssertNotNil(result.document)
+        XCTAssertTrue(result.document?.resources.contains {
+            $0.id.rawValue == "texture:materials/background.tex"
+        } == true)
+        XCTAssertLessThan(recording.maximumReadByteCount, 4_096)
+    }
+
+    func testMapsNonModelNodePayloadsToProvenanceEdgesWithoutReadingThem() throws {
+        let result = try build(entries: [
+            entry(
+                "scene.json",
+                #"{"objects":[{"particle":"particles/smoke.json"},{"sound":"audio/music.ogg"},{"composition":"scenes/child.json"}]}"#
+            ),
+            .init(path: "particles/smoke.json", data: Data([1, 2, 3])),
+            .init(path: "audio/music.ogg", data: Data(repeating: 4, count: 2_048)),
+            .init(path: "scenes/child.json", data: Data([5, 6, 7]))
+        ])
+        let document = try XCTUnwrap(result.document)
+
+        XCTAssertEqual(document.resources, [])
+        XCTAssertEqual(document.dependencies.map(\.request.role), [
+            .particle,
+            .sound,
+            .document
+        ])
+        XCTAssertEqual(document.dependencies.map(\.resolution.kind), [
+            .package,
+            .package,
+            .package
+        ])
+        XCTAssertEqual(result.status, .exact)
+    }
+
+    func testPreservesInvalidPathEscapeAndExternalResolverStates() throws {
+        let entries = [
+            entry(
+                "scene.json",
+                #"{"objects":[{"image":"../outside.json"},{"image":"invalid\\path.json"},{"image":"models/model.json"}]}"#
+            ),
+            entry("models/model.json", #"{"material":"materials/material.json"}"#),
+            entry(
+                "materials/material.json",
+                #"{"passes":[{"shader":"external/custom"}]}"#
+            )
+        ]
+        let resolver = try ScenePackageAssetResolver.open(
+            source: SceneDataByteSource(
+                data: ScenePackageFixtureBuilder.make(entries: entries)
+            ),
+            sourcePolicy: SceneAssetSourcePolicy(
+                version: 7,
+                builtInPrefixes: [],
+                externalPrefixes: ["external/"],
+                classifyBareShadersAsBuiltIn: false
+            )
+        )
+
+        let result = SceneGraphBuilder().build(resolver: resolver)
+        let document = try XCTUnwrap(result.document)
+
+        XCTAssertEqual(document.dependencies.map(\.resolution.kind), [
+            .invalid,
+            .invalid,
+            .package,
+            .package,
+            .externalCandidate
+        ])
+        XCTAssertEqual(
+            Set(result.diagnostics.map(\.code)),
+            [
+                "asset.external-candidate",
+                "asset.invalid-reference",
+                "asset.path-escape"
+            ]
+        )
+        XCTAssertEqual(result.status, .unsupported)
+    }
+
+    func testRecordsPassEffectsWithoutCreatingEffectResources() throws {
+        let result = try build(entries: [
+            entry("scene.json", #"{"objects":[{"image":"models/model.json"}]}"#),
+            entry("models/model.json", #"{"material":"materials/material.json"}"#),
+            entry(
+                "materials/material.json",
+                #"{"passes":[{"effect":"effects/one.json","effects":["effects/two.json"],"kept":true}]}"#
+            ),
+            .init(path: "effects/one.json", data: Data([1])),
+            .init(path: "effects/two.json", data: Data([2]))
+        ])
+        let document = try XCTUnwrap(result.document)
+        let material = try XCTUnwrap(document.resources.compactMap {
+            resource -> SceneMaterialResource? in
+            guard case let .material(material) = resource else { return nil }
+            return material
+        }.first)
+
+        XCTAssertEqual(material.passes[0].effectDependencies.map(\.request.requestedPath), [
+            "effects/one.json",
+            "effects/two.json"
+        ])
+        XCTAssertEqual(material.passes[0].unknownFields, ["kept": .bool(true)])
+        XCTAssertFalse(document.resources.contains {
+            if case .effect = $0 { return true }
+            return false
+        })
+        XCTAssertEqual(result.status, .exact)
+    }
+
+    func testMemoizesReferencedPassDocumentsWithinCumulativeLimit() throws {
+        let scene = #"{"objects":[{"image":"models/model.json"}]}"#
+        let model = #"{"material":"materials/material.json"}"#
+        let material = #"{"passes":["passes/shared.json","passes/shared.json"]}"#
+        let pass = #"{"shader":"genericimage4"}"#
+        let entries = [
+            entry("scene.json", scene),
+            entry("models/model.json", model),
+            entry("materials/material.json", material),
+            entry("passes/shared.json", pass)
+        ]
+
+        let result = try build(
+            entries: entries,
+            limits: SceneGraphLimits(
+                maximumJSONEntryBytes: 1_024,
+                maximumCumulativeJSONBytes: UInt64(
+                    scene.utf8.count + model.utf8.count + material.utf8.count + pass.utf8.count
+                )
+            )
+        )
+        let materialResource = try XCTUnwrap(result.document?.resources.compactMap {
+            resource -> SceneMaterialResource? in
+            guard case let .material(material) = resource else { return nil }
+            return material
+        }.first)
+
+        XCTAssertEqual(materialResource.passes.count, 2)
+        XCTAssertEqual(result.status, .unsupported)
+        XCTAssertFalse(result.diagnostics.contains { $0.code == "graph.resource-limit" })
+    }
+
+    private func standardChainEntries() -> [ScenePackageFixtureEntry] {
+        [
+            entry("scene.json", #"{"objects":[{"image":"models/background.json"}]}"#),
+            entry(
+                "models/background.json",
+                #"{"material":"materials/background.json","mesh":"quad"}"#
+            ),
+            entry(
+                "materials/background.json",
+                #"{"passes":[{"shader":"genericimage4","textures":["background"],"depth":false}],"blend":"normal"}"#
+            ),
+            texture("materials/background.tex")
+        ]
+    }
+
+    private func build(
+        entries: [ScenePackageFixtureEntry],
+        limits: SceneGraphLimits = .init()
+    ) throws -> SceneGraphBuildResult {
+        let resolver = try ScenePackageAssetResolver.open(
+            source: SceneDataByteSource(
+                data: ScenePackageFixtureBuilder.make(entries: entries)
+            )
+        )
+        return SceneGraphBuilder(limits: limits).build(resolver: resolver)
+    }
+
+    private func entry(_ path: String, _ json: String) -> ScenePackageFixtureEntry {
+        .init(path: path, data: Data(json.utf8))
+    }
+
+    private func texture(_ path: String) -> ScenePackageFixtureEntry {
+        .init(path: path, data: Data([0x54, 0x45, 0x58]))
+    }
+}
