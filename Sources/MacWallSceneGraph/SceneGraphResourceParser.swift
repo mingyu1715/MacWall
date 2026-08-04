@@ -670,19 +670,17 @@ struct SceneGraphResourceParser: Sendable {
                             jsonPath: jsonPath
                         ))
                     }
-                    if !Self.isConsumedStructuredAssetBinding(
-                        value,
-                        key: key,
-                        parentKey: entry.parentKey
-                    ) {
-                        stack.append(SceneGraphMetadataStackEntry(
-                            value: value,
-                            jsonPath: jsonPath,
-                            owner: entry.owner,
-                            nodeID: entry.nodeID,
-                            parentKey: key
-                        ))
-                    }
+                    stack.append(SceneGraphMetadataStackEntry(
+                        value: Self.metadataContinuation(
+                            afterConsumingTextureReferencesIn: value,
+                            key: key,
+                            parentKey: entry.parentKey
+                        ),
+                        jsonPath: jsonPath,
+                        owner: entry.owner,
+                        nodeID: entry.nodeID,
+                        parentKey: key
+                    ))
                 }
             case let .array(values):
                 for index in values.indices.reversed() {
@@ -834,20 +832,39 @@ struct SceneGraphResourceParser: Sendable {
         return resourceID
     }
 
-    private static func isConsumedStructuredAssetBinding(
-        _ value: SceneJSONValue,
+    private static func metadataContinuation(
+        afterConsumingTextureReferencesIn value: SceneJSONValue,
         key: String,
         parentKey: String?
-    ) -> Bool {
+    ) -> SceneJSONValue {
         guard let role = assetRole(for: key, parentKey: parentKey), role == .texture else {
-            return false
+            return value
         }
         switch value {
-        case .object, .array:
-            return !assetReferences(in: value, role: role).isEmpty
+        case let .object(object):
+            return .object(removingConsumedTextureReferenceFields(from: object))
+        case let .array(values):
+            return .array(values.map { element in
+                guard case let .object(object) = element else {
+                    return element
+                }
+                return .object(removingConsumedTextureReferenceFields(from: object))
+            })
         default:
-            return false
+            return value
         }
+    }
+
+    private static func removingConsumedTextureReferenceFields(
+        from object: [String: SceneJSONValue]
+    ) -> [String: SceneJSONValue] {
+        guard !assetReferences(in: .object(object), role: .texture).isEmpty else {
+            return object
+        }
+        var continuation = object
+        continuation.removeValue(forKey: "texture")
+        continuation.removeValue(forKey: "file")
+        return continuation
     }
 
     private static func assetReferences(
