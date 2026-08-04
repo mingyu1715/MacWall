@@ -505,6 +505,72 @@ final class SceneGraphResourceTests: XCTestCase {
         }?.source, nestedScript)
     }
 
+    func testConsumedTextureStringRetainsStructuredFileMetadata() throws {
+        let nestedScript = "function retainedFromFile() {}"
+        let result = try build(entries: [
+            entry("scene.json", #"{"objects":[{"image":"models/model.json"}]}"#),
+            entry("models/model.json", #"{"material":"materials/material.json"}"#),
+            entry("materials/material.json", #"{"passes":[{"effect":"effects/effect.json"}]}"#),
+            entry(
+                "effects/effect.json",
+                "{\"texture\":{\"texture\":\"missing-texture\",\"file\":{\"shader\":\"shaders/from-file.glsl\",\"script\":\"\(escaped(nestedScript))\"}}}"
+            ),
+            .init(path: "effects/shaders/from-file.glsl", data: Data(repeating: 1, count: 4_096))
+        ])
+        let document = try XCTUnwrap(result.document)
+
+        XCTAssertEqual(
+            document.dependencies.filter { $0.request.requestedPath == "missing-texture" }.count,
+            1
+        )
+        XCTAssertEqual(
+            result.diagnostics.filter {
+                $0.code == "asset.unresolved" && $0.arguments == ["missing-texture"]
+            }.count,
+            1
+        )
+        XCTAssertTrue(document.resources.contains {
+            $0.id.rawValue == "shader:effects/shaders/from-file.glsl"
+        })
+        XCTAssertEqual(document.scripts.first {
+            $0.ownerPath.rawValue == "effects/effect.json"
+                && $0.jsonPath == "$.texture.file.script"
+        }?.source, nestedScript)
+    }
+
+    func testConsumedFileStringRetainsStructuredTextureMetadata() throws {
+        let nestedScript = "function retainedFromTexture() {}"
+        let result = try build(entries: [
+            entry("scene.json", #"{"objects":[{"image":"models/model.json"}]}"#),
+            entry("models/model.json", #"{"material":"materials/material.json"}"#),
+            entry("materials/material.json", #"{"passes":[{"effect":"effects/effect.json"}]}"#),
+            entry(
+                "effects/effect.json",
+                "{\"texture\":{\"file\":\"missing-file\",\"texture\":{\"shader\":\"shaders/from-texture.glsl\",\"script\":\"\(escaped(nestedScript))\"}}}"
+            ),
+            .init(path: "effects/shaders/from-texture.glsl", data: Data(repeating: 1, count: 4_096))
+        ])
+        let document = try XCTUnwrap(result.document)
+
+        XCTAssertEqual(
+            document.dependencies.filter { $0.request.requestedPath == "missing-file" }.count,
+            1
+        )
+        XCTAssertEqual(
+            result.diagnostics.filter {
+                $0.code == "asset.unresolved" && $0.arguments == ["missing-file"]
+            }.count,
+            1
+        )
+        XCTAssertTrue(document.resources.contains {
+            $0.id.rawValue == "shader:effects/shaders/from-texture.glsl"
+        })
+        XCTAssertEqual(document.scripts.first {
+            $0.ownerPath.rawValue == "effects/effect.json"
+                && $0.jsonPath == "$.texture.texture.script"
+        }?.source, nestedScript)
+    }
+
     func testScriptHandlerScannerPreservesDollarIdentifiersAndGenerators() throws {
         let source = """
         function update$() {}

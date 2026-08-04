@@ -858,12 +858,12 @@ struct SceneGraphResourceParser: Sendable {
     private static func removingConsumedTextureReferenceFields(
         from object: [String: SceneJSONValue]
     ) -> [String: SceneJSONValue] {
-        guard !assetReferences(in: .object(object), role: .texture).isEmpty else {
-            return object
-        }
         var continuation = object
-        continuation.removeValue(forKey: "texture")
-        continuation.removeValue(forKey: "file")
+        if case .string? = object["texture"] {
+            continuation.removeValue(forKey: "texture")
+        } else if case .string? = object["file"] {
+            continuation.removeValue(forKey: "file")
+        }
         return continuation
     }
 
