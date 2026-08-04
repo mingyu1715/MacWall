@@ -6,6 +6,38 @@ import MacWallSceneFormats
 import MacWallSceneTestSupport
 
 final class SceneLocalFixtureGraphTests: XCTestCase {
+    func testReadRangesCoverPackageAcrossAdjacentReads() {
+        XCTAssertTrue(
+            readRangesCoverPackage(
+                [0..<8, 8..<16],
+                byteCount: 16
+            )
+        )
+    }
+
+    func testReadRangesDoNotCoverPackageWhenTheyHaveGap() {
+        XCTAssertFalse(
+            readRangesCoverPackage(
+                [0..<7, 8..<16],
+                byteCount: 16
+            )
+        )
+    }
+
+    func testValidatedFixturesRejectUnexpectedCatalogID() {
+        let catalog = LocalSceneGraphCatalog(
+            schemaVersion: 1,
+            fixtures: [
+                LocalSceneGraphFixture(
+                    workshopID: "../unexpected",
+                    summary: emptySummary
+                )
+            ]
+        )
+
+        XCTAssertThrowsError(try validatedFixtures(in: catalog))
+    }
+
     func testLocalSceneFixturesMatchTrackedAggregateCatalog() throws {
         if ProcessInfo.processInfo.environment[
             "MACWALL_UPDATE_LOCAL_SCENE_GRAPH_CATALOG"
@@ -17,13 +49,9 @@ final class SceneLocalFixtureGraphTests: XCTestCase {
             LocalSceneGraphCatalog.self,
             from: Data(contentsOf: catalogURL)
         )
-        XCTAssertEqual(catalog.schemaVersion, 1)
-        XCTAssertEqual(
-            catalog.fixtures.map(\.workshopID).sorted(),
-            expectedObjectCounts.keys.sorted()
-        )
+        let fixtures = try validatedFixtures(in: catalog)
 
-        let availableFixtures = catalog.fixtures.filter {
+        let availableFixtures = fixtures.filter {
             FileManager.default.fileExists(
                 atPath: packageURL(for: $0.workshopID).path
             )
@@ -36,18 +64,22 @@ final class SceneLocalFixtureGraphTests: XCTestCase {
 
         for fixture in availableFixtures {
             let first = try buildFixture(for: fixture.workshopID)
-            XCTAssertEqual(first.summary, fixture.summary, fixture.workshopID)
+            XCTAssertEqual(
+                first.summary,
+                fixture.fixture.summary,
+                fixture.workshopID.rawValue
+            )
             XCTAssertEqual(
                 nodeCount(in: first.summary),
-                expectedObjectCounts[fixture.workshopID],
-                fixture.workshopID
+                fixture.workshopID.objectCount,
+                fixture.workshopID.rawValue
             )
 
             let second = try buildFixture(for: fixture.workshopID)
             XCTAssertEqual(
                 first.summaryBytes,
                 second.summaryBytes,
-                fixture.workshopID
+                fixture.workshopID.rawValue
             )
         }
     }
@@ -67,27 +99,38 @@ final class SceneLocalFixtureGraphTests: XCTestCase {
             .deletingLastPathComponent()
     }
 
-    private var expectedObjectCounts: [String: Int] {
-        [
-            "2174863503": 28,
-            "2834933421": 98,
-            "3516106265": 69
-        ]
+    private var emptySummary: SceneGraphSummary {
+        SceneGraphSummary(
+            schemaVersion: 1,
+            packageVersion: nil,
+            nodeKinds: [],
+            hierarchyEdgeCount: 0,
+            instanceEdgeCount: 0,
+            overrideCount: 0,
+            resourceKinds: [],
+            dependencyResolutions: [],
+            animationTrackCount: 0,
+            animationKeyframeCount: 0,
+            scriptCount: 0,
+            diagnosticCodes: [],
+            status: .exact
+        )
     }
 
-    private func packageURL(for workshopID: String) -> URL {
+    private func packageURL(for workshopID: FixedWorkshopID) -> URL {
         repositoryRoot
             .appending(path: "test")
-            .appending(path: workshopID)
+            .appending(path: workshopID.rawValue)
             .appending(path: "scene.pkg")
     }
 
     private func buildFixture(
-        for workshopID: String
+        for workshopID: FixedWorkshopID
     ) throws -> BuiltFixture {
         let packageURL = packageURL(for: workshopID)
         let excludedPayloadRanges = try excludedPayloadRanges(
-            in: packageURL
+            in: packageURL,
+            workshopID: workshopID.rawValue
         )
         let recording = RecordingSceneByteSource(
             base: try SceneFileByteSource(url: packageURL)
@@ -96,28 +139,20 @@ final class SceneLocalFixtureGraphTests: XCTestCase {
         let result = SceneGraphBuilder().build(resolver: resolver)
         let summary = SceneGraphSummarizer.summarize(result)
 
-        XCTAssertFalse(
-            recording.readRanges.contains(0..<recording.byteCount),
-            workshopID
-        )
-        XCTAssertLessThanOrEqual(
-            recording.maximumReadByteCount,
-            16 * 1_024 * 1_024,
-            workshopID
-        )
+        assertReadPolicy(recording, workshopID: workshopID.rawValue)
         for range in recording.readRanges {
             XCTAssertFalse(
                 excludedPayloadRanges.contains { rangesOverlap(range, $0) },
-                workshopID
+                workshopID.rawValue
             )
         }
         for diagnostic in result.diagnostics {
             for argument in diagnostic.arguments {
                 XCTAssertFalse(
                     argument.contains(repositoryRoot.path),
-                    workshopID
+                    workshopID.rawValue
                 )
-                XCTAssertFalse(argument.contains("/Users/"), workshopID)
+                XCTAssertFalse(argument.contains("/Users/"), workshopID.rawValue)
             }
         }
 
@@ -128,24 +163,22 @@ final class SceneLocalFixtureGraphTests: XCTestCase {
     }
 
     private func writeLocalCatalog() throws {
-        let workshopIDs = [
-            "2174863503",
-            "2834933421",
-            "3516106265"
-        ]
-        let missingIDs = workshopIDs.filter {
+        let missingIDs = FixedWorkshopID.sorted.filter {
             !FileManager.default.fileExists(
                 atPath: packageURL(for: $0).path
             )
         }
-        XCTAssertTrue(missingIDs.isEmpty, missingIDs.joined(separator: ", "))
-        guard missingIDs.isEmpty else { return }
+        guard missingIDs.isEmpty else {
+            throw LocalFixtureCatalogError.missingFixtures(
+                missingIDs.map(\.rawValue)
+            )
+        }
 
         let catalog = LocalSceneGraphCatalog(
             schemaVersion: 1,
-            fixtures: try workshopIDs.sorted().map { workshopID in
+            fixtures: try FixedWorkshopID.sorted.map { workshopID in
                 LocalSceneGraphFixture(
-                    workshopID: workshopID,
+                    workshopID: workshopID.rawValue,
                     summary: try buildFixture(for: workshopID).summary
                 )
             }
@@ -158,11 +191,16 @@ final class SceneLocalFixtureGraphTests: XCTestCase {
     }
 
     private func excludedPayloadRanges(
-        in packageURL: URL
+        in packageURL: URL,
+        workshopID: String
     ) throws -> [Range<UInt64>] {
-        let archive = try ScenePackageArchiveReader().read(
-            source: try SceneFileByteSource(url: packageURL)
+        let recording = RecordingSceneByteSource(
+            base: try SceneFileByteSource(url: packageURL)
         )
+        let archive = try ScenePackageArchiveReader().read(
+            source: recording
+        )
+        assertReadPolicy(recording, workshopID: workshopID)
         return archive.entries.compactMap { entry in
             let filename = URL(filePath: entry.path).lastPathComponent.lowercased()
             let isPreview = [
@@ -176,6 +214,24 @@ final class SceneLocalFixtureGraphTests: XCTestCase {
                 .lowercased() == "tex"
             return isPreview || isTexture ? entry.payloadRange : nil
         }
+    }
+
+    private func assertReadPolicy(
+        _ recording: RecordingSceneByteSource,
+        workshopID: String
+    ) {
+        XCTAssertLessThanOrEqual(
+            recording.maximumReadByteCount,
+            16 * 1_024 * 1_024,
+            workshopID
+        )
+        XCTAssertFalse(
+            readRangesCoverPackage(
+                recording.readRanges,
+                byteCount: recording.byteCount
+            ),
+            workshopID
+        )
     }
 
     private func nodeCount(in summary: SceneGraphSummary) -> Int {
@@ -220,7 +276,96 @@ private struct LocalSceneGraphFixture: Codable {
     let summary: SceneGraphSummary
 }
 
+private enum FixedWorkshopID: String, CaseIterable {
+    case fixture2174863503 = "2174863503"
+    case fixture2834933421 = "2834933421"
+    case fixture3516106265 = "3516106265"
+
+    static let sorted = allCases.sorted { $0.rawValue < $1.rawValue }
+
+    var objectCount: Int {
+        switch self {
+        case .fixture2174863503:
+            28
+        case .fixture2834933421:
+            98
+        case .fixture3516106265:
+            69
+        }
+    }
+}
+
+private struct ValidatedLocalSceneGraphFixture {
+    let workshopID: FixedWorkshopID
+    let fixture: LocalSceneGraphFixture
+}
+
+private enum LocalFixtureCatalogError: Error {
+    case invalidSchemaVersion(Int)
+    case invalidFixtureIDs([String])
+    case missingFixtures([String])
+}
+
 private struct BuiltFixture {
     let summary: SceneGraphSummary
     let summaryBytes: Data
+}
+
+private func validatedFixtures(
+    in catalog: LocalSceneGraphCatalog
+) throws -> [ValidatedLocalSceneGraphFixture] {
+    guard catalog.schemaVersion == 1 else {
+        throw LocalFixtureCatalogError.invalidSchemaVersion(
+            catalog.schemaVersion
+        )
+    }
+
+    let expectedIDs = FixedWorkshopID.sorted.map(\.rawValue)
+    let actualIDs = catalog.fixtures.map(\.workshopID).sorted()
+    guard actualIDs == expectedIDs else {
+        throw LocalFixtureCatalogError.invalidFixtureIDs(actualIDs)
+    }
+
+    let fixturesByID = Dictionary(
+        uniqueKeysWithValues: catalog.fixtures.map {
+            ($0.workshopID, $0)
+        }
+    )
+    return FixedWorkshopID.sorted.compactMap { workshopID in
+        fixturesByID[workshopID.rawValue].map {
+            ValidatedLocalSceneGraphFixture(
+                workshopID: workshopID,
+                fixture: $0
+            )
+        }
+    }
+}
+
+private func readRangesCoverPackage(
+    _ ranges: [Range<UInt64>],
+    byteCount: UInt64
+) -> Bool {
+    guard byteCount > 0 else { return false }
+    let sortedRanges = ranges.sorted {
+        if $0.lowerBound != $1.lowerBound {
+            return $0.lowerBound < $1.lowerBound
+        }
+        return $0.upperBound < $1.upperBound
+    }
+    guard var mergedRange = sortedRanges.first else { return false }
+
+    for range in sortedRanges.dropFirst() {
+        if range.lowerBound <= mergedRange.upperBound {
+            mergedRange = mergedRange.lowerBound..<max(
+                mergedRange.upperBound,
+                range.upperBound
+            )
+        } else if mergedRange.lowerBound == 0,
+                  mergedRange.upperBound >= byteCount {
+            return true
+        } else {
+            mergedRange = range
+        }
+    }
+    return mergedRange.lowerBound == 0 && mergedRange.upperBound >= byteCount
 }
