@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- 설계 기준은 `docs/superpowers/specs/2026-08-03-scene-asset-resolver-typed-graph-design.md`입니다.
+- 설계 기준은 `docs/archive/superpowers/specs/2026-08-03-scene-asset-resolver-typed-graph-design.md`입니다.
 - 지원 플랫폼은 기존 package 기준인 macOS 14+입니다.
 - dependency 방향은 `MacWallSceneFormats -> MacWallSceneAssets -> MacWallSceneGraph`입니다.
 - `MacWallSceneAssets`는 `MacWallSceneFormats`와 Foundation 외에 Audit/Core/AppKit/Metal에 의존하지 않습니다.
