@@ -438,6 +438,52 @@ final class SceneGraphResourceTests: XCTestCase {
         XCTAssertEqual(result.status, .unsupported)
     }
 
+    func testStructuredEffectTextureBindingCreatesOneEdgeAndDiagnosticSet() throws {
+        let result = try build(entries: [
+            entry("scene.json", #"{"objects":[{"image":"models/model.json"}]}"#),
+            entry("models/model.json", #"{"material":"materials/material.json"}"#),
+            entry(
+                "materials/material.json",
+                #"{"passes":[{"effect":"effects/effect.json"}]}"#
+            ),
+            entry("effects/effect.json", #"{"texture":{"file":"missing-texture"}}"#)
+        ])
+        let document = try XCTUnwrap(result.document)
+        let effect = try XCTUnwrap(document.resources.compactMap { resource -> SceneEffectResource? in
+            guard case let .effect(effect) = resource else { return nil }
+            return effect
+        }.first)
+
+        XCTAssertEqual(effect.dependencies.count, 1)
+        XCTAssertEqual(effect.dependencies[0].request.role, .texture)
+        XCTAssertEqual(effect.dependencies[0].request.requestedPath, "missing-texture")
+        XCTAssertEqual(
+            document.dependencies.filter { $0.request.requestedPath == "missing-texture" }.count,
+            1
+        )
+        XCTAssertEqual(
+            result.diagnostics.filter {
+                $0.code == "asset.unresolved" && $0.arguments == ["missing-texture"]
+            }.count,
+            1
+        )
+    }
+
+    func testScriptHandlerScannerPreservesDollarIdentifiersAndGenerators() throws {
+        let source = """
+        function update$() {}
+        function* generator() {}
+        function $update() {}
+        function update$() {}
+        """
+        let result = try build(entries: [
+            entry("scene.json", "{\"script\":\"\(escaped(source))\"}")
+        ])
+        let script = try XCTUnwrap(result.document?.scripts.first)
+
+        XCTAssertEqual(script.handlerNames, ["$update", "generator", "update$"])
+    }
+
     func testMemoizesReferencedPassDocumentsWithinCumulativeLimit() throws {
         let scene = #"{"objects":[{"image":"models/model.json"}]}"#
         let model = #"{"material":"materials/material.json"}"#

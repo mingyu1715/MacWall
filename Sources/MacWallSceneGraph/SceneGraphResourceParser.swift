@@ -670,13 +670,19 @@ struct SceneGraphResourceParser: Sendable {
                             jsonPath: jsonPath
                         ))
                     }
-                    stack.append(SceneGraphMetadataStackEntry(
-                        value: value,
-                        jsonPath: jsonPath,
-                        owner: entry.owner,
-                        nodeID: entry.nodeID,
-                        parentKey: key
-                    ))
+                    if !Self.isConsumedStructuredAssetBinding(
+                        value,
+                        key: key,
+                        parentKey: entry.parentKey
+                    ) {
+                        stack.append(SceneGraphMetadataStackEntry(
+                            value: value,
+                            jsonPath: jsonPath,
+                            owner: entry.owner,
+                            nodeID: entry.nodeID,
+                            parentKey: key
+                        ))
+                    }
                 }
             case let .array(values):
                 for index in values.indices.reversed() {
@@ -828,6 +834,22 @@ struct SceneGraphResourceParser: Sendable {
         return resourceID
     }
 
+    private static func isConsumedStructuredAssetBinding(
+        _ value: SceneJSONValue,
+        key: String,
+        parentKey: String?
+    ) -> Bool {
+        guard let role = assetRole(for: key, parentKey: parentKey), role == .texture else {
+            return false
+        }
+        switch value {
+        case .object, .array:
+            return !assetReferences(in: value, role: role).isEmpty
+        default:
+            return false
+        }
+    }
+
     private static func assetReferences(
         in value: SceneJSONValue,
         role: SceneAssetRole,
@@ -920,6 +942,12 @@ struct SceneGraphResourceParser: Sendable {
                 while cursor < scalars.count, Self.isWhitespace(scalars[cursor]) {
                     cursor += 1
                 }
+                if cursor < scalars.count, scalars[cursor] == "*" {
+                    cursor += 1
+                    while cursor < scalars.count, Self.isWhitespace(scalars[cursor]) {
+                        cursor += 1
+                    }
+                }
                 guard cursor < scalars.count, Self.isIdentifierStart(scalars[cursor]) else {
                     index += 1
                     continue
@@ -957,7 +985,7 @@ struct SceneGraphResourceParser: Sendable {
     }
 
     private static func isIdentifierStart(_ scalar: Unicode.Scalar) -> Bool {
-        scalar == "_" || scalar.properties.isAlphabetic
+        scalar == "_" || scalar == "$" || scalar.properties.isAlphabetic
     }
 
     private static func isIdentifierContinue(_ scalar: Unicode.Scalar) -> Bool {
