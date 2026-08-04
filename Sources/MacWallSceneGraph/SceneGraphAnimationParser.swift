@@ -362,28 +362,35 @@ private struct SceneGraphAnimationParseState {
     }
 
     private func channelPrecedes(_ first: String, _ second: String) -> Bool {
-        switch (channelIndex(first), channelIndex(second)) {
-        case let (.some(firstIndex), .some(secondIndex)):
-            firstIndex == secondIndex ? first < second : firstIndex < secondIndex
+        switch (numericChannelSuffix(first), numericChannelSuffix(second)) {
+        case let (.some(firstSuffix), .some(secondSuffix)):
+            if firstSuffix.count != secondSuffix.count {
+                return firstSuffix.count < secondSuffix.count
+            }
+            if firstSuffix != secondSuffix {
+                return firstSuffix < secondSuffix
+            }
+            return first < second
         case (.some, nil):
-            true
+            return true
         case (nil, .some):
-            false
+            return false
         case (nil, nil):
-            first < second
+            return first < second
         }
     }
 
-    private func channelIndex(_ name: String) -> Int? {
+    private func numericChannelSuffix(_ name: String) -> String? {
         guard name.first == "c" else {
             return nil
         }
         let suffix = name.dropFirst()
         guard !suffix.isEmpty,
-              suffix.allSatisfy({ $0.isNumber }) else {
+              suffix.utf8.allSatisfy({ $0 >= 48 && $0 <= 57 }) else {
             return nil
         }
-        return Int(suffix)
+        let normalized = suffix.drop { $0 == "0" }
+        return normalized.isEmpty ? "0" : String(normalized)
     }
 
     private mutating func appendInvalidProperty(

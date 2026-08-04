@@ -199,6 +199,37 @@ final class SceneGraphAnimationTests: XCTestCase {
         )
     }
 
+    func testBuildOrdersOverflowSizedAndLeadingZeroNumericChannels() throws {
+        let result = try build(#"""
+        {
+          "objects": [
+            {
+              "fullscreen": true,
+              "origin": {
+                "animation": {
+                  "alpha": [{"value": 1}],
+                  "c999999999999999999999999999999": [{"value": 1}],
+                  "c2": [{"value": 1}],
+                  "c0002": [{"value": 1}],
+                  "c000": [{"value": 1}],
+                  "c0": [{"value": 1}],
+                  "c-1": [{"value": 1}]
+                }
+              }
+            }
+          ]
+        }
+        """#)
+
+        XCTAssertEqual(
+            result.document?.animations.only?.channels.map(\.name),
+            [
+                "c0", "c000", "c0002", "c2",
+                "c999999999999999999999999999999", "alpha", "c-1"
+            ]
+        )
+    }
+
     func testBuildStopsAtAnimationKeyframeLimitAndInvalidatesGraph() throws {
         let result = try build(
             #"""
