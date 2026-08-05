@@ -2,7 +2,7 @@
 
 작성일: 2026-08-06
 
-상태: approved design / implementation not started
+상태: approved design / implementation plan ready / implementation not started
 
 ## 1. 결정 요약
 
@@ -129,7 +129,8 @@ Sources/MacWallSceneTextures/
 ├─ SceneTextureUploadExecutor.swift
 ├─ SceneTextureMemoryBudget.swift
 ├─ SceneTextureCache.swift
-└─ SceneTextureStore.swift
+├─ SceneTextureStore.swift
+└─ SceneTexturePipelineLoader.swift
 ```
 
 한 파일이 format mapping, decode, upload, cache를 동시에 소유하지 않는다.
@@ -261,6 +262,12 @@ public enum SceneTextureUploadPath: String, Sendable {
 `SceneTextureLoadPlanner`는 descriptor, color intent, capability만 받아 immutable
 plan을 반환한다. package read, allocation, command submission은 하지 않는다.
 
+encoded image signature는 payload read 전에 판단할 수 없으므로 unknown format은
+planner 내부의 encoded-image probe로 유예한다. bounded payload loader가
+선택된 static mip 전부의 signature를 확인한 후에만 final
+`.encodedImageRGBA` path로 승격하고, 하나라도 인식되지 않으면
+`unsupportedPixelFormat(rawValue)`를 반환한다.
+
 ## 9. Format Mapping
 
 | TEX format | 의미 | GPU format | 기본 path |
@@ -278,7 +285,9 @@ plan을 반환한다. package read, allocation, command submission은 하지 않
 - LZ4는 GPU texture compression이 아니므로 bounded CPU expansion 후 mapping한다.
 - BC direct path는 capability가 true일 때만 선택한다.
 - BC capability가 false이면 `SceneTextureSoftwareDecoder`의 RGBA path를 사용한다.
-- unknown format은 `unsupportedPixelFormat(rawValue)`다.
+- unknown format은 모든 selected static mip이 accepted encoded-image signature일
+  때만 ImageIO path로 승격하고 그 외에는
+  `unsupportedPixelFormat(rawValue)`다.
 - malformed block/payload는 fallback하지 않고 invalid error다.
 - R8/RG8은 linear data texture다. `colorSRGB` request는 invalid request다.
 - RGBA/BC는 linear base storage와 compatible sRGB texture view를 제공한다.
@@ -411,6 +420,11 @@ package ID
 color view는 같은 storage entry 아래 관리한다. 동일 key의 concurrent load는 한
 in-flight task로 dedupe한다.
 
+Store의 shared storage preparation은 linear allocation 기준으로 한 번만 실행하고
+prepare 결과의 compatible sRGB view 여부를 각 waiter color intent에 따라
+개별 검증한다. 첫 waiter의 color intent가 같은 storage의 다른
+waiter를 실패시키거나 duplicate allocation을 만들면 안 된다.
+
 entry 상태:
 
 ```text
@@ -457,6 +471,7 @@ buffer는 완료 handler까지 cleanup 책임을 유지하고 결과를 cache에
 | decoded CPU aggregate | 160 MiB |
 | single compressed/decompressed payload | 64 MiB |
 | maximum texture dimension | 16,384 |
+| maximum software decoded pixels | 18,000,000 |
 | concurrent decode | 2 |
 | concurrent upload | 2 |
 | upload completion timeout | 10 seconds |
@@ -479,6 +494,7 @@ thermal, battery, memory pressure에 따른 동적 budget 조절은 usage 측정
 ```swift
 public enum SceneTexturePipelineError: Error, Equatable, Sendable {
     case invalidRequest
+    case unsupportedDescriptor(SceneTextureUnsupportedKind)
     case unsupportedAnimation
     case unsupportedVideo
     case unsupportedMultiImage

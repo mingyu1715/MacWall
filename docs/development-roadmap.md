@@ -470,7 +470,8 @@ module은 AppKit/Metal desktop rendering 없이 test와 non-GUI code에서 사�
 ### S3: GPU Texture Pipeline
 
 상태: [설계 승인](superpowers/specs/2026-08-06-scene-gpu-texture-pipeline-design.md) /
-executable implementation plan 작성 전 / 코드 미착수
+[실행 계획 준비](superpowers/plans/2026-08-06-scene-gpu-texture-pipeline.md) /
+코드 미착수
 
 - mipmap과 texture padding metadata를 지원합니다.
 - Metal device capability가 허용하는 경우 compressed texture를 직접 upload합니다.
@@ -657,7 +658,7 @@ Scene runtime work:
 S0 Format Research and Fixture Catalog (완료)
 -> S1 Format Layer Hardening (완료)
 -> S2 Asset Resolver and Typed Scene Graph (구현 완료: local fixture 5 tests 및 전체 414 tests, 0 failures)
--> S3 GPU Texture Pipeline (설계 승인 / 실행 계획 작성 전)
+-> S3 GPU Texture Pipeline (설계 승인 / 실행 계획 준비 / 구현 전)
 -> S4 Headless 2D Metal Renderer
 -> S5 Native Scene Frame Adapter
 -> S6 Effects
@@ -678,11 +679,11 @@ S5에서 common 2D Scene은 extension 내부의 실제 Metal output으로 재생
 다음 planning:
 
 1. 별도 사용자 gate에서 Native auto-pause, sleep/wake, 1회 recovery의 실제 Desktop 동작을 확인합니다.
-2. 승인된 [S3 GPU Texture Pipeline 설계](superpowers/specs/2026-08-06-scene-gpu-texture-pipeline-design.md)를
-   executable implementation plan으로 분해합니다. S2 graph contract는
+2. [S3 GPU Texture Pipeline 실행 계획](superpowers/plans/2026-08-06-scene-gpu-texture-pipeline.md)을
+   task-by-task로 실행합니다. S2 graph contract는
    [구현 기록](implemented/2026-08-04-scene-asset-resolver-typed-graph.md)과
    [보관된 계획](archive/superpowers/plans/2026-08-04-scene-asset-resolver-typed-graph.md)을 기준으로 합니다.
-3. S3 실행 계획 승인 전에는 texture pipeline code, Metal renderer, Scene
-   fallback, Native Scene surface 구현을 시작하지 않습니다.
+3. S3에서는 texture pipeline만 구현하고 S4 Metal renderer, Scene
+   fallback, Native Scene surface는 시작하지 않습니다.
 4. snapshot/export는 `docs/superpowers/plans/2026-06-15-native-wallpaper-snapshot-export-gate.md`, BGRA IOSurface memory는 별도 최적화 작업으로 유지합니다.
 5. proper Apple signing/provisioning 기반 App Group runtime QA는 release 전 별도 gate로 유지합니다.

@@ -1,6 +1,6 @@
 # MacWall Scene Engine Design
 
-상태: Approved design / S0-S2 implemented / S3 design approved / implementation plan next
+상태: Approved design / S0-S2 implemented / S3 implementation plan ready
 
 작성일: 2026-07-29
 대상: Wallpaper Engine Scene compatibility runtime
@@ -671,10 +671,10 @@ transition은 사용자가 직접 확인합니다. 자동화가 대신 조작하
 
 ### S3: GPU Texture Pipeline
 
-상태: design approved / implementation plan next
+상태: design approved / implementation plan ready / implementation not started
 
-S3는 [승인된 GPU Texture Pipeline 설계](2026-08-06-scene-gpu-texture-pipeline-design.md)를
-기준으로 실행 계획을 작성한다.
+S3는 [승인된 GPU Texture Pipeline 설계](2026-08-06-scene-gpu-texture-pipeline-design.md)와
+[실행 계획](../plans/2026-08-06-scene-gpu-texture-pipeline.md)을 기준으로 구현한다.
 
 - Metal capability mapping
 - direct compressed upload when supported
