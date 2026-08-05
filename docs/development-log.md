@@ -2,6 +2,39 @@
 
 모든 시간은 Asia/Seoul 기준입니다.
 
+## 2026-08-06
+
+### 00:03 KST
+
+- 완료: Scene Engine S3 GPU Texture Pipeline 설계 승인 및 문서화
+- 설계: [S3 GPU Texture Pipeline 설계](superpowers/specs/2026-08-06-scene-gpu-texture-pipeline-design.md)
+- 결정:
+  - `MacWallSceneTextures` 독립 target에서 capability 기반 BC/raw direct upload와
+    software/ImageIO fallback을 제공
+  - 장기 allocator 경계는 heap/streaming/residency를 수용하되 S3 첫 구현은
+    private texture와 staging buffer로 제한
+  - generation ownership, in-flight dedupe, LRU, resident/staging/decoded memory
+    budget과 fail-closed payload validation을 계약으로 고정
+  - macOS 14+ compile, Apple Silicon 성능 acceptance, macOS 26+ Native Scene
+    output 경계를 유지
+- 다음: S3 executable implementation plan 작성 및 검토
+- 미실행: S3 code, S4 renderer, Native Scene surface, Scene fallback, GUI/앱 실행
+
+## 2026-08-05
+
+### 01:48 KST
+
+- 완료: Scene Engine S2 최종 whole-branch review 수정 및 로컬 병합
+- 수정:
+  - embedded dot path canonicalization
+  - Scene document-owned root dependency
+  - raw animation degraded status
+  - 세 fixed fixture 전체 gate
+  - arbitrary metadata key path collision 방지
+- 검증: `swift test` -> `414 tests, 0 failures, 0 skips`
+- 문서: [S2 구현 기록](implemented/2026-08-04-scene-asset-resolver-typed-graph.md)
+- 다음: S3 GPU Texture Pipeline design
+
 ## 2026-08-04
 
 ### 23:59 KST
