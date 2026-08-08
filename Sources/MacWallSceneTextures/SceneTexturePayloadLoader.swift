@@ -287,8 +287,21 @@ struct SceneTexturePayloadLoader: Sendable {
            data[8..<12] == Data("WEBP".utf8) {
             return true
         }
-        guard data.count >= 12,
+        return isAcceptedISOBaseMediaImage(data)
+    }
+
+    private static func isAcceptedISOBaseMediaImage(_ data: Data) -> Bool {
+        guard data.count >= 16,
               data[4..<8] == Data("ftyp".utf8) else {
+            return false
+        }
+        let declaredBoxLength = data.prefix(4).reduce(UInt32(0)) {
+            ($0 << 8) | UInt32($1)
+        }
+        guard let boxLength = Int(exactly: declaredBoxLength),
+              boxLength >= 16,
+              boxLength <= data.count,
+              (boxLength - 16).isMultiple(of: 4) else {
             return false
         }
         let acceptedBrands: Set<Data> = [
@@ -298,7 +311,10 @@ struct SceneTexturePayloadLoader: Sendable {
             Data("hevs".utf8), Data("mif1".utf8), Data("msf1".utf8),
             Data("avis".utf8)
         ]
-        return stride(from: 8, through: data.count - 4, by: 4).contains {
+        if acceptedBrands.contains(Data(data[8..<12])) {
+            return true
+        }
+        return stride(from: 16, to: boxLength, by: 4).contains {
             acceptedBrands.contains(Data(data[$0..<($0 + 4)]))
         }
     }

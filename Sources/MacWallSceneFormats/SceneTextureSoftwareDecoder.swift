@@ -82,7 +82,8 @@ public struct SceneTextureSoftwareDecoder: Sendable {
             selectedPayload,
             mipmap: mipmap
         )
-        if Self.isEncodedImage(payload) {
+        if ![0, 4, 6, 7, 8, 9].contains(descriptor.formatRawValue),
+           Self.isEncodedImage(payload) {
             return SceneDecodedTexture(
                 width: targetWidth,
                 height: targetHeight,

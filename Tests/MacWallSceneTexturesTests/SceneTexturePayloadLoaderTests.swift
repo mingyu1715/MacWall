@@ -152,6 +152,29 @@ final class SceneTexturePayloadLoaderTests: XCTestCase {
         )
     }
 
+    func testSoftwareBCUsesKnownFormatWhenBlockStartsWithPNGSignature() throws {
+        let block = Data([0x89, 0x50, 0x4E, 0x47, 0, 0, 0, 0])
+        let fixture = try parsedFixture(
+            formatRawValue: 7,
+            mipPayloads: [block],
+            mipSizes: [(4, 4)],
+            supportsBC: false
+        )
+
+        let result = try SceneTexturePayloadLoader().prepare(
+            plan: fixture.plan,
+            descriptor: fixture.descriptor,
+            source: fixture.recording,
+            limits: .init()
+        )
+
+        XCTAssertEqual(result.uploadPath, .softwareRGBA)
+        XCTAssertEqual(
+            result.mips[0].bytes,
+            Data(repeating: [82, 16, 74, 255], count: 16)
+        )
+    }
+
     func testUnknownFormatReturnsEncodedImagesOnlyWhenEveryMipHasSignature() throws {
         let png = Data([0x89, 0x50, 0x4E, 0x47, 1])
         let heif = Data([0, 0, 0, 16]) + Data("ftypheic".utf8) + Data([0, 0, 0, 0])
@@ -169,6 +192,64 @@ final class SceneTexturePayloadLoaderTests: XCTestCase {
         )
 
         XCTAssertEqual(result, .encodedImages([png, heif]))
+    }
+
+    func testISOBaseMediaAcceptsBrandsOnlyFromDeclaredBrandFields() throws {
+        let payloads = [
+            Data([0, 0, 0, 16])
+                + Data("ftypavif".utf8)
+                + Data([0, 0, 0, 0]),
+            Data([0, 0, 0, 20])
+                + Data("ftypzzzz".utf8)
+                + Data([0, 0, 0, 0])
+                + Data("heic".utf8)
+        ]
+
+        for payload in payloads {
+            let fixture = try parsedFixture(
+                formatRawValue: 99,
+                mipPayloads: [payload],
+                mipSizes: [(1, 1)]
+            )
+
+            XCTAssertEqual(
+                try SceneTexturePayloadLoader().prepare(
+                    plan: fixture.plan,
+                    descriptor: fixture.descriptor,
+                    source: fixture.recording,
+                    limits: .init()
+                ),
+                .encodedImages([payload])
+            )
+        }
+    }
+
+    func testISOBaseMediaRejectsBrandsOutsideDeclaredFieldsAndMalformedLengths() throws {
+        let payloads = [
+            Data([0, 0, 0, 16])
+                + Data("ftypzzzzheic".utf8),
+            Data([0, 0, 0, 16])
+                + Data("ftypzzzz".utf8)
+                + Data([0, 0, 0, 0])
+                + Data("heic".utf8),
+            Data([0, 0, 0, 12])
+                + Data("ftypheic".utf8),
+            Data([0, 0, 0, 20])
+                + Data("ftypheic".utf8)
+                + Data([0, 0, 0, 0])
+        ]
+
+        for payload in payloads {
+            let fixture = try parsedFixture(
+                formatRawValue: 99,
+                mipPayloads: [payload],
+                mipSizes: [(1, 1)]
+            )
+            assertLoaderError(
+                fixture: fixture,
+                expected: .unsupportedPixelFormat(99)
+            )
+        }
     }
 
     func testUnknownFormatRejectsMixedAndUnrecognizedPayloads() throws {
@@ -379,5 +460,11 @@ private final class CancellationProbe: @unchecked Sendable {
         defer { lock.unlock() }
         defer { checks += 1 }
         return checks == 1
+    }
+}
+
+private extension Data {
+    init(repeating pixel: [UInt8], count: Int) {
+        self.init(Array(repeating: pixel, count: count).flatMap { $0 })
     }
 }
