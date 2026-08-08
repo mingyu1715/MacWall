@@ -3,6 +3,12 @@ import Foundation
 import ImageIO
 
 struct SceneTextureImageDecoder: Sendable {
+    private static let pngSignature = Data([0x89, 0x50, 0x4E, 0x47])
+    private static let pngIENDChunk = Data([
+        0x00, 0x00, 0x00, 0x00,
+        0x49, 0x45, 0x4E, 0x44,
+        0xAE, 0x42, 0x60, 0x82
+    ])
     private static let topRowFirstCTM = CGAffineTransform(
         a: 1,
         b: 0,
@@ -129,6 +135,9 @@ struct SceneTextureImageDecoder: Sendable {
               let imageSource = CGImageSourceCreateWithData(data as CFData, nil),
               CGImageSourceGetCount(imageSource) > 0,
               let image = CGImageSourceCreateImageAtIndex(imageSource, 0, nil),
+              CGImageSourceGetStatus(imageSource) == .statusComplete,
+              CGImageSourceGetStatusAtIndex(imageSource, 0) == .statusComplete,
+              Self.hasCompleteContainer(data),
               image.width == expectedContentExtent.width,
               image.height == expectedContentExtent.height else {
             throw SceneTexturePipelineError.decodeFailed
@@ -200,6 +209,14 @@ struct SceneTextureImageDecoder: Sendable {
             }
         }
         return premultipliedRGBA
+    }
+
+    private static func hasCompleteContainer(_ data: Data) -> Bool {
+        guard data.starts(with: pngSignature) else {
+            return true
+        }
+        return data.count >= pngIENDChunk.count
+            && data.suffix(pngIENDChunk.count) == pngIENDChunk
     }
 
     private func paddedRGBA(

@@ -39,6 +39,21 @@ final class SceneTextureImageDecoderTests: XCTestCase {
         )
     }
 
+    func testRejectsTrailingTruncationThatImageIOCanDecode() throws {
+        let trailingTruncation = Data(encodedTwoPixelPNG.dropLast())
+        let imageSource = try XCTUnwrap(
+            CGImageSourceCreateWithData(trailingTruncation as CFData, nil)
+        )
+        XCTAssertNotNil(CGImageSourceCreateImageAtIndex(imageSource, 0, nil))
+
+        assertDecodeError(
+            encodedMips: [trailingTruncation],
+            expectedContentExtents: [.init(width: 2, height: 1)],
+            storageExtents: [.init(width: 2, height: 1)],
+            expected: .decodeFailed
+        )
+    }
+
     func testRejectsMalformedNonImageData() {
         assertDecodeError(
             encodedMips: [Data([0x01, 0x02, 0x03, 0x04])],
