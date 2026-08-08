@@ -88,6 +88,19 @@ final class SceneTextureMemoryBudgetTests: XCTestCase {
         try budget.release(reservation)
     }
 
+    func testAggregateReservationOverflowMapsToKindLimitWithoutMutatingState() throws {
+        let budget = SceneTextureMemoryBudget(limits: .init(stagingBytes: Int.max))
+        let existing = try budget.reserve(Int.max - 1, kind: .staging)
+        let snapshotBeforeOverflow = budget.snapshot()
+
+        assertPipelineError(.resourceLimit(.stagingBytes)) {
+            _ = try budget.reserve(2, kind: .staging)
+        }
+        XCTAssertEqual(budget.snapshot(), snapshotBeforeOverflow)
+
+        try budget.release(existing)
+    }
+
     func testResizeReplacesEstimateAndRejectsActualBytesAboveCap() throws {
         let budget = SceneTextureMemoryBudget(limits: .init(stagingBytes: 10))
         let reservation = try budget.reserve(6, kind: .staging)
@@ -144,30 +157,67 @@ final class SceneTextureMemoryBudgetTests: XCTestCase {
         )
     }
 
-    func testFailureAndCancellationCleanupReleaseEveryReservation() throws {
+    func testThrowingWorkRollsBackEveryReservationExactlyOnce() async {
         let budget = SceneTextureMemoryBudget(limits: .init(
             residentHardBytes: 20,
             stagingBytes: 20,
             decodedCPUBytes: 20
         ))
-        let staging = try budget.reserve(5, kind: .staging)
-        let decoded = try budget.reserve(7, kind: .decodedCPU)
-        let resident = try budget.reserve(9, kind: .resident)
+        let probe = ReservationProbe()
 
-        try budget.release(staging)
-        try budget.release(decoded)
-        try budget.release(resident)
+        do {
+            try await withReservationsRolledBackOnFailure(
+                budget: budget,
+                requests: rollbackReservationRequests
+            ) { reservations in
+                probe.record(reservations)
+                throw RollbackTestError.expectedFailure
+            }
+            XCTFail("Expected reserved work to throw")
+        } catch let error as RollbackTestError {
+            XCTAssertEqual(error, .expectedFailure)
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
 
-        XCTAssertEqual(
-            budget.snapshot(),
-            .init(
-                residentBytes: 0,
-                peakResidentBytes: 9,
-                stagingBytes: 0,
-                peakStagingBytes: 5,
-                decodedCPUBytes: 0,
-                peakDecodedCPUBytes: 7
-            )
+        assertRollbackReleasedEveryReservation(
+            probe.reservations,
+            budget: budget
+        )
+    }
+
+    func testTaskCancellationRollsBackEveryReservationExactlyOnce() async {
+        let budget = SceneTextureMemoryBudget(limits: .init(
+            residentHardBytes: 20,
+            stagingBytes: 20,
+            decodedCPUBytes: 20
+        ))
+        let probe = ReservationProbe()
+        let started = expectation(description: "Reservations acquired")
+        let operation = Task {
+            try await withReservationsRolledBackOnFailure(
+                budget: budget,
+                requests: rollbackReservationRequests
+            ) { reservations in
+                probe.record(reservations)
+                started.fulfill()
+                try await Task.sleep(for: .seconds(30))
+            }
+        }
+
+        await fulfillment(of: [started], timeout: 1)
+        operation.cancel()
+        do {
+            try await operation.value
+            XCTFail("Expected reserved work to be cancelled")
+        } catch is CancellationError {
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+
+        assertRollbackReleasedEveryReservation(
+            probe.reservations,
+            budget: budget
         )
     }
 
@@ -254,6 +304,61 @@ final class SceneTextureMemoryBudgetTests: XCTestCase {
             )
         }
     }
+
+    private func assertRollbackReleasedEveryReservation(
+        _ reservations: [SceneTextureMemoryReservation],
+        budget: SceneTextureMemoryBudget,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertEqual(
+            budget.snapshot(),
+            .init(
+                residentBytes: 0,
+                peakResidentBytes: 9,
+                stagingBytes: 0,
+                peakStagingBytes: 5,
+                decodedCPUBytes: 0,
+                peakDecodedCPUBytes: 7
+            ),
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(reservations.count, 3, file: file, line: line)
+        for reservation in reservations {
+            assertInvariantError(
+                .unknownReservation,
+                operation: { try budget.release(reservation) },
+                file: file,
+                line: line
+            )
+        }
+    }
+}
+
+private let rollbackReservationRequests: [(Int, SceneTextureMemoryKind)] = [
+    (5, .staging),
+    (7, .decodedCPU),
+    (9, .resident)
+]
+
+private func withReservationsRolledBackOnFailure(
+    budget: SceneTextureMemoryBudget,
+    requests: [(Int, SceneTextureMemoryKind)],
+    operation: @escaping @Sendable ([SceneTextureMemoryReservation]) async throws -> Void
+) async throws {
+    var reservations: [SceneTextureMemoryReservation] = []
+    do {
+        for (bytes, kind) in requests {
+            reservations.append(try budget.reserve(bytes, kind: kind))
+        }
+        try await operation(reservations)
+    } catch {
+        for reservation in reservations.reversed() {
+            try budget.release(reservation)
+        }
+        throw error
+    }
 }
 
 private final class ConcurrentObservation: @unchecked Sendable {
@@ -265,4 +370,25 @@ private final class ConcurrentObservation: @unchecked Sendable {
         maximumResidentBytes = max(maximumResidentBytes, residentBytes)
         lock.unlock()
     }
+}
+
+private final class ReservationProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recordedReservations: [SceneTextureMemoryReservation] = []
+
+    var reservations: [SceneTextureMemoryReservation] {
+        lock.lock()
+        defer { lock.unlock() }
+        return recordedReservations
+    }
+
+    func record(_ reservations: [SceneTextureMemoryReservation]) {
+        lock.lock()
+        recordedReservations = reservations
+        lock.unlock()
+    }
+}
+
+private enum RollbackTestError: Error, Equatable {
+    case expectedFailure
 }
