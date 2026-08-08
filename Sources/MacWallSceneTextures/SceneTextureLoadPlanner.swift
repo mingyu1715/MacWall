@@ -58,7 +58,11 @@ struct SceneTextureLoadPlanner: Sendable {
         }
 
         try validateDimensions(descriptor: descriptor, mipmaps: mipmaps)
-        try validateMipChain(mipmaps)
+        try validateMipChain(
+            mipmaps,
+            textureWidth: descriptor.textureWidth,
+            textureHeight: descriptor.textureHeight
+        )
 
         let format = selectFormat(
             rawValue: descriptor.formatRawValue,
@@ -139,23 +143,25 @@ struct SceneTextureLoadPlanner: Sendable {
     }
 
     private func validateMipChain(
-        _ mipmaps: [SceneTextureMipmapDescriptor]
+        _ mipmaps: [SceneTextureMipmapDescriptor],
+        textureWidth: Int,
+        textureHeight: Int
     ) throws {
-        guard let first = mipmaps.first else {
+        guard !mipmaps.isEmpty else {
             throw SceneTexturePipelineError.malformedDescriptor
         }
 
         let maximumLevel = max(
-            Int.bitWidth - first.width.leadingZeroBitCount,
-            Int.bitWidth - first.height.leadingZeroBitCount
+            Int.bitWidth - textureWidth.leadingZeroBitCount,
+            Int.bitWidth - textureHeight.leadingZeroBitCount
         )
         guard mipmaps.count <= maximumLevel else {
             throw SceneTexturePipelineError.malformedDescriptor
         }
 
         for (level, mipmap) in mipmaps.enumerated() {
-            let expectedWidth = max(1, first.width >> level)
-            let expectedHeight = max(1, first.height >> level)
+            let expectedWidth = max(1, textureWidth >> level)
+            let expectedHeight = max(1, textureHeight >> level)
             guard mipmap.width == expectedWidth,
                   mipmap.height == expectedHeight else {
                 throw SceneTexturePipelineError.malformedDescriptor

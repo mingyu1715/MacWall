@@ -88,6 +88,24 @@ final class SceneTextureLoadPlannerTests: XCTestCase {
         XCTAssertEqual(plan.mips[0].unalignedBytesPerRow, 65_536)
     }
 
+    func testRejectsUncompressedByteCountOverflow() {
+        var limits = MacWallSceneTextures.SceneTextureLimits()
+        limits.maximumTextureDimension = Int.max
+        let oversizedWidth = Int.max / 2 + 1
+
+        for formatRawValue in [0, 8, 9] {
+            assertPlannerError(
+                descriptor: manualDescriptor(
+                    formatRawValue: formatRawValue,
+                    textureSize: (oversizedWidth, 2),
+                    imageSize: (1, 1)
+                ),
+                limits: limits,
+                expected: .resourceLimit(.payloadBytes)
+            )
+        }
+    }
+
     func testRejectsSRGBRequestsForSingleAndDualChannelData() throws {
         for rawValue: Int32 in [8, 9] {
             assertPlannerError(
@@ -256,6 +274,18 @@ final class SceneTextureLoadPlannerTests: XCTestCase {
         )
     }
 
+    func testRejectsMipChainWhoseFirstLevelDoesNotMatchDescriptor() throws {
+        assertPlannerError(
+            descriptor: try descriptor(
+                formatRawValue: 0,
+                textureSize: (8, 8),
+                imageSize: (8, 8),
+                mipSizes: [(4, 4), (2, 2), (1, 1)]
+            ),
+            expected: .malformedDescriptor
+        )
+    }
+
     func testDefersUnknownFormatToEncodedImageProbe() throws {
         let plan = try planner().makePlan(
             descriptor: try descriptor(formatRawValue: 99),
@@ -273,13 +303,16 @@ final class SceneTextureLoadPlannerTests: XCTestCase {
         XCTAssertNil(plan.mips[0].unalignedBytesPerRow)
     }
 
-    private func planner(supportsBC: Bool = true) -> SceneTextureLoadPlanner {
+    private func planner(
+        supportsBC: Bool = true,
+        limits: MacWallSceneTextures.SceneTextureLimits = .init()
+    ) -> SceneTextureLoadPlanner {
         SceneTextureLoadPlanner(
             capabilities: .init(
                 supportsBCTextureCompression: supportsBC,
                 linearTextureAlignment: [:]
             ),
-            limits: .init()
+            limits: limits
         )
     }
 
@@ -318,6 +351,9 @@ final class SceneTextureLoadPlannerTests: XCTestCase {
     }
 
     private func manualDescriptor(
+        formatRawValue: Int = 0,
+        textureSize: (Int, Int) = (1, 1),
+        imageSize: (Int, Int) = (1, 1),
         animation: SceneTextureAnimationDescriptor? = nil,
         video: SceneTextureVideoMetadata? = nil,
         isVideoMP4: Bool = false
@@ -326,20 +362,20 @@ final class SceneTextureLoadPlannerTests: XCTestCase {
             path: "materials/test.tex",
             version: "TEXV0005",
             infoVersion: "TEXI0001",
-            formatRawValue: 0,
+            formatRawValue: formatRawValue,
             flagsRawValue: 0,
-            textureWidth: 1,
-            textureHeight: 1,
-            imageWidth: 1,
-            imageHeight: 1,
+            textureWidth: textureSize.0,
+            textureHeight: textureSize.1,
+            imageWidth: imageSize.0,
+            imageHeight: imageSize.1,
             declaredContainer: "TEXB0003",
             mipmapLayout: .b0002OrB0003,
-            imageFormatRawValue: 0,
+            imageFormatRawValue: formatRawValue,
             isVideoMP4: isVideoMP4,
             images: [.init(mipmaps: [
                 .init(
-                    width: 1,
-                    height: 1,
+                    width: textureSize.0,
+                    height: textureSize.1,
                     isLZ4Compressed: false,
                     decompressedByteCount: nil,
                     video: video,
@@ -355,12 +391,13 @@ final class SceneTextureLoadPlannerTests: XCTestCase {
         descriptor: SceneTextureDescriptor,
         imageIndex: Int = 0,
         colorIntent: SceneTextureColorIntent = .dataLinear,
+        limits: MacWallSceneTextures.SceneTextureLimits = .init(),
         expected: SceneTexturePipelineError,
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
         XCTAssertThrowsError(
-            try planner().makePlan(
+            try planner(limits: limits).makePlan(
                 descriptor: descriptor,
                 imageIndex: imageIndex,
                 colorIntent: colorIntent
