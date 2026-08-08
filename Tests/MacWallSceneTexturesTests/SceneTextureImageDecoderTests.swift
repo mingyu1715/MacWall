@@ -39,6 +39,15 @@ final class SceneTextureImageDecoderTests: XCTestCase {
         )
     }
 
+    func testRejectsMalformedNonImageData() {
+        assertDecodeError(
+            encodedMips: [Data([0x01, 0x02, 0x03, 0x04])],
+            expectedContentExtents: [.init(width: 1, height: 1)],
+            storageExtents: [.init(width: 1, height: 1)],
+            expected: .decodeFailed
+        )
+    }
+
     func testRejectsDecodedPixelAndCPUByteLimits() {
         assertDecodeError(
             encodedMips: [encodedTwoPixelPNG],
@@ -54,6 +63,67 @@ final class SceneTextureImageDecoderTests: XCTestCase {
             limits: .init(decodedCPUBytes: 7),
             expected: .resourceLimit(.decodedCPUBytes)
         )
+    }
+
+    func testRejectsRetainedMipChainAboveDecodedCPUByteLimit() {
+        let levelZeroPNG = encodedPNG(
+            width: 2,
+            height: 2,
+            premultipliedRGBA: [
+                255, 0, 0, 255, 255, 0, 0, 255,
+                255, 0, 0, 255, 255, 0, 0, 255
+            ]
+        )
+        let levelOnePNG = encodedPNG(
+            width: 1,
+            height: 1,
+            premultipliedRGBA: [255, 0, 0, 255]
+        )
+
+        assertDecodeError(
+            encodedMips: [levelZeroPNG, levelOnePNG],
+            expectedContentExtents: [
+                .init(width: 2, height: 2),
+                .init(width: 1, height: 1)
+            ],
+            storageExtents: [
+                .init(width: 2, height: 2),
+                .init(width: 1, height: 1)
+            ],
+            limits: .init(decodedCPUBytes: 19),
+            expected: .resourceLimit(.decodedCPUBytes)
+        )
+    }
+
+    func testAllowsRetainedMipChainAtDecodedCPUByteLimit() throws {
+        let levelZeroPNG = encodedPNG(
+            width: 2,
+            height: 2,
+            premultipliedRGBA: [
+                255, 0, 0, 255, 255, 0, 0, 255,
+                255, 0, 0, 255, 255, 0, 0, 255
+            ]
+        )
+        let levelOnePNG = encodedPNG(
+            width: 1,
+            height: 1,
+            premultipliedRGBA: [255, 0, 0, 255]
+        )
+
+        let decoded = try SceneTextureImageDecoder().decode(
+            encodedMips: [levelZeroPNG, levelOnePNG],
+            expectedContentExtents: [
+                .init(width: 2, height: 2),
+                .init(width: 1, height: 1)
+            ],
+            storageExtents: [
+                .init(width: 2, height: 2),
+                .init(width: 1, height: 1)
+            ],
+            limits: .init(decodedCPUBytes: 20)
+        )
+
+        XCTAssertEqual(decoded.mips.map(\.bytes.count), [16, 4])
     }
 
     func testPreservesEveryEncodedMip() throws {
@@ -104,11 +174,7 @@ final class SceneTextureImageDecoderTests: XCTestCase {
 
     func testPreservesTopToBottomByteOrder() throws {
         let decoded = try SceneTextureImageDecoder().decode(
-            encodedMips: [encodedPNG(
-                width: 1,
-                height: 2,
-                premultipliedRGBA: [255, 0, 0, 255, 0, 0, 255, 255]
-            )],
+            encodedMips: [encodedTopRedBottomBluePNG],
             expectedContentExtents: [.init(width: 1, height: 2)],
             storageExtents: [.init(width: 1, height: 2)],
             limits: .init()
@@ -144,6 +210,12 @@ final class SceneTextureImageDecoderTests: XCTestCase {
             height: 1,
             premultipliedRGBA: [255, 0, 0, 255, 0, 128, 0, 128]
         )
+    }
+
+    private var encodedTopRedBottomBluePNG: Data {
+        Data(
+            base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAACCAYAAACZgbYnAAAAEUlEQVR4nGP4z8AARAz//wMAEfgD/XUCLkgAAAAASUVORK5CYII="
+        )!
     }
 
     private func encodedPNG(

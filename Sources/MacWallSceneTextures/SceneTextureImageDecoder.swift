@@ -3,6 +3,15 @@ import Foundation
 import ImageIO
 
 struct SceneTextureImageDecoder: Sendable {
+    private static let topRowFirstCTM = CGAffineTransform(
+        a: 1,
+        b: 0,
+        c: 0,
+        d: 1,
+        tx: 0,
+        ty: 0
+    )
+
     func decode(
         encodedMips: [Data],
         expectedContentExtents: [SceneTextureExtent],
@@ -18,6 +27,7 @@ struct SceneTextureImageDecoder: Sendable {
         var decodedMips: [SceneTexturePreparedMip] = []
         decodedMips.reserveCapacity(encodedMips.count)
         var decodedPixels = 0
+        var retainedDecodedCPUBytes = 0
 
         for index in encodedMips.indices {
             let contentExtent = expectedContentExtents[index]
@@ -40,6 +50,25 @@ struct SceneTextureImageDecoder: Sendable {
             }
             decodedPixels = updatedDecodedPixels
 
+            let storageBytesPerRow = try checkedProduct(
+                storageExtent.width,
+                4,
+                limit: .decodedCPUBytes
+            )
+            let storageByteCount = try checkedProduct(
+                storageBytesPerRow,
+                storageExtent.height,
+                limit: .decodedCPUBytes
+            )
+            retainedDecodedCPUBytes = try checkedSum(
+                retainedDecodedCPUBytes,
+                storageByteCount,
+                limit: .decodedCPUBytes
+            )
+            guard retainedDecodedCPUBytes <= limits.decodedCPUBytes else {
+                throw SceneTexturePipelineError.resourceLimit(.decodedCPUBytes)
+            }
+
             let normalizedRGBA = try decodeStraightRGBA(
                 encodedMips[index],
                 expectedContentExtent: contentExtent,
@@ -47,20 +76,16 @@ struct SceneTextureImageDecoder: Sendable {
             )
             let paddedRGBA = try paddedRGBA(
                 normalizedRGBA,
-                storageExtent: storageExtent,
                 contentExtent: contentExtent,
-                limits: limits
+                storageBytesPerRow: storageBytesPerRow,
+                storageByteCount: storageByteCount
             )
             decodedMips.append(
                 SceneTexturePreparedMip(
                     level: index,
                     storageExtent: storageExtent,
                     contentExtent: contentExtent,
-                    unalignedBytesPerRow: try checkedProduct(
-                        storageExtent.width,
-                        4,
-                        limit: .decodedCPUBytes
-                    ),
+                    unalignedBytesPerRow: storageBytesPerRow,
                     bytes: paddedRGBA
                 )
             )
@@ -141,6 +166,7 @@ struct SceneTextureImageDecoder: Sendable {
                 return false
             }
             context.setBlendMode(.copy)
+            context.concatenate(Self.topRowFirstCTM)
             context.draw(
                 image,
                 in: CGRect(
@@ -178,9 +204,9 @@ struct SceneTextureImageDecoder: Sendable {
 
     private func paddedRGBA(
         _ logicalRGBA: Data,
-        storageExtent: SceneTextureExtent,
         contentExtent: SceneTextureExtent,
-        limits: SceneTextureLimits
+        storageBytesPerRow: Int,
+        storageByteCount: Int
     ) throws -> Data {
         let contentRowBytes = try checkedProduct(
             contentExtent.width,
@@ -195,24 +221,11 @@ struct SceneTextureImageDecoder: Sendable {
         guard logicalRGBA.count == contentByteCount else {
             throw SceneTexturePipelineError.decodeFailed
         }
-        let storageRowBytes = try checkedProduct(
-            storageExtent.width,
-            4,
-            limit: .decodedCPUBytes
-        )
-        let storageByteCount = try checkedProduct(
-            storageRowBytes,
-            storageExtent.height,
-            limit: .decodedCPUBytes
-        )
-        guard storageByteCount <= limits.decodedCPUBytes else {
-            throw SceneTexturePipelineError.resourceLimit(.decodedCPUBytes)
-        }
 
         var paddedRGBA = Data(repeating: 0, count: storageByteCount)
         for row in 0..<contentExtent.height {
             let sourceStart = row * contentRowBytes
-            let destinationStart = row * storageRowBytes
+            let destinationStart = row * storageBytesPerRow
             paddedRGBA.replaceSubrange(
                 destinationStart..<(destinationStart + contentRowBytes),
                 with: logicalRGBA[sourceStart..<(sourceStart + contentRowBytes)]
@@ -227,6 +240,18 @@ struct SceneTextureImageDecoder: Sendable {
         limit: SceneTextureLimit
     ) throws -> Int {
         let (value, overflow) = lhs.multipliedReportingOverflow(by: rhs)
+        guard !overflow else {
+            throw SceneTexturePipelineError.resourceLimit(limit)
+        }
+        return value
+    }
+
+    private func checkedSum(
+        _ lhs: Int,
+        _ rhs: Int,
+        limit: SceneTextureLimit
+    ) throws -> Int {
+        let (value, overflow) = lhs.addingReportingOverflow(rhs)
         guard !overflow else {
             throw SceneTexturePipelineError.resourceLimit(limit)
         }
