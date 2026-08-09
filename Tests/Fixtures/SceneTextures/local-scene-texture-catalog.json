@@ -8,14 +8,15 @@
       "formatCounts" : {
         "0" : 37
       },
-      "logicalPayloadBytes" : 10747904,
+      "logicalPayloadBytes" : 381940992,
       "packageVersion" : "PKGV0008",
       "textureResourceCount" : 37,
       "unsupportedCounts" : {
         "animation" : 4
       },
       "uploadPathCounts" : {
-        "directUncompressed" : 14
+        "directUncompressed" : 14,
+        "encodedImageRGBA" : 19
       },
       "workshopID" : "2174863503"
     },
@@ -28,14 +29,15 @@
         "8" : 39,
         "9" : 19
       },
-      "logicalPayloadBytes" : 19618681,
+      "logicalPayloadBytes" : 475144057,
       "packageVersion" : "PKGV0018",
       "textureResourceCount" : 135,
       "unsupportedCounts" : {
         "video" : 1
       },
       "uploadPathCounts" : {
-        "directUncompressed" : 61
+        "directUncompressed" : 61,
+        "encodedImageRGBA" : 73
       },
       "workshopID" : "2834933421"
     },

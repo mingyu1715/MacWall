@@ -608,6 +608,48 @@ final class SceneTexturePipelineIntegrationTests: XCTestCase {
         XCTAssertEqual(snapshot.uploadPathCounts[.encodedImageRGBA], 1)
     }
 
+    func testFormatZeroCompactPNGBecomesPaddedPrivateTexture() async throws {
+        let png = encodedPNG(
+            width: 2,
+            height: 1,
+            premultipliedRGBA: [255, 0, 0, 255, 0, 255, 0, 255]
+        )
+        let texture = SceneTextureFixtureBuilder.make(
+            formatRawValue: 0,
+            textureSize: (4, 2),
+            imageSize: (2, 1),
+            container: .b0003(imageFormatRawValue: 0),
+            images: [.init(mipmaps: [
+                .init(width: 2, height: 1, payload: png)
+            ])]
+        )
+        let fixture = try makePackageTextureFixture(texture: texture)
+        let store = try SceneTextureStore(device: try device())
+        let generation = await store.makeGeneration()
+
+        let lease = try await store.acquire(
+            fixture.request(color: .dataLinear),
+            resource: fixture.resource,
+            resolver: fixture.resolver,
+            for: generation
+        )
+
+        XCTAssertEqual(lease.texture.storageMode, .private)
+        XCTAssertEqual(lease.storageExtent, .init(width: 4, height: 2))
+        XCTAssertEqual(lease.contentExtent, .init(width: 2, height: 1))
+        XCTAssertEqual(
+            try readBack(lease.texture),
+            Data([
+                255, 0, 0, 255, 0, 255, 0, 255,
+                0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0
+            ])
+        )
+        let snapshot = await store.snapshot()
+        XCTAssertEqual(snapshot.uploadPathCounts[.encodedImageRGBA], 1)
+    }
+
     func testEverySuppliedMipReachesPrivateTexture() async throws {
         let levelZero = repeatedPixel([255, 0, 0, 255], count: 4)
         let levelOne = Data([0, 0, 255, 255])

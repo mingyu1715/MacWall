@@ -58,15 +58,19 @@ struct SceneTextureLoadPlanner: Sendable {
         }
 
         try validateDimensions(descriptor: descriptor, mipmaps: mipmaps)
-        try validateMipChain(
+        let mipLayout = try validateMipChain(
             mipmaps,
             textureWidth: descriptor.textureWidth,
-            textureHeight: descriptor.textureHeight
+            textureHeight: descriptor.textureHeight,
+            imageWidth: descriptor.imageWidth,
+            imageHeight: descriptor.imageHeight,
+            formatRawValue: descriptor.formatRawValue
         )
 
         let format = selectFormat(
             rawValue: descriptor.formatRawValue,
-            supportsBC: capabilities.supportsBCTextureCompression
+            supportsBC: capabilities.supportsBCTextureCompression,
+            mipLayout: mipLayout
         )
         let supportsSRGBView = format.storageFormat.sRGBMetalPixelFormat != nil
         guard colorIntent != .colorSRGB || supportsSRGBView else {
@@ -74,14 +78,28 @@ struct SceneTextureLoadPlanner: Sendable {
         }
 
         let mips = try mipmaps.enumerated().map { level, mipmap in
-            let storageExtent = SceneTextureExtent(
-                width: mipmap.width,
-                height: mipmap.height
-            )
-            let mipContentExtent = try contentExtent(
-                descriptor: descriptor,
-                storageExtent: storageExtent
-            )
+            let storageExtent: SceneTextureExtent
+            let mipContentExtent: SceneTextureExtent
+            switch mipLayout {
+            case .storage:
+                storageExtent = SceneTextureExtent(
+                    width: mipmap.width,
+                    height: mipmap.height
+                )
+                mipContentExtent = try contentExtent(
+                    descriptor: descriptor,
+                    storageExtent: storageExtent
+                )
+            case .compactContent:
+                storageExtent = SceneTextureExtent(
+                    width: max(1, descriptor.textureWidth >> level),
+                    height: max(1, descriptor.textureHeight >> level)
+                )
+                mipContentExtent = SceneTextureExtent(
+                    width: mipmap.width,
+                    height: mipmap.height
+                )
+            }
             let byteLayout = try byteLayout(
                 strategy: format.payloadStrategy,
                 storageExtent: storageExtent
@@ -145,8 +163,11 @@ struct SceneTextureLoadPlanner: Sendable {
     private func validateMipChain(
         _ mipmaps: [SceneTextureMipmapDescriptor],
         textureWidth: Int,
-        textureHeight: Int
-    ) throws {
+        textureHeight: Int,
+        imageWidth: Int,
+        imageHeight: Int,
+        formatRawValue: Int
+    ) throws -> MipLayout {
         guard !mipmaps.isEmpty else {
             throw SceneTexturePipelineError.malformedDescriptor
         }
@@ -159,25 +180,40 @@ struct SceneTextureLoadPlanner: Sendable {
             throw SceneTexturePipelineError.malformedDescriptor
         }
 
-        for (level, mipmap) in mipmaps.enumerated() {
-            let expectedWidth = max(1, textureWidth >> level)
-            let expectedHeight = max(1, textureHeight >> level)
-            guard mipmap.width == expectedWidth,
-                  mipmap.height == expectedHeight else {
-                throw SceneTexturePipelineError.malformedDescriptor
-            }
+        let isStorageChain = mipmaps.enumerated().allSatisfy { level, mipmap in
+            mipmap.width == max(1, textureWidth >> level)
+                && mipmap.height == max(1, textureHeight >> level)
         }
+        if isStorageChain {
+            return .storage
+        }
+
+        let isCompactContentChain = formatRawValue == 0
+            && (textureWidth != imageWidth || textureHeight != imageHeight)
+            && mipmaps.enumerated().allSatisfy { level, mipmap in
+                mipmap.width == max(1, imageWidth >> level)
+                    && mipmap.height == max(1, imageHeight >> level)
+            }
+        guard isCompactContentChain else {
+            throw SceneTexturePipelineError.malformedDescriptor
+        }
+        return .compactContent
     }
 
     private func selectFormat(
         rawValue: Int,
-        supportsBC: Bool
+        supportsBC: Bool,
+        mipLayout: MipLayout
     ) -> (
         storageFormat: SceneTextureGPUFormat,
         preferredUploadPath: SceneTextureUploadPath,
         payloadStrategy: SceneTexturePayloadStrategy
     ) {
         switch rawValue {
+        case 0 where mipLayout == .compactContent:
+            (.rgba8Unorm, .encodedImageRGBA, .encodedImageProbe(
+                unknownFormatRawValue: rawValue
+            ))
         case 0:
             (.rgba8Unorm, .directUncompressed, .exactUncompressed(bytesPerPixel: 4))
         case 8:
@@ -210,6 +246,11 @@ struct SceneTextureLoadPlanner: Sendable {
                 unknownFormatRawValue: rawValue
             ))
         }
+    }
+
+    private enum MipLayout: Equatable {
+        case storage
+        case compactContent
     }
 
     private func bcFormat(

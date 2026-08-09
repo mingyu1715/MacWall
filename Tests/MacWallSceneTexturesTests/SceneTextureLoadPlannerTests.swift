@@ -253,6 +253,35 @@ final class SceneTextureLoadPlannerTests: XCTestCase {
         )
     }
 
+    func testRoutesFormatZeroCompactContentMipsToEncodedImageProbe() throws {
+        let plan = try planner().makePlan(
+            descriptor: try descriptor(
+                formatRawValue: 0,
+                textureSize: (8, 4),
+                imageSize: (7, 3),
+                mipSizes: [(7, 3), (3, 1)]
+            ),
+            imageIndex: 0,
+            colorIntent: .dataLinear
+        )
+
+        XCTAssertEqual(
+            plan.payloadStrategy,
+            .encodedImageProbe(unknownFormatRawValue: 0)
+        )
+        XCTAssertEqual(plan.preferredUploadPath, .encodedImageRGBA)
+        XCTAssertEqual(
+            plan.mips.map(\.storageExtent),
+            [.init(width: 8, height: 4), .init(width: 4, height: 2)]
+        )
+        XCTAssertEqual(
+            plan.mips.map(\.contentExtent),
+            [.init(width: 7, height: 3), .init(width: 3, height: 1)]
+        )
+        XCTAssertTrue(plan.mips.allSatisfy { $0.expectedPayloadBytes == nil })
+        XCTAssertTrue(plan.mips.allSatisfy { $0.unalignedBytesPerRow == nil })
+    }
+
     func testRejectsMipChainsThatCannotBeRepresentedByMetal() throws {
         assertPlannerError(
             descriptor: try descriptor(

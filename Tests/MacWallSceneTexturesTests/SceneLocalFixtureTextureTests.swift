@@ -141,12 +141,34 @@ final class SceneLocalFixtureTextureTests: XCTestCase {
             "fixture-payload-secret"
         ]
 
-        for value in forbidden {
+        for (index, value) in forbidden.enumerated() {
             XCTAssertNil(
                 bytes.range(of: Data(value.utf8)),
-                value
+                "forbidden-value-index \(index)"
             )
         }
+    }
+
+    func testCatalogArithmeticRejectsUnclassifiedTextureResource() {
+        XCTAssertThrowsError(
+            try validateClassifiedTextureCount(
+                workshopID: .fixture2174863503,
+                textureResourceCount: 3,
+                uploadPathCounts: ["directUncompressed": 1],
+                unsupportedCounts: ["animation": 1],
+                outcomeCount: 2
+            )
+        )
+    }
+
+    func testCatalogArithmeticAcceptsOnlySupportedAndTypedUnsupportedResources() throws {
+        try validateClassifiedTextureCount(
+            workshopID: .fixture2174863503,
+            textureResourceCount: 3,
+            uploadPathCounts: ["directUncompressed": 1, "encodedImageRGBA": 1],
+            unsupportedCounts: ["animation": 1],
+            outcomeCount: 3
+        )
     }
 
     func testLocalSceneTexturesMatchTrackedAggregateCatalog() async throws {
@@ -241,13 +263,37 @@ private enum LocalFixtureCatalogError: Error, Equatable {
 
 private enum LocalTextureGateError: Error {
     case missingGraphDocument(String)
-    case unresolvedTexture(String)
-    case missingPlannedTexture(String)
+    case unresolvedTexture(fixtureID: String, textureIndex: Int)
+    case missingPlannedTexture(fixtureID: String, textureIndex: Int)
+    case unexpectedPipelineError(
+        fixtureID: String,
+        textureIndex: Int,
+        stage: String,
+        category: String
+    )
+    case unexpectedFixtureOperation(
+        fixtureID: String,
+        textureIndex: Int?,
+        stage: String
+    )
+    case unsupportedTextureAcquired(
+        fixtureID: String,
+        textureIndex: Int,
+        category: String
+    )
+    case classifiedTextureCountMismatch(
+        fixtureID: String,
+        expected: Int,
+        classified: Int,
+        outcomes: Int
+    )
     case logicalPayloadOverflow
     case packageReadExceededMaximum(UInt64)
     case packageReadCoveredEntireFile
     case previewPayloadRead(String)
     case packageByteCountChanged
+    case packageFingerprintChanged(String)
+    case catalogUpdateFailed
 }
 
 private struct PackageFingerprint: Equatable {
@@ -258,7 +304,6 @@ private struct PackageFingerprint: Equatable {
 private enum PlannedTextureOutcome {
     case supported(SceneTextureLoadPlan, mipmapLevelCount: Int)
     case unsupported(String)
-    case failed(SceneTexturePipelineError)
 }
 
 private struct PlannedLocalFixture {
@@ -387,8 +432,7 @@ private func runLocalSceneTextureGate() async throws {
         }
     )
     for workshopID in activeFixtureIDs {
-        let url = packageURL(for: workshopID)
-        let before = try packageFingerprint(url: url)
+        let before = try packageFingerprint(for: workshopID)
         let first = try planLocalFixture(
             workshopID: workshopID,
             expectedPackageByteCount: before.byteCount
@@ -419,10 +463,10 @@ private func runLocalSceneTextureGate() async throws {
             textureEntryPaths: first.textureEntryPaths,
             workshopID: workshopID.rawValue
         )
-        XCTAssertEqual(
-            try packageFingerprint(url: url),
-            before,
-            workshopID.rawValue
+        try validateUnchangedPackageFingerprint(
+            before: before,
+            after: packageFingerprint(for: workshopID),
+            workshopID: workshopID
         )
     }
 }
@@ -439,27 +483,50 @@ private func writeLocalCatalog() throws {
         )
     }
 
-    let catalog = LocalSceneTextureCatalog(
-        schemaVersion: 1,
-        capabilityProfile: localCatalogCapabilityProfile,
-        fixtures: try FixedWorkshopID.sorted.map { workshopID in
-            let fingerprint = try packageFingerprint(
-                url: packageURL(for: workshopID)
-            )
-            return try planLocalFixture(
-                workshopID: workshopID,
-                expectedPackageByteCount: fingerprint.byteCount
-            ).aggregate
+    let beforeFingerprints = try fixedPackageFingerprints()
+    let updateResult: Result<Void, LocalTextureGateError>
+    do {
+        let catalog = LocalSceneTextureCatalog(
+            schemaVersion: 1,
+            capabilityProfile: localCatalogCapabilityProfile,
+            fixtures: try FixedWorkshopID.sorted.map { workshopID in
+                guard let fingerprint = beforeFingerprints[workshopID] else {
+                    throw LocalTextureGateError.catalogUpdateFailed
+                }
+                return try planLocalFixture(
+                    workshopID: workshopID,
+                    expectedPackageByteCount: fingerprint.byteCount
+                ).aggregate
+            }
+        )
+        try FileManager.default.createDirectory(
+            at: localCatalogURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try canonicalCatalogData(catalog).write(
+            to: localCatalogURL,
+            options: .atomic
+        )
+        updateResult = .success(())
+    } catch let error as LocalTextureGateError {
+        updateResult = .failure(error)
+    } catch {
+        updateResult = .failure(.catalogUpdateFailed)
+    }
+
+    let afterFingerprints = try fixedPackageFingerprints()
+    for workshopID in FixedWorkshopID.sorted {
+        guard let before = beforeFingerprints[workshopID],
+              let after = afterFingerprints[workshopID] else {
+            throw LocalTextureGateError.catalogUpdateFailed
         }
-    )
-    try FileManager.default.createDirectory(
-        at: localCatalogURL.deletingLastPathComponent(),
-        withIntermediateDirectories: true
-    )
-    try canonicalCatalogData(catalog).write(
-        to: localCatalogURL,
-        options: .atomic
-    )
+        try validateUnchangedPackageFingerprint(
+            before: before,
+            after: after,
+            workshopID: workshopID
+        )
+    }
+    try updateResult.get()
 }
 
 private func planLocalFixture(
@@ -467,7 +534,10 @@ private func planLocalFixture(
     expectedPackageByteCount: UInt64
 ) throws -> PlannedLocalFixture {
     let url = packageURL(for: workshopID)
-    let previewRanges = try previewPayloadRanges(packageURL: url)
+    let previewRanges = try previewPayloadRanges(
+        packageURL: url,
+        workshopID: workshopID
+    )
     let recording = RecordingSceneByteSource(
         base: try SceneFileByteSource(url: url)
     )
@@ -502,20 +572,31 @@ private func planLocalFixture(
     var outcomes: [SceneResourceID: PlannedTextureOutcome] = [:]
     var entryPaths: [String] = []
 
-    for resource in textureResources {
+    for (textureIndex, resource) in textureResources.enumerated() {
         guard resource.resolution.kind == .package,
               let selected = resource.resolution.selected else {
             throw LocalTextureGateError.unresolvedTexture(
-                resource.id.rawValue
+                fixtureID: workshopID.rawValue,
+                textureIndex: textureIndex
             )
         }
         let path = selected.canonicalPath.rawValue
         entryPaths.append(path)
-        let source = try resolver.source(for: selected)
-        let inspection = try SceneTextureFormatReader().inspect(
-            source: source,
-            path: path
-        )
+        let source: any SceneByteSource
+        let inspection: SceneTextureInspection
+        do {
+            source = try resolver.source(for: selected)
+            inspection = try SceneTextureFormatReader().inspect(
+                source: source,
+                path: path
+            )
+        } catch {
+            throw LocalTextureGateError.unexpectedFixtureOperation(
+                fixtureID: workshopID.rawValue,
+                textureIndex: textureIndex,
+                stage: "inspect"
+            )
+        }
 
         switch inspection {
         case let .unsupported(metadata):
@@ -526,12 +607,35 @@ private func planLocalFixture(
         case let .parsed(descriptor):
             formatCounts[String(descriptor.formatRawValue), default: 0] += 1
             containerCounts[descriptor.declaredContainer, default: 0] += 1
+            let plan: SceneTextureLoadPlan
             do {
-                let plan = try planner.makePlan(
+                plan = try planner.makePlan(
                     descriptor: descriptor,
                     imageIndex: 0,
                     colorIntent: .dataLinear
                 )
+            } catch let error as SceneTexturePipelineError {
+                if let category = unsupportedCategory(for: error) {
+                    unsupportedCounts[category, default: 0] += 1
+                    outcomes[resource.id] = .unsupported(category)
+                } else {
+                    throw LocalTextureGateError.unexpectedPipelineError(
+                        fixtureID: workshopID.rawValue,
+                        textureIndex: textureIndex,
+                        stage: "plan",
+                        category: stablePipelineErrorCategory(error)
+                    )
+                }
+                continue
+            } catch {
+                throw LocalTextureGateError.unexpectedFixtureOperation(
+                    fixtureID: workshopID.rawValue,
+                    textureIndex: textureIndex,
+                    stage: "plan"
+                )
+            }
+
+            do {
                 let prepared = try preparedUpload(
                     plan: plan,
                     descriptor: descriptor,
@@ -552,16 +656,35 @@ private func planLocalFixture(
                     unsupportedCounts[category, default: 0] += 1
                     outcomes[resource.id] = .unsupported(category)
                 } else {
-                    outcomes[resource.id] = .failed(error)
+                    throw LocalTextureGateError.unexpectedPipelineError(
+                        fixtureID: workshopID.rawValue,
+                        textureIndex: textureIndex,
+                        stage: "prepare",
+                        category: stablePipelineErrorCategory(error)
+                    )
                 }
+            } catch {
+                throw LocalTextureGateError.unexpectedFixtureOperation(
+                    fixtureID: workshopID.rawValue,
+                    textureIndex: textureIndex,
+                    stage: "prepare"
+                )
             }
         }
     }
 
+    try validateClassifiedTextureCount(
+        workshopID: workshopID,
+        textureResourceCount: textureResources.count,
+        uploadPathCounts: uploadPathCounts,
+        unsupportedCounts: unsupportedCounts,
+        outcomeCount: outcomes.count
+    )
+
     try validateReadPolicy(
         recording,
         previewRanges: previewRanges,
-        textureEntryPaths: entryPaths
+        workshopID: workshopID
     )
     return PlannedLocalFixture(
         aggregate: LocalSceneTextureFixture(
@@ -577,6 +700,41 @@ private func planLocalFixture(
         outcomes: outcomes,
         textureEntryPaths: entryPaths
     )
+}
+
+private func stablePipelineErrorCategory(
+    _ error: SceneTexturePipelineError
+) -> String {
+    switch error {
+    case .invalidRequest:
+        "invalidRequest"
+    case let .unsupportedDescriptor(kind):
+        "unsupportedDescriptor.\(kind.rawValue)"
+    case .unsupportedAnimation:
+        "unsupportedAnimation"
+    case .unsupportedVideo:
+        "unsupportedVideo"
+    case .unsupportedMultiImage:
+        "unsupportedMultiImage"
+    case let .unsupportedPixelFormat(rawValue):
+        "unsupportedPixelFormat.\(rawValue)"
+    case .malformedDescriptor:
+        "malformedDescriptor"
+    case .malformedPayload:
+        "malformedPayload"
+    case let .resourceLimit(limit):
+        "resourceLimit.\(limit.rawValue)"
+    case .decodeFailed:
+        "decodeFailed"
+    case .allocationFailed:
+        "allocationFailed"
+    case .uploadFailed:
+        "uploadFailed"
+    case .uploadTimedOut:
+        "uploadTimedOut"
+    case .cancelled:
+        "cancelled"
+    }
 }
 
 private func preparedUpload(
@@ -611,7 +769,10 @@ private func validateActualGPUTextures(
     expectedPackageByteCount: UInt64
 ) async throws {
     let url = packageURL(for: workshopID)
-    let previewRanges = try previewPayloadRanges(packageURL: url)
+    let previewRanges = try previewPayloadRanges(
+        packageURL: url,
+        workshopID: workshopID
+    )
     let recording = RecordingSceneByteSource(
         base: try SceneFileByteSource(url: url)
     )
@@ -637,10 +798,13 @@ private func validateActualGPUTextures(
     let packageID = SceneTexturePackageID()
 
     do {
-        for resource in resources {
+        for (textureIndex, resource) in resources.enumerated() {
+            let diagnostic = "fixture \(workshopID.rawValue) "
+                + "texture-index \(textureIndex)"
             guard let outcome = expected.outcomes[resource.id] else {
                 throw LocalTextureGateError.missingPlannedTexture(
-                    resource.id.rawValue
+                    fixtureID: workshopID.rawValue,
+                    textureIndex: textureIndex
                 )
             }
             let request = SceneTextureRequest(
@@ -651,118 +815,125 @@ private func validateActualGPUTextures(
             )
             switch outcome {
             case let .supported(plan, mipmapLevelCount):
-                let lease = try await store.acquire(
-                    request,
-                    resource: resource,
-                    resolver: resolver,
-                    for: generation
-                )
+                let lease: SceneTextureLease
+                do {
+                    lease = try await store.acquire(
+                        request,
+                        resource: resource,
+                        resolver: resolver,
+                        for: generation
+                    )
+                } catch let error as SceneTexturePipelineError {
+                    throw LocalTextureGateError.unexpectedPipelineError(
+                        fixtureID: workshopID.rawValue,
+                        textureIndex: textureIndex,
+                        stage: "gpu-acquire",
+                        category: stablePipelineErrorCategory(error)
+                    )
+                } catch {
+                    throw LocalTextureGateError.unexpectedFixtureOperation(
+                        fixtureID: workshopID.rawValue,
+                        textureIndex: textureIndex,
+                        stage: "gpu-acquire"
+                    )
+                }
                 XCTAssertEqual(
                     lease.texture.storageMode,
                     .private,
-                    resource.id.rawValue
+                    diagnostic
                 )
                 XCTAssertEqual(
                     lease.texture.mipmapLevelCount,
                     mipmapLevelCount,
-                    resource.id.rawValue
+                    diagnostic
                 )
                 XCTAssertEqual(
                     lease.mipmapLevelCount,
                     mipmapLevelCount,
-                    resource.id.rawValue
+                    diagnostic
                 )
                 XCTAssertEqual(
                     lease.texture.width,
                     plan.storageExtent.width,
-                    resource.id.rawValue
+                    diagnostic
                 )
                 XCTAssertEqual(
                     lease.texture.height,
                     plan.storageExtent.height,
-                    resource.id.rawValue
+                    diagnostic
                 )
                 XCTAssertEqual(
                     lease.storageExtent,
                     plan.storageExtent,
-                    resource.id.rawValue
+                    diagnostic
                 )
                 XCTAssertEqual(
                     lease.contentExtent,
                     plan.contentExtent,
-                    resource.id.rawValue
+                    diagnostic
                 )
                 XCTAssertEqual(
                     lease.contentRect,
                     plan.contentRect,
-                    resource.id.rawValue
+                    diagnostic
                 )
                 XCTAssertGreaterThan(
                     lease.residentBytes,
                     0,
-                    resource.id.rawValue
+                    diagnostic
                 )
 
             case let .unsupported(expectedCategory):
                 let before = await store.snapshot()
+                let acquisition: Result<SceneTextureLease, Error>
                 do {
-                    _ = try await store.acquire(
+                    acquisition = .success(try await store.acquire(
                         request,
                         resource: resource,
                         resolver: resolver,
                         for: generation
+                    ))
+                } catch {
+                    acquisition = .failure(error)
+                }
+                switch acquisition {
+                case .success:
+                    throw LocalTextureGateError.unsupportedTextureAcquired(
+                        fixtureID: workshopID.rawValue,
+                        textureIndex: textureIndex,
+                        category: expectedCategory
                     )
-                    XCTFail(
-                        "Unsupported texture became ready: \(resource.id.rawValue)"
-                    )
-                } catch let error as SceneTexturePipelineError {
+                case let .failure(error as SceneTexturePipelineError):
+                    guard let actualCategory = unsupportedCategory(for: error) else {
+                        throw LocalTextureGateError.unexpectedPipelineError(
+                            fixtureID: workshopID.rawValue,
+                            textureIndex: textureIndex,
+                            stage: "gpu-unsupported",
+                            category: stablePipelineErrorCategory(error)
+                        )
+                    }
                     XCTAssertEqual(
-                        unsupportedCategory(for: error),
+                        actualCategory,
                         expectedCategory,
-                        resource.id.rawValue
+                        diagnostic
+                    )
+                case .failure:
+                    throw LocalTextureGateError.unexpectedFixtureOperation(
+                        fixtureID: workshopID.rawValue,
+                        textureIndex: textureIndex,
+                        stage: "gpu-unsupported"
                     )
                 }
                 let after = await store.snapshot()
                 XCTAssertEqual(
                     after.readyEntries,
                     before.readyEntries,
-                    resource.id.rawValue
+                    diagnostic
                 )
                 XCTAssertEqual(
                     after.loadingEntries,
                     0,
-                    resource.id.rawValue
-                )
-
-            case let .failed(expectedError):
-                let before = await store.snapshot()
-                do {
-                    _ = try await store.acquire(
-                        request,
-                        resource: resource,
-                        resolver: resolver,
-                        for: generation
-                    )
-                    XCTFail(
-                        "Failed texture became ready: \(resource.id.rawValue)"
-                    )
-                } catch let error as SceneTexturePipelineError {
-                    XCTAssertEqual(
-                        error,
-                        expectedError,
-                        resource.id.rawValue
-                    )
-                }
-                let after = await store.snapshot()
-                XCTAssertEqual(
-                    after.readyEntries,
-                    before.readyEntries,
-                    resource.id.rawValue
-                )
-                XCTAssertEqual(
-                    after.loadingEntries,
-                    0,
-                    resource.id.rawValue
+                    diagnostic
                 )
             }
         }
@@ -783,7 +954,7 @@ private func validateActualGPUTextures(
     try validateReadPolicy(
         recording,
         previewRanges: previewRanges,
-        textureEntryPaths: expected.textureEntryPaths
+        workshopID: workshopID
     )
 }
 
@@ -839,6 +1010,26 @@ private func checkedLogicalPayloadSum(
     }
 }
 
+private func validateClassifiedTextureCount(
+    workshopID: FixedWorkshopID,
+    textureResourceCount: Int,
+    uploadPathCounts: [String: Int],
+    unsupportedCounts: [String: Int],
+    outcomeCount: Int
+) throws {
+    let classifiedCount = uploadPathCounts.values.reduce(0, +)
+        + unsupportedCounts.values.reduce(0, +)
+    guard classifiedCount == textureResourceCount,
+          outcomeCount == textureResourceCount else {
+        throw LocalTextureGateError.classifiedTextureCountMismatch(
+            fixtureID: workshopID.rawValue,
+            expected: textureResourceCount,
+            classified: classifiedCount,
+            outcomes: outcomeCount
+        )
+    }
+}
+
 private func packageURL(for workshopID: FixedWorkshopID) -> URL {
     repositoryRoot
         .appending(path: "test")
@@ -865,8 +1056,45 @@ private func packageFingerprint(url: URL) throws -> PackageFingerprint {
     )
 }
 
+private func packageFingerprint(
+    for workshopID: FixedWorkshopID
+) throws -> PackageFingerprint {
+    do {
+        return try packageFingerprint(url: packageURL(for: workshopID))
+    } catch let error as LocalTextureGateError {
+        throw error
+    } catch {
+        throw LocalTextureGateError.unexpectedFixtureOperation(
+            fixtureID: workshopID.rawValue,
+            textureIndex: nil,
+            stage: "fingerprint"
+        )
+    }
+}
+
+private func fixedPackageFingerprints() throws -> [
+    FixedWorkshopID: PackageFingerprint
+] {
+    try Dictionary(uniqueKeysWithValues: FixedWorkshopID.sorted.map {
+        ($0, try packageFingerprint(for: $0))
+    })
+}
+
+private func validateUnchangedPackageFingerprint(
+    before: PackageFingerprint,
+    after: PackageFingerprint,
+    workshopID: FixedWorkshopID
+) throws {
+    guard before == after else {
+        throw LocalTextureGateError.packageFingerprintChanged(
+            workshopID.rawValue
+        )
+    }
+}
+
 private func previewPayloadRanges(
-    packageURL: URL
+    packageURL: URL,
+    workshopID: FixedWorkshopID
 ) throws -> [Range<UInt64>] {
     let recording = RecordingSceneByteSource(
         base: try SceneFileByteSource(url: packageURL)
@@ -875,7 +1103,7 @@ private func previewPayloadRanges(
     try validateReadPolicy(
         recording,
         previewRanges: [],
-        textureEntryPaths: []
+        workshopID: workshopID
     )
     return archive.entries.compactMap { entry in
         let filename = URL(filePath: entry.path)
@@ -893,7 +1121,7 @@ private func previewPayloadRanges(
 private func validateReadPolicy(
     _ recording: RecordingSceneByteSource,
     previewRanges: [Range<UInt64>],
-    textureEntryPaths: [String]
+    workshopID: FixedWorkshopID
 ) throws {
     guard recording.maximumReadByteCount <= maximumPackageReadBytes else {
         throw LocalTextureGateError.packageReadExceededMaximum(
@@ -909,7 +1137,7 @@ private func validateReadPolicy(
     for range in recording.readRanges {
         if previewRanges.contains(where: { rangesOverlap(range, $0) }) {
             throw LocalTextureGateError.previewPayloadRead(
-                textureEntryPaths.joined(separator: ",")
+                workshopID.rawValue
             )
         }
     }
@@ -976,10 +1204,10 @@ private func assertCatalogRedaction(
         ".tex",
         "scene.pkg"
     ] + textureEntryPaths
-    for value in forbidden {
+    for (index, value) in forbidden.enumerated() {
         XCTAssertNil(
             data.range(of: Data(value.utf8)),
-            "\(workshopID): \(value)"
+            "\(workshopID): forbidden-value-index \(index)"
         )
     }
 }
