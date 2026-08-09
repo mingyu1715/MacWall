@@ -58,6 +58,48 @@ public actor SceneTextureStore {
     private var uploadPathCounts: [SceneTextureUploadPath: Int] = [:]
     private var unsupportedCounts: [String: Int] = [:]
 
+    public init(
+        device: any MTLDevice,
+        limits: SceneTextureLimits = SceneTextureLimits()
+    ) throws {
+        try Self.validateProductionLimits(limits)
+        let memoryBudget = SceneTextureMemoryBudget(limits: limits)
+        let capabilities = Self.runtimeCapabilities(device: device)
+        let allocator = try DirectSceneTextureAllocator(device: device, limits: limits)
+        pipeline = try DefaultSceneTexturePipelineLoader(
+            device: device,
+            capabilities: capabilities,
+            limits: limits,
+            memoryBudget: memoryBudget,
+            allocator: allocator
+        )
+        self.limits = limits
+        self.memoryBudget = memoryBudget
+        uploadPolicyVersion = 1
+        deviceRegistryID = device.registryID
+    }
+
+    init(
+        device: any MTLDevice,
+        limits: SceneTextureLimits,
+        capabilities: SceneTextureDeviceCapabilities,
+        allocator: any SceneTextureAllocator
+    ) throws {
+        try Self.validateProductionLimits(limits)
+        let memoryBudget = SceneTextureMemoryBudget(limits: limits)
+        pipeline = try DefaultSceneTexturePipelineLoader(
+            device: device,
+            capabilities: capabilities,
+            limits: limits,
+            memoryBudget: memoryBudget,
+            allocator: allocator
+        )
+        self.limits = limits
+        self.memoryBudget = memoryBudget
+        uploadPolicyVersion = 1
+        deviceRegistryID = device.registryID
+    }
+
     init(
         testPipeline: any SceneTexturePipelineLoading,
         limits: SceneTextureLimits,
@@ -301,7 +343,6 @@ public actor SceneTextureStore {
                 prepared,
                 submission: submission
             )
-            await store.releaseDecodedReservation(from: prepared)
             await store.completeLoad(
                 allocated: allocated,
                 key: key,
@@ -309,7 +350,6 @@ public actor SceneTextureStore {
                 estimatedResidentBytes: prepared.estimatedResidentBytes
             )
         } catch {
-            await store.releaseDecodedReservation(from: prepared)
             await store.failLoad(
                 key: key,
                 loadID: loadID,
@@ -654,6 +694,44 @@ public actor SceneTextureStore {
         default:
             nil
         }
+    }
+
+    private nonisolated static func validateProductionLimits(
+        _ limits: SceneTextureLimits
+    ) throws {
+        let positiveValues = [
+            limits.residentSoftBytes,
+            limits.residentHardBytes,
+            limits.stagingBytes,
+            limits.decodedCPUBytes,
+            limits.singlePayloadBytes,
+            limits.maximumTextureDimension,
+            limits.maximumDecodedPixels,
+            limits.maximumConcurrentDecodes,
+            limits.maximumConcurrentUploads
+        ]
+        guard positiveValues.allSatisfy({ $0 > 0 }),
+              limits.residentSoftBytes <= limits.residentHardBytes,
+              limits.uploadTimeout > .zero else {
+            throw SceneTexturePipelineError.invalidRequest
+        }
+    }
+
+    private nonisolated static func runtimeCapabilities(
+        device: any MTLDevice
+    ) -> SceneTextureDeviceCapabilities {
+        let rgbaAlignment = device.minimumLinearTextureAlignment(for: .rgba8Unorm)
+        return SceneTextureDeviceCapabilities(
+            supportsBCTextureCompression: device.supportsBCTextureCompression,
+            linearTextureAlignment: [
+                .rgba8Unorm: rgbaAlignment,
+                .rg8Unorm: device.minimumLinearTextureAlignment(for: .rg8Unorm),
+                .r8Unorm: device.minimumLinearTextureAlignment(for: .r8Unorm),
+                .bc1RGBA: rgbaAlignment,
+                .bc2RGBA: rgbaAlignment,
+                .bc3RGBA: rgbaAlignment
+            ]
+        )
     }
 
     private nonisolated func uuidLessThan(_ lhs: UUID, _ rhs: UUID) -> Bool {
