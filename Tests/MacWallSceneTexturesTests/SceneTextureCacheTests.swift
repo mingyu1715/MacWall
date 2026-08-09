@@ -144,7 +144,7 @@ final class SceneTextureCacheTests: XCTestCase {
         XCTAssertEqual(cache.value(for: keyB, owner: generationB), textureValue(bytes: 200))
     }
 
-    func testTrimUsesAccessOrdinalThenStableKeyOrdering() {
+    func testTrimUsesMonotonicAccessOrdinals() {
         var cache = SceneTextureCache<FakeTextureValue>()
         let alpha = key(package: packageA, path: "materials/a.tex")
         let beta = key(package: packageA, path: "materials/b.tex")
@@ -158,7 +158,67 @@ final class SceneTextureCacheTests: XCTestCase {
 
         XCTAssertEqual(
             cache.trimUnowned(toResidentBytes: 0).map(\.key),
-            [alpha, beta, gamma]
+            [beta, alpha, gamma]
+        )
+    }
+
+    func testNewInstallIsMoreRecentThanAnOlderCacheHit() {
+        var cache = SceneTextureCache<FakeTextureValue>()
+        cache.install(
+            textureValue(bytes: 10),
+            residentBytes: 10,
+            uploadPath: .directUncompressed,
+            for: keyA,
+            owner: generationA
+        )
+        XCTAssertEqual(
+            cache.value(for: keyA, owner: generationA),
+            textureValue(bytes: 10)
+        )
+        cache.install(
+            textureValue(bytes: 10),
+            residentBytes: 10,
+            uploadPath: .directUncompressed,
+            for: keyB,
+            owner: generationB
+        )
+        cache.releaseGeneration(generationA)
+        cache.releaseGeneration(generationB)
+
+        XCTAssertEqual(
+            cache.trimUnowned(toResidentBytes: 10).map(\.key),
+            [keyA]
+        )
+    }
+
+    func testSaturatedOrdinalRebasesBeforeRecordingNewAccess() {
+        var cache = SceneTextureCache<FakeTextureValue>(
+            initialAccessOrdinal: UInt64.max - 2
+        )
+        cache.install(
+            textureValue(bytes: 10),
+            residentBytes: 10,
+            uploadPath: .directUncompressed,
+            for: keyA,
+            owner: generationA
+        )
+        cache.install(
+            textureValue(bytes: 10),
+            residentBytes: 10,
+            uploadPath: .directUncompressed,
+            for: keyB,
+            owner: generationB
+        )
+        XCTAssertEqual(
+            cache.value(for: keyA, owner: generationA),
+            textureValue(bytes: 10)
+        )
+        cache.releaseGeneration(generationA)
+        cache.releaseGeneration(generationB)
+
+        XCTAssertEqual(
+            cache.trimUnowned(toResidentBytes: 10).map(\.key),
+            [keyB]
         )
     }
 
@@ -201,7 +261,7 @@ final class SceneTextureCacheTests: XCTestCase {
         let snapshot = cache.snapshot()
         XCTAssertEqual(snapshot.cacheHits, 1)
         XCTAssertEqual(snapshot.cacheMisses, 1)
-        XCTAssertEqual(snapshot.lastAccessOrdinal, 1)
+        XCTAssertEqual(snapshot.lastAccessOrdinal, 2)
     }
 
     func testSnapshotValuesAreDeterministicAfterEviction() {
@@ -220,7 +280,7 @@ final class SceneTextureCacheTests: XCTestCase {
                 unownedEntries: 0,
                 residentBytes: 100,
                 evictions: 1,
-                lastAccessOrdinal: 0
+                lastAccessOrdinal: 2
             )
         )
     }

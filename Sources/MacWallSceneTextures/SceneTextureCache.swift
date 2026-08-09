@@ -57,6 +57,10 @@ struct SceneTextureCache<Value: Sendable>: Sendable {
     private var evictions = 0
     private var lastAccessOrdinal: UInt64 = 0
 
+    init(initialAccessOrdinal: UInt64 = 0) {
+        lastAccessOrdinal = initialAccessOrdinal
+    }
+
     mutating func value(
         for key: SceneTextureStorageKey,
         owner: SceneTextureGenerationID
@@ -86,11 +90,12 @@ struct SceneTextureCache<Value: Sendable>: Sendable {
             return
         }
 
+        let accessOrdinal = nextAccessOrdinal()
         readyEntries[key] = ReadyEntry(
             value: value,
             residentBytes: residentBytes,
             owners: [owner],
-            lastAccessOrdinal: 0,
+            lastAccessOrdinal: accessOrdinal,
             uploadPath: uploadPath
         )
     }
@@ -147,9 +152,26 @@ struct SceneTextureCache<Value: Sendable>: Sendable {
     }
 
     private mutating func nextAccessOrdinal() -> UInt64 {
-        if lastAccessOrdinal < .max {
-            lastAccessOrdinal += 1
+        if lastAccessOrdinal == .max {
+            rerankAccessOrdinals()
         }
+        lastAccessOrdinal += 1
         return lastAccessOrdinal
+    }
+
+    private mutating func rerankAccessOrdinals() {
+        let keysByRecency = readyEntries
+            .sorted { lhs, rhs in
+                if lhs.value.lastAccessOrdinal != rhs.value.lastAccessOrdinal {
+                    return lhs.value.lastAccessOrdinal < rhs.value.lastAccessOrdinal
+                }
+                return lhs.key < rhs.key
+            }
+            .map(\.key)
+
+        for (index, key) in keysByRecency.enumerated() {
+            readyEntries[key]?.lastAccessOrdinal = UInt64(index) + 1
+        }
+        lastAccessOrdinal = UInt64(keysByRecency.count)
     }
 }
