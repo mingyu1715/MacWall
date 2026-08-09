@@ -60,6 +60,37 @@ final class DirectSceneTextureAllocatorTests: XCTestCase {
         XCTAssertEqual(commitCount.value, 0)
     }
 
+    func testPreSubmitCancellationInstallsNoHandlerAndReleasesResourceCapture() async throws {
+        let device = try metalDevice()
+        let submission = SceneTextureSubmissionState()
+        XCTAssertTrue(submission.cancelIfPending())
+
+        let completion = VoidCallbackBox()
+        let commitCount = LockedInt()
+        let lifetime = WeakObjectReference()
+        let plan = try allocationPlan(
+            device: device,
+            format: .rgba8Unorm,
+            width: 1,
+            height: 1,
+            mipBytes: [Data([1, 2, 3, 4])],
+            colorView: true
+        )
+
+        try await runPreCancelledAllocation(
+            device: device,
+            plan: plan,
+            submission: submission,
+            completion: completion,
+            commitCount: commitCount,
+            lifetime: lifetime
+        )
+
+        XCTAssertFalse(completion.hasCallback)
+        XCTAssertNil(lifetime.value)
+        XCTAssertEqual(commitCount.value, 0)
+    }
+
     func testUploadExecutorAcceptsExactlyOneSuccessfulCompletion() async throws {
         let executor = SceneTextureUploadExecutor()
 
@@ -666,6 +697,54 @@ private final class LockedInt: @unchecked Sendable {
         storage += 1
         lock.unlock()
     }
+}
+
+private final class AllocationLifetimeToken: @unchecked Sendable {}
+
+private final class WeakObjectReference: @unchecked Sendable {
+    weak var value: AnyObject?
+
+    func track(_ value: AnyObject) {
+        self.value = value
+    }
+}
+
+private enum DirectAllocatorTestError: Error {
+    case allocationUnexpectedlySucceeded
+}
+
+private func runPreCancelledAllocation(
+    device: any MTLDevice,
+    plan: SceneTextureAllocationPlan,
+    submission: SceneTextureSubmissionState,
+    completion: VoidCallbackBox,
+    commitCount: LockedInt,
+    lifetime: WeakObjectReference
+) async throws {
+    let lifetimeToken = AllocationLifetimeToken()
+    lifetime.track(lifetimeToken)
+
+    var operations = DirectSceneTextureAllocatorOperations.live
+    operations.addCompletedHandler = { _, callback in
+        _ = lifetimeToken
+        completion.store(callback)
+    }
+    operations.commit = { _ in commitCount.increment() }
+    let allocator = try DirectSceneTextureAllocator(
+        device: device,
+        limits: .init(),
+        operations: operations
+    )
+
+    do {
+        _ = try await allocator.allocate(plan, submission: submission)
+    } catch let error as SceneTexturePipelineError {
+        guard error == .cancelled else {
+            throw error
+        }
+        return
+    }
+    throw DirectAllocatorTestError.allocationUnexpectedlySucceeded
 }
 
 private struct ImmediateSleeper: SceneTextureSleeper {

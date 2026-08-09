@@ -148,6 +148,10 @@ struct DirectSceneTextureAllocator: SceneTextureAllocator, @unchecked Sendable {
             operations: operations
         )
         try await executor.execute(timeout: limits.uploadTimeout) { finish in
+            guard submission.submitIfPending() else {
+                finish(.failure(SceneTexturePipelineError.cancelled))
+                return
+            }
             submittedResources.operations.addCompletedHandler(
                 submittedResources.commandBuffer
             ) {
@@ -161,10 +165,6 @@ struct DirectSceneTextureAllocator: SceneTextureAllocator, @unchecked Sendable {
                 } else {
                     finish(.failure(SceneTexturePipelineError.uploadFailed))
                 }
-            }
-            guard submission.submitIfPending() else {
-                finish(.failure(SceneTexturePipelineError.cancelled))
-                return
             }
             submittedResources.operations.commit(submittedResources.commandBuffer)
         }
