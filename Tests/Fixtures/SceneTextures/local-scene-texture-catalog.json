@@ -1,0 +1,67 @@
+{
+  "capabilityProfile" : "bc-compression=true;logical-bytes=unaligned;policy=1",
+  "fixtures" : [
+    {
+      "containerCounts" : {
+        "TEXB0003" : 37
+      },
+      "formatCounts" : {
+        "0" : 37
+      },
+      "logicalPayloadBytes" : 10747904,
+      "packageVersion" : "PKGV0008",
+      "textureResourceCount" : 37,
+      "unsupportedCounts" : {
+        "animation" : 4
+      },
+      "uploadPathCounts" : {
+        "directUncompressed" : 14
+      },
+      "workshopID" : "2174863503"
+    },
+    {
+      "containerCounts" : {
+        "TEXB0003" : 135
+      },
+      "formatCounts" : {
+        "0" : 77,
+        "8" : 39,
+        "9" : 19
+      },
+      "logicalPayloadBytes" : 19618681,
+      "packageVersion" : "PKGV0018",
+      "textureResourceCount" : 135,
+      "unsupportedCounts" : {
+        "video" : 1
+      },
+      "uploadPathCounts" : {
+        "directUncompressed" : 61
+      },
+      "workshopID" : "2834933421"
+    },
+    {
+      "containerCounts" : {
+        "TEXB0003" : 14,
+        "TEXB0004" : 11
+      },
+      "formatCounts" : {
+        "0" : 2,
+        "4" : 18,
+        "8" : 1,
+        "9" : 4
+      },
+      "logicalPayloadBytes" : 39332928,
+      "packageVersion" : "PKGV0023",
+      "textureResourceCount" : 25,
+      "unsupportedCounts" : {
+        "animation" : 4
+      },
+      "uploadPathCounts" : {
+        "directBlockCompressed" : 14,
+        "directUncompressed" : 7
+      },
+      "workshopID" : "3516106265"
+    }
+  ],
+  "schemaVersion" : 1
+}
