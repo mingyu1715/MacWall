@@ -63,6 +63,8 @@ final class SceneTextureStoreTests: XCTestCase {
         )
 
         await fake.waitForPrepareCount(1)
+        let deduped = await storeDedupeCountBecomes(1, store: store)
+        XCTAssertTrue(deduped)
         try await fake.completePreparation(with: prepared)
         await fake.waitForAllocateCount(1)
         try await fake.completeAllocation(with: allocated)
@@ -78,6 +80,7 @@ final class SceneTextureStoreTests: XCTestCase {
         XCTAssertEqual(prepareCount, 1)
         XCTAssertEqual(allocateCount, 1)
         XCTAssertEqual(snapshot.inFlightDedupeHits, 1)
+        XCTAssertEqual(snapshot.uploadPathCounts[.directUncompressed], 1)
         XCTAssertEqual(inputs.first?.request.colorIntent, .dataLinear)
     }
 
@@ -117,6 +120,86 @@ final class SceneTextureStoreTests: XCTestCase {
         await store.trimToSoftBudget()
         let unownedSnapshot = await store.snapshot()
         XCTAssertEqual(unownedSnapshot.readyEntries, 0)
+    }
+
+    func testIncompatibleCacheHitDoesNotAddOwnershipOrMutateHitState() async throws {
+        let fake = ControllableTexturePipeline()
+        let store = SceneTextureStore(
+            testPipeline: fake,
+            limits: .init(residentSoftBytes: 0)
+        )
+        let fixture = try textureFixture()
+        let allocated = try allocatedTexture(hasSRGBView: false)
+        let generationA = await store.makeGeneration()
+        let generationB = await store.makeGeneration()
+        let initial = acquireTask(store: store, fixture: fixture, generation: generationA)
+        _ = try await finishNextLoad(initial, fake: fake, allocated: allocated, ordinal: 1)
+        await store.releaseGeneration(generationA)
+        let beforeFailure = await store.snapshot()
+
+        await assertPipelineError(.invalidRequest) {
+            try await store.acquire(
+                textureRequest(.colorSRGB, resource: fixture.resource),
+                resource: fixture.resource,
+                resolver: fixture.resolver,
+                for: generationB
+            )
+        }
+
+        let afterFailure = await store.snapshot()
+        XCTAssertEqual(afterFailure.cacheHits, beforeFailure.cacheHits)
+        XCTAssertEqual(afterFailure.readyEntries, 1)
+        XCTAssertEqual(afterFailure.unownedEntries, 1)
+
+        await store.trimToSoftBudget()
+        let trimmed = await store.snapshot()
+        XCTAssertEqual(trimmed.readyEntries, 0)
+        XCTAssertEqual(trimmed.residentBytes, 0)
+    }
+
+    func testRejectsNonPackageProvenanceAndMismatchedResolution() async throws {
+        let fake = ControllableTexturePipeline()
+        let store = SceneTextureStore(testPipeline: fake, limits: .init())
+        let fixtureA = try textureFixture(path: "materials/a.tex")
+        let fixtureB = try textureFixture(path: "materials/b.tex")
+        let selected = try XCTUnwrap(fixtureA.resource.resolution.selected)
+        let forgedSelected = SceneResolvedAsset(
+            request: selected.request,
+            canonicalPath: selected.canonicalPath,
+            candidateOrigin: selected.candidateOrigin,
+            provenance: .builtInCandidate(policyVersion: 1)
+        )
+        let forgedResolution = SceneAssetResolution(
+            request: fixtureA.resource.resolution.request,
+            candidates: fixtureA.resource.resolution.candidates,
+            kind: .package,
+            selected: forgedSelected,
+            issues: fixtureA.resource.resolution.issues
+        )
+        let forgedResource = SceneTextureResource(
+            id: fixtureA.resource.id,
+            path: fixtureA.resource.path,
+            resolution: forgedResolution
+        )
+        let mismatchedResource = SceneTextureResource(
+            id: fixtureA.resource.id,
+            path: fixtureA.resource.path,
+            resolution: fixtureB.resource.resolution
+        )
+        let generation = await store.makeGeneration()
+
+        for resource in [forgedResource, mismatchedResource] {
+            await assertPipelineError(.invalidRequest) {
+                try await store.acquire(
+                    textureRequest(.dataLinear, resource: fixtureA.resource),
+                    resource: resource,
+                    resolver: fixtureA.resolver,
+                    for: generation
+                )
+            }
+        }
+        let prepareCount = await fake.prepareCount
+        XCTAssertEqual(prepareCount, 0)
     }
 
     func testEveryStorageIdentityDifferenceProducesDistinctPipelineKey() async throws {
@@ -246,6 +329,51 @@ final class SceneTextureStoreTests: XCTestCase {
         XCTAssertEqual(snapshot.readyEntries, 1)
     }
 
+    func testLateIncompatibleWaiterFailsBeforeSharedAllocationCompletes() async throws {
+        let fake = ControllableTexturePipeline()
+        let store = SceneTextureStore(testPipeline: fake, limits: .init())
+        let fixture = try textureFixture()
+        let allocated = try allocatedTexture(hasSRGBView: false)
+        let generationA = await store.makeGeneration()
+        let generationB = await store.makeGeneration()
+        let linear = acquireTask(store: store, fixture: fixture, generation: generationA)
+
+        await fake.waitForPrepareCount(1)
+        try await fake.completePreparation(
+            with: preparedLoad(
+                supportsSRGBView: false,
+                estimatedResidentBytes: allocated.linearTexture.allocatedSize
+            )
+        )
+        await fake.waitForAllocateCount(1)
+
+        let completion = CompletionProbe()
+        let color = Task {
+            do {
+                let lease = try await store.acquire(
+                    textureRequest(.colorSRGB, resource: fixture.resource),
+                    resource: fixture.resource,
+                    resolver: fixture.resolver,
+                    for: generationB
+                )
+                await completion.record(Result<SceneTextureLease, any Error>.success(lease))
+                return lease
+            } catch {
+                await completion.record(Result<SceneTextureLease, any Error>.failure(error))
+                throw error
+            }
+        }
+        let rejectedBeforeCompletion = await completionCountBecomes(1, probe: completion)
+        XCTAssertTrue(rejectedBeforeCompletion)
+
+        try await fake.completeAllocation(with: allocated)
+        _ = try await linear.value
+        await assertTaskError(.invalidRequest, task: color)
+        let snapshot = await store.snapshot()
+        XCTAssertEqual(snapshot.readyEntries, 1)
+        XCTAssertEqual(snapshot.inFlightDedupeHits, 1)
+    }
+
     func testCancelingOneWaiterDoesNotCancelAnotherWaiter() async throws {
         let fake = ControllableTexturePipeline()
         let store = SceneTextureStore(testPipeline: fake, limits: .init())
@@ -291,6 +419,152 @@ final class SceneTextureStoreTests: XCTestCase {
         let snapshot = await store.snapshot()
         XCTAssertEqual(snapshot.readyEntries, 0)
         XCTAssertEqual(snapshot.residentBytes, 0)
+    }
+
+    func testReleaseAndCancelInterleavingsResumeEachWaiterOnce() async throws {
+        do {
+            let fake = ControllableTexturePipeline()
+            let store = SceneTextureStore(testPipeline: fake, limits: .init())
+            let fixture = try textureFixture()
+            let generation = await store.makeGeneration()
+            let probe = CompletionProbe()
+            let task = probedAcquireTask(
+                store: store,
+                fixture: fixture,
+                generation: generation,
+                probe: probe
+            )
+
+            await fake.waitForPrepareCount(1)
+            task.cancel()
+            await store.releaseGeneration(generation)
+            do {
+                _ = try await task.value
+                XCTFail("Expected cancellation or stale-generation failure")
+            } catch {
+                let pipelineError = error as? SceneTexturePipelineError
+                XCTAssertTrue(pipelineError == .cancelled || pipelineError == .invalidRequest)
+            }
+            await waitForStoreLoadingCount(0, store: store)
+            let completionCount = await probe.count
+            XCTAssertEqual(completionCount, 1)
+        }
+
+        do {
+            let fake = ControllableTexturePipeline()
+            let store = SceneTextureStore(testPipeline: fake, limits: .init())
+            let fixture = try textureFixture()
+            let generation = await store.makeGeneration()
+            let probe = CompletionProbe()
+            let task = probedAcquireTask(
+                store: store,
+                fixture: fixture,
+                generation: generation,
+                probe: probe
+            )
+
+            await fake.waitForPrepareCount(1)
+            await store.releaseGeneration(generation)
+            task.cancel()
+            await assertTaskError(.invalidRequest, task: task)
+            await waitForStoreLoadingCount(0, store: store)
+            let completionCount = await probe.count
+            XCTAssertEqual(completionCount, 1)
+        }
+    }
+
+    func testCancellationDuringAllocationRemovesEntryBeforeLateCompletion() async throws {
+        let fake = ControllableTexturePipeline(ignoreAllocationCancellation: true)
+        let store = SceneTextureStore(testPipeline: fake, limits: .init())
+        let fixture = try textureFixture()
+        let allocated = try allocatedTexture()
+        let generation = await store.makeGeneration()
+        let task = acquireTask(store: store, fixture: fixture, generation: generation)
+
+        await fake.waitForPrepareCount(1)
+        try await fake.completePreparation(
+            with: preparedLoad(
+                estimatedResidentBytes: allocated.linearTexture.allocatedSize
+            )
+        )
+        await fake.waitForAllocateCount(1)
+
+        task.cancel()
+        await assertTaskError(.cancelled, task: task)
+        let removed = await storeLoadingCountBecomes(0, store: store)
+        XCTAssertTrue(removed)
+        if removed {
+            let snapshot = await store.snapshot()
+            XCTAssertEqual(snapshot.residentBytes, 0)
+            let submitted = try await fake.attemptAllocationSubmission(number: 1)
+            XCTAssertFalse(submitted)
+        }
+
+        try await fake.completeAllocation(with: allocated, number: 1)
+        await Task.yield()
+        let finalSnapshot = await store.snapshot()
+        XCTAssertEqual(finalSnapshot.readyEntries, 0)
+        XCTAssertEqual(finalSnapshot.residentBytes, 0)
+    }
+
+    func testNewWaiterStartsFreshLoadAfterAbandonmentAndIgnoresOldCompletion() async throws {
+        let fake = ControllableTexturePipeline(ignoreAllocationCancellation: true)
+        let store = SceneTextureStore(testPipeline: fake, limits: .init())
+        let fixture = try textureFixture()
+        let oldAllocated = try allocatedTexture()
+        let newAllocated = try allocatedTexture()
+        let generationA = await store.makeGeneration()
+        let generationB = await store.makeGeneration()
+        let abandoned = acquireTask(store: store, fixture: fixture, generation: generationA)
+
+        await fake.waitForPrepareCount(1)
+        try await fake.completePreparation(
+            with: preparedLoad(
+                estimatedResidentBytes: oldAllocated.linearTexture.allocatedSize
+            )
+        )
+        await fake.waitForAllocateCount(1)
+        abandoned.cancel()
+        await assertTaskError(.cancelled, task: abandoned)
+
+        guard await storeLoadingCountBecomes(0, store: store) else {
+            XCTFail("Abandoned entry remained accepting")
+            try await fake.completeAllocation(with: oldAllocated, number: 1)
+            return
+        }
+
+        let replacement = acquireTask(
+            store: store,
+            fixture: fixture,
+            generation: generationB
+        )
+        await fake.waitForPrepareCount(2)
+        try await fake.completePreparation(
+            with: preparedLoad(
+                estimatedResidentBytes: newAllocated.linearTexture.allocatedSize
+            )
+        )
+        await fake.waitForAllocateCount(2)
+        try await fake.completeAllocation(with: newAllocated, number: 2)
+        let lease = try await replacement.value
+        XCTAssertIdentical(lease.texture as AnyObject, newAllocated.linearTexture as AnyObject)
+
+        try await fake.completeAllocation(with: oldAllocated, number: 1)
+        await Task.yield()
+        let cached = try await store.acquire(
+            textureRequest(.dataLinear, resource: fixture.resource),
+            resource: fixture.resource,
+            resolver: fixture.resolver,
+            for: generationB
+        )
+        XCTAssertIdentical(cached.texture as AnyObject, newAllocated.linearTexture as AnyObject)
+        let snapshot = await store.snapshot()
+        let prepareCount = await fake.prepareCount
+        let allocateCount = await fake.allocateCount
+        XCTAssertEqual(snapshot.readyEntries, 1)
+        XCTAssertEqual(snapshot.residentBytes, newAllocated.residentBytes)
+        XCTAssertEqual(prepareCount, 2)
+        XCTAssertEqual(allocateCount, 2)
     }
 
     func testCancelingAllWaitersAfterSubmissionWaitsForCleanupWithoutInstall() async throws {
@@ -576,6 +850,85 @@ final class SceneTextureStoreTests: XCTestCase {
         XCTAssertEqual(snapshot.resourceLimitFailures, 1)
     }
 
+    func testConcurrentResidentResizeEvictsForActualDeltaAndSucceeds() async throws {
+        let fake = ControllableTexturePipeline()
+        let allocated = try allocatedTexture()
+        let residentBytes = allocated.linearTexture.allocatedSize
+        let store = SceneTextureStore(
+            testPipeline: fake,
+            limits: .init(
+                residentSoftBytes: residentBytes * 3,
+                residentHardBytes: residentBytes * 3
+            )
+        )
+        let cachedFixture = try textureFixture(path: "materials/cached.tex")
+        let resizingFixture = try textureFixture(path: "materials/resizing.tex")
+        let concurrentFixture = try textureFixture(path: "materials/concurrent.tex")
+        let cachedGeneration = await store.makeGeneration()
+        let resizingGeneration = await store.makeGeneration()
+        let concurrentGeneration = await store.makeGeneration()
+
+        let cached = acquireTask(
+            store: store,
+            fixture: cachedFixture,
+            generation: cachedGeneration
+        )
+        _ = try await finishNextLoad(cached, fake: fake, allocated: allocated, ordinal: 1)
+        await store.releaseGeneration(cachedGeneration)
+
+        let resizing = acquireTask(
+            store: store,
+            fixture: resizingFixture,
+            generation: resizingGeneration
+        )
+        await fake.waitForPrepareCount(2)
+        try await fake.completePreparation(
+            with: preparedLoad(estimatedResidentBytes: residentBytes / 4)
+        )
+        await fake.waitForAllocateCount(2)
+
+        let concurrent = acquireTask(
+            store: store,
+            fixture: concurrentFixture,
+            generation: concurrentGeneration
+        )
+        await fake.waitForPrepareCount(3)
+        try await fake.completePreparation(
+            with: preparedLoad(estimatedResidentBytes: residentBytes * 3 / 2)
+        )
+        await fake.waitForAllocateCount(3)
+
+        try await fake.completeAllocation(with: allocated, number: 2)
+        let resizeResult: Result<SceneTextureLease, any Error>
+        do {
+            resizeResult = .success(try await resizing.value)
+        } catch {
+            resizeResult = .failure(error)
+        }
+        let resizedSnapshot = await store.snapshot()
+
+        concurrent.cancel()
+        await assertTaskError(.cancelled, task: concurrent)
+        await waitForStoreLoadingCount(0, store: store)
+
+        switch resizeResult {
+        case let .success(lease):
+            XCTAssertIdentical(lease.texture as AnyObject, allocated.linearTexture as AnyObject)
+        case let .failure(error):
+            XCTFail("Expected resize to succeed after eviction, got \(error)")
+        }
+        XCTAssertEqual(resizedSnapshot.readyEntries, 1)
+        XCTAssertEqual(resizedSnapshot.unownedEntries, 0)
+        XCTAssertEqual(resizedSnapshot.evictions, 1)
+        XCTAssertEqual(resizedSnapshot.resourceLimitFailures, 0)
+        XCTAssertEqual(
+            resizedSnapshot.residentBytes,
+            residentBytes + residentBytes * 3 / 2
+        )
+        let finalSnapshot = await store.snapshot()
+        XCTAssertEqual(finalSnapshot.residentBytes, residentBytes)
+    }
+
     func testSnapshotContainsOnlyAggregateDataAndStableFailureCategories() async throws {
         let fake = ControllableTexturePipeline()
         let store = SceneTextureStore(testPipeline: fake, limits: .init())
@@ -583,12 +936,17 @@ final class SceneTextureStoreTests: XCTestCase {
             path: "Users/private-user/secret-payload.tex",
             payload: Data("private-payload-canary".utf8)
         )
-        let generation = await store.makeGeneration()
-        let task = acquireTask(store: store, fixture: fixture, generation: generation)
+        let generationA = await store.makeGeneration()
+        let generationB = await store.makeGeneration()
+        let first = acquireTask(store: store, fixture: fixture, generation: generationA)
+        let second = acquireTask(store: store, fixture: fixture, generation: generationB)
 
         await fake.waitForPrepareCount(1)
+        let deduped = await storeDedupeCountBecomes(1, store: store)
+        XCTAssertTrue(deduped)
         try await fake.failPreparation(with: .unsupportedDescriptor(.container))
-        await assertTaskError(.unsupportedDescriptor(.container), task: task)
+        await assertTaskError(.unsupportedDescriptor(.container), task: first)
+        await assertTaskError(.unsupportedDescriptor(.container), task: second)
 
         let snapshot = await store.snapshot()
         let description = String(reflecting: snapshot)
@@ -596,6 +954,7 @@ final class SceneTextureStoreTests: XCTestCase {
         XCTAssertFalse(description.contains("secret-payload"))
         XCTAssertFalse(description.contains("private-payload-canary"))
         XCTAssertEqual(snapshot.unsupportedCounts, ["descriptor.container": 1])
+        XCTAssertEqual(snapshot.inFlightDedupeHits, 1)
     }
 }
 
@@ -605,9 +964,12 @@ private actor ControllableTexturePipeline: SceneTexturePipelineLoading {
     }
 
     private struct PendingAllocation {
+        let number: Int
         let submission: SceneTextureSubmissionState
         let continuation: CheckedContinuation<SceneAllocatedTexture, any Error>
     }
+
+    private let ignoreAllocationCancellation: Bool
 
     private(set) var preparedInputs: [SceneTexturePipelineInput] = []
     private(set) var prepareCount = 0
@@ -624,6 +986,10 @@ private actor ControllableTexturePipeline: SceneTexturePipelineLoading {
     private var prepareCountWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
     private var allocateCountWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
     private var prepareCancellationWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
+
+    init(ignoreAllocationCancellation: Bool = false) {
+        self.ignoreAllocationCancellation = ignoreAllocationCancellation
+    }
 
     func prepare(_ input: SceneTexturePipelineInput) async throws -> SceneTexturePreparedLoad {
         let operationID = UUID()
@@ -661,6 +1027,7 @@ private actor ControllableTexturePipeline: SceneTexturePipelineLoading {
                     continuation.resume(throwing: SceneTexturePipelineError.cancelled)
                 } else {
                     pendingAllocations[operationID] = PendingAllocation(
+                        number: allocateCount,
                         submission: submission,
                         continuation: continuation
                     )
@@ -715,12 +1082,29 @@ private actor ControllableTexturePipeline: SceneTexturePipelineLoading {
               let pending = pendingAllocations[operationID] else {
             throw TexturePipelineControlError.noPendingAllocation
         }
-        pending.submission.markSubmitted()
+        guard pending.submission.submitIfPending() else {
+            throw TexturePipelineControlError.noPendingAllocation
+        }
     }
 
     func completeAllocation(with allocated: SceneAllocatedTexture) throws {
-        let continuation = try takeAllocation()
+        let continuation = try takeAllocation(number: nil)
         continuation.resume(returning: allocated)
+    }
+
+    func completeAllocation(
+        with allocated: SceneAllocatedTexture,
+        number: Int
+    ) throws {
+        let continuation = try takeAllocation(number: number)
+        continuation.resume(returning: allocated)
+    }
+
+    func attemptAllocationSubmission(number: Int) throws -> Bool {
+        guard let pending = pendingAllocations.values.first(where: { $0.number == number }) else {
+            throw TexturePipelineControlError.noPendingAllocation
+        }
+        return pending.submission.submitIfPending()
     }
 
     private func cancelPreparation(_ operationID: UUID) {
@@ -735,6 +1119,9 @@ private actor ControllableTexturePipeline: SceneTexturePipelineLoading {
     }
 
     private func cancelAllocation(_ operationID: UUID) {
+        guard !ignoreAllocationCancellation else {
+            return
+        }
         guard let pending = pendingAllocations.removeValue(forKey: operationID) else {
             canceledAllocationIDs.insert(operationID)
             return
@@ -755,11 +1142,21 @@ private actor ControllableTexturePipeline: SceneTexturePipelineLoading {
         return pending.continuation
     }
 
-    private func takeAllocation() throws -> CheckedContinuation<SceneAllocatedTexture, any Error> {
-        guard let operationID = allocationOrder.first else {
+    private func takeAllocation(
+        number: Int?
+    ) throws -> CheckedContinuation<SceneAllocatedTexture, any Error> {
+        let operationID: UUID?
+        if let number {
+            operationID = allocationOrder.first(where: {
+                pendingAllocations[$0]?.number == number
+            })
+        } else {
+            operationID = allocationOrder.first
+        }
+        guard let operationID else {
             throw TexturePipelineControlError.noPendingAllocation
         }
-        allocationOrder.removeFirst()
+        allocationOrder.removeAll(where: { $0 == operationID })
         guard let pending = pendingAllocations.removeValue(forKey: operationID) else {
             throw TexturePipelineControlError.noPendingAllocation
         }
@@ -945,6 +1342,31 @@ private func acquireTask(
     }
 }
 
+private func probedAcquireTask(
+    store: SceneTextureStore,
+    fixture: TextureFixture,
+    generation: SceneTextureGenerationID,
+    probe: CompletionProbe
+) -> Task<SceneTextureLease, any Error> {
+    Task {
+        let result: Result<SceneTextureLease, any Error>
+        do {
+            result = .success(
+                try await store.acquire(
+                    textureRequest(.dataLinear, resource: fixture.resource),
+                    resource: fixture.resource,
+                    resolver: fixture.resolver,
+                    for: generation
+                )
+            )
+        } catch {
+            result = .failure(error)
+        }
+        await probe.record(result)
+        return try result.get()
+    }
+}
+
 private func finishNextLoad(
     _ task: Task<SceneTextureLease, any Error>,
     fake: ControllableTexturePipeline,
@@ -997,11 +1419,47 @@ private func waitForStoreLoadingCount(
     file: StaticString = #filePath,
     line: UInt = #line
 ) async {
+    guard await storeLoadingCountBecomes(expected, store: store) else {
+        XCTFail("Store loading count did not become \(expected)", file: file, line: line)
+        return
+    }
+}
+
+private func storeLoadingCountBecomes(
+    _ expected: Int,
+    store: SceneTextureStore
+) async -> Bool {
     for _ in 0..<10_000 {
         if await store.snapshot().loadingEntries == expected {
-            return
+            return true
         }
         await Task.yield()
     }
-    XCTFail("Store loading count did not become \(expected)", file: file, line: line)
+    return false
+}
+
+private func completionCountBecomes(
+    _ expected: Int,
+    probe: CompletionProbe
+) async -> Bool {
+    for _ in 0..<10_000 {
+        if await probe.count == expected {
+            return true
+        }
+        await Task.yield()
+    }
+    return false
+}
+
+private func storeDedupeCountBecomes(
+    _ expected: Int,
+    store: SceneTextureStore
+) async -> Bool {
+    for _ in 0..<10_000 {
+        if await store.snapshot().inFlightDedupeHits == expected {
+            return true
+        }
+        await Task.yield()
+    }
+    return false
 }

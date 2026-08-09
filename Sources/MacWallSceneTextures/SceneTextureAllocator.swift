@@ -140,18 +140,32 @@ protocol SceneTextureAllocator: Sendable {
 }
 
 final class SceneTextureSubmissionState: @unchecked Sendable {
-    private let lock = NSLock()
-    private var submitted = false
-
-    var wasSubmitted: Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return submitted
+    private enum State {
+        case pending
+        case submitted
+        case cancelled
     }
 
-    func markSubmitted() {
+    private let lock = NSLock()
+    private var state = State.pending
+
+    func submitIfPending() -> Bool {
         lock.lock()
-        submitted = true
-        lock.unlock()
+        defer { lock.unlock() }
+        guard case .pending = state else {
+            return false
+        }
+        state = .submitted
+        return true
+    }
+
+    func cancelIfPending() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard case .pending = state else {
+            return false
+        }
+        state = .cancelled
+        return true
     }
 }

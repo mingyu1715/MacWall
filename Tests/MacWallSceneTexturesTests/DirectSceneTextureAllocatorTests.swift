@@ -4,6 +4,62 @@ import XCTest
 @testable import MacWallSceneTextures
 
 final class DirectSceneTextureAllocatorTests: XCTestCase {
+    func testSubmissionStateAllowsExactlyOneTerminalTransition() async {
+        let submission = SceneTextureSubmissionState()
+
+        let wins = await withTaskGroup(of: Bool.self, returning: Int.self) { group in
+            for index in 0..<64 {
+                group.addTask {
+                    if index.isMultiple(of: 2) {
+                        return submission.submitIfPending()
+                    }
+                    return submission.cancelIfPending()
+                }
+            }
+
+            var wins = 0
+            for await won in group where won {
+                wins += 1
+            }
+            return wins
+        }
+
+        XCTAssertEqual(wins, 1)
+        XCTAssertFalse(submission.submitIfPending())
+        XCTAssertFalse(submission.cancelIfPending())
+    }
+
+    func testCancellationBeforeSubmissionPreventsCommit() async throws {
+        let device = try metalDevice()
+        let submission = SceneTextureSubmissionState()
+        XCTAssertTrue(submission.cancelIfPending())
+
+        let commitCount = LockedInt()
+        var operations = DirectSceneTextureAllocatorOperations.live
+        operations.commit = { _ in commitCount.increment() }
+
+        let allocator = try DirectSceneTextureAllocator(
+            device: device,
+            limits: .init(),
+            operations: operations
+        )
+        let plan = try allocationPlan(
+            device: device,
+            format: .rgba8Unorm,
+            width: 1,
+            height: 1,
+            mipBytes: [Data([1, 2, 3, 4])],
+            colorView: true
+        )
+
+        await XCTAssertThrowsErrorAsync(
+            try await allocator.allocate(plan, submission: submission)
+        ) { error in
+            XCTAssertEqual(error as? SceneTexturePipelineError, .cancelled)
+        }
+        XCTAssertEqual(commitCount.value, 0)
+    }
+
     func testUploadExecutorAcceptsExactlyOneSuccessfulCompletion() async throws {
         let executor = SceneTextureUploadExecutor()
 
@@ -319,7 +375,7 @@ final class DirectSceneTextureAllocatorTests: XCTestCase {
         ) { error in
             XCTAssertEqual(error as? SceneTexturePipelineError, .allocationFailed)
         }
-        XCTAssertFalse(submission.wasSubmitted)
+        XCTAssertTrue(submission.cancelIfPending())
     }
 
     func testCommandBufferErrorFailsUpload() async throws {
@@ -352,12 +408,18 @@ final class DirectSceneTextureAllocatorTests: XCTestCase {
     func testArtifactIsReturnedOnlyAfterCompletionCallback() async throws {
         let device = try metalDevice()
         let callback = VoidCallbackBox()
+        let committed = LockedBool()
         let returned = LockedBool()
         var operations = DirectSceneTextureAllocatorOperations.live
         operations.addCompletedHandler = { _, completion in
             callback.store(completion)
         }
         operations.commandBufferStatus = { _ in .completed }
+        let liveCommit = operations.commit
+        operations.commit = { commandBuffer in
+            liveCommit(commandBuffer)
+            committed.setTrue()
+        }
         let allocator = try DirectSceneTextureAllocator(
             device: device,
             limits: .init(),
@@ -378,7 +440,8 @@ final class DirectSceneTextureAllocatorTests: XCTestCase {
             return artifact
         }
 
-        await waitUntil { submission.wasSubmitted && callback.hasCallback }
+        await waitUntil { committed.value && callback.hasCallback }
+        XCTAssertFalse(submission.cancelIfPending())
         XCTAssertFalse(returned.value)
 
         callback.invoke()
@@ -585,6 +648,23 @@ final class DirectSceneTextureAllocatorTests: XCTestCase {
             await Task.yield()
         }
         XCTFail("Condition was not satisfied", file: file, line: line)
+    }
+}
+
+private final class LockedInt: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage = 0
+
+    var value: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage
+    }
+
+    func increment() {
+        lock.lock()
+        storage += 1
+        lock.unlock()
     }
 }
 

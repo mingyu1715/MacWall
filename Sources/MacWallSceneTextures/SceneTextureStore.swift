@@ -40,6 +40,7 @@ public actor SceneTextureStore {
         var waiters: [UUID: Waiter]
         var task: Task<Void, Never>?
         var residentReservation: SceneTextureMemoryReservation?
+        var supportsSRGBView: Bool?
     }
 
     private let pipeline: any SceneTexturePipelineLoading
@@ -49,6 +50,7 @@ public actor SceneTextureStore {
     private let deviceRegistryID: UInt64
 
     private var cache = SceneTextureCache<SceneTextureCachedArtifact>()
+    private var readySRGBViewSupport: [SceneTextureStorageKey: Bool] = [:]
     private var liveGenerations: Set<SceneTextureGenerationID> = []
     private var loadingEntries: [SceneTextureStorageKey: LoadingEntry] = [:]
     private var inFlightDedupeHits = 0
@@ -93,6 +95,10 @@ public actor SceneTextureStore {
             resource: resource,
             resolver: resolver
         )
+        if request.colorIntent == .colorSRGB,
+           readySRGBViewSupport[key] == false {
+            throw SceneTexturePipelineError.invalidRequest
+        }
         if let artifact = cache.value(for: key, owner: generation) {
             return try lease(
                 from: artifact.texture,
@@ -202,6 +208,12 @@ public actor SceneTextureStore {
             continuation: continuation
         )
         if var entry = loadingEntries[key] {
+            if request.colorIntent == .colorSRGB,
+               entry.supportsSRGBView == false {
+                inFlightDedupeHits += 1
+                continuation.resume(throwing: SceneTexturePipelineError.invalidRequest)
+                return
+            }
             entry.waiters[waiterID] = waiter
             loadingEntries[key] = entry
             inFlightDedupeHits += 1
@@ -227,7 +239,8 @@ public actor SceneTextureStore {
             submission: submission,
             waiters: [waiterID: waiter],
             task: nil,
-            residentReservation: nil
+            residentReservation: nil,
+            supportsSRGBView: nil
         )
 
         let pipeline = self.pipeline
@@ -292,7 +305,8 @@ public actor SceneTextureStore {
             await store.completeLoad(
                 allocated: allocated,
                 key: key,
-                loadID: loadID
+                loadID: loadID,
+                estimatedResidentBytes: prepared.estimatedResidentBytes
             )
         } catch {
             await store.releaseDecodedReservation(from: prepared)
@@ -312,6 +326,7 @@ public actor SceneTextureStore {
         guard var entry = loadingEntries[key], entry.id == loadID else {
             return false
         }
+        entry.supportsSRGBView = prepared.allocationPlan.supportsSRGBView
 
         for waiterID in entry.waiters.keys.sorted(by: uuidLessThan) {
             guard let waiter = entry.waiters[waiterID] else {
@@ -356,7 +371,8 @@ public actor SceneTextureStore {
     private func completeLoad(
         allocated: SceneAllocatedTexture,
         key: SceneTextureStorageKey,
-        loadID: UUID
+        loadID: UUID,
+        estimatedResidentBytes: Int
     ) {
         guard let entry = loadingEntries[key],
               entry.id == loadID,
@@ -368,6 +384,7 @@ public actor SceneTextureStore {
         do {
             try reconcileResidentReservation(
                 reservation,
+                estimatedBytes: estimatedResidentBytes,
                 actualBytes: actualResidentBytes
             )
         } catch {
@@ -414,6 +431,7 @@ public actor SceneTextureStore {
             texture: allocated,
             residentReservation: reservation
         )
+        readySRGBViewSupport[key] = allocated.srgbTexture != nil
         for generation in Set(successfulWaiters.map { $0.0.generation }) {
             cache.install(
                 cachedArtifact,
@@ -459,24 +477,43 @@ public actor SceneTextureStore {
     private func cancelIfAbandoned(key: SceneTextureStorageKey) {
         guard let entry = loadingEntries[key],
               entry.waiters.isEmpty,
-              !entry.submission.wasSubmitted else {
+              entry.submission.cancelIfPending() else {
             return
+        }
+        loadingEntries.removeValue(forKey: key)
+        if let reservation = entry.residentReservation {
+            releaseReservation(reservation)
         }
         entry.task?.cancel()
     }
 
     private func reconcileResidentReservation(
         _ reservation: SceneTextureMemoryReservation,
+        estimatedBytes: Int,
         actualBytes: Int
     ) throws {
         do {
             try memoryBudget.resize(reservation, actualBytes: actualBytes)
         } catch let error as SceneTexturePipelineError
             where error == .resourceLimit(.residentBytes) {
-            let hardAvailable = actualBytes >= 0 && actualBytes <= limits.residentHardBytes
-                ? limits.residentHardBytes - actualBytes
-                : 0
-            trimUnownedCache(toResidentBytes: max(0, hardAvailable))
+            let currentResidentBytes = memoryBudget.snapshot().residentBytes
+            let (residentWithoutEstimate, subtractionOverflow) = currentResidentBytes
+                .subtractingReportingOverflow(estimatedBytes)
+            let (projectedResidentBytes, additionOverflow) = residentWithoutEstimate
+                .addingReportingOverflow(actualBytes)
+            guard estimatedBytes >= 0,
+                  actualBytes >= 0,
+                  !subtractionOverflow,
+                  residentWithoutEstimate >= 0,
+                  !additionOverflow else {
+                throw SceneTexturePipelineError.resourceLimit(.residentBytes)
+            }
+
+            let hardLimit = max(0, limits.residentHardBytes)
+            let bytesToEvict = max(0, projectedResidentBytes - hardLimit)
+            let cacheResidentBytes = cache.snapshot().residentBytes
+            let cacheTarget = max(0, cacheResidentBytes - bytesToEvict)
+            trimUnownedCache(toResidentBytes: cacheTarget)
             try memoryBudget.resize(reservation, actualBytes: actualBytes)
         }
     }
@@ -484,6 +521,7 @@ public actor SceneTextureStore {
     private func trimUnownedCache(toResidentBytes target: Int) {
         let evicted = cache.trimUnowned(toResidentBytes: max(0, target))
         for entry in evicted {
+            readySRGBViewSupport.removeValue(forKey: entry.key)
             releaseReservation(entry.value.residentReservation)
         }
     }

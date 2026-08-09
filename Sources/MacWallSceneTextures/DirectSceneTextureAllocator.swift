@@ -162,7 +162,10 @@ struct DirectSceneTextureAllocator: SceneTextureAllocator, @unchecked Sendable {
                     finish(.failure(SceneTexturePipelineError.uploadFailed))
                 }
             }
-            submission.markSubmitted()
+            guard submission.submitIfPending() else {
+                finish(.failure(SceneTexturePipelineError.cancelled))
+                return
+            }
             submittedResources.operations.commit(submittedResources.commandBuffer)
         }
 
