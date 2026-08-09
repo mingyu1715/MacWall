@@ -83,6 +83,16 @@ actor SceneTextureWorkLimiter {
     }
 }
 
+protocol SceneTexturePipelineObserving: Sendable {
+    func decodeStarted(_ input: SceneTexturePipelineInput) async throws
+    func uploadStarted(_ prepared: SceneTexturePreparedLoad) async throws
+}
+
+private struct NullSceneTexturePipelineObserver: SceneTexturePipelineObserving {
+    func decodeStarted(_ input: SceneTexturePipelineInput) async throws {}
+    func uploadStarted(_ prepared: SceneTexturePreparedLoad) async throws {}
+}
+
 struct DefaultSceneTexturePipelineLoader: SceneTexturePipelineLoading, @unchecked Sendable {
     private let device: any MTLDevice
     private let capabilities: SceneTextureDeviceCapabilities
@@ -91,13 +101,15 @@ struct DefaultSceneTexturePipelineLoader: SceneTexturePipelineLoading, @unchecke
     private let allocator: any SceneTextureAllocator
     private let decodeLimiter: SceneTextureWorkLimiter
     private let uploadLimiter: SceneTextureWorkLimiter
+    private let observer: any SceneTexturePipelineObserving
 
     init(
         device: any MTLDevice,
         capabilities: SceneTextureDeviceCapabilities,
         limits: SceneTextureLimits,
         memoryBudget: SceneTextureMemoryBudget,
-        allocator: any SceneTextureAllocator
+        allocator: any SceneTextureAllocator,
+        observer: any SceneTexturePipelineObserving = NullSceneTexturePipelineObserver()
     ) throws {
         guard limits.maximumConcurrentDecodes > 0,
               limits.maximumConcurrentUploads > 0 else {
@@ -108,8 +120,17 @@ struct DefaultSceneTexturePipelineLoader: SceneTexturePipelineLoading, @unchecke
         self.limits = limits
         self.memoryBudget = memoryBudget
         self.allocator = allocator
+        self.observer = observer
         decodeLimiter = SceneTextureWorkLimiter(limit: limits.maximumConcurrentDecodes)
         uploadLimiter = SceneTextureWorkLimiter(limit: limits.maximumConcurrentUploads)
+    }
+
+    func queuedDecodeCount() async -> Int {
+        await decodeLimiter.queuedWaiterCount
+    }
+
+    func queuedUploadCount() async -> Int {
+        await uploadLimiter.queuedWaiterCount
     }
 
     func prepare(
@@ -167,7 +188,8 @@ struct DefaultSceneTexturePipelineLoader: SceneTexturePipelineLoading, @unchecke
 
         do {
             let preparedSource = try await decodeLimiter.withPermit {
-                try await runSceneTextureDetachedWork {
+                try await observer.decodeStarted(input)
+                return try await runSceneTextureDetachedWork {
                     let payload = try SceneTexturePayloadLoader().prepare(
                         plan: plan,
                         descriptor: descriptor,
@@ -253,7 +275,11 @@ struct DefaultSceneTexturePipelineLoader: SceneTexturePipelineLoading, @unchecke
 
         do {
             return try await uploadLimiter.withPermit {
-                try await allocator.allocate(prepared.allocationPlan, submission: submission)
+                try await observer.uploadStarted(prepared)
+                return try await allocator.allocate(
+                    prepared.allocationPlan,
+                    submission: submission
+                )
             }
         } catch {
             throw Self.normalizedAllocationError(error)
@@ -296,39 +322,138 @@ struct DefaultSceneTexturePipelineLoader: SceneTexturePipelineLoading, @unchecke
     private func maximumDecodedFootprint(
         for plan: SceneTextureLoadPlan
     ) throws -> Int {
-        let maximumPayloadBytes = min(limits.singlePayloadBytes, 64 * 1_024 * 1_024)
-        var total = 0
-        for mip in plan.mips {
-            guard let payloadBytes = Int(exactly:
-                mip.payloadRange.upperBound - mip.payloadRange.lowerBound
-            ), payloadBytes <= maximumPayloadBytes else {
-                throw SceneTexturePipelineError.resourceLimit(.payloadBytes)
-            }
-            let expandedBytes: Int
-            if mip.isLZ4Compressed {
-                guard let declared = mip.declaredDecompressedBytes,
-                      let converted = Int(exactly: declared),
-                      converted <= maximumPayloadBytes else {
-                    throw SceneTexturePipelineError.resourceLimit(.payloadBytes)
-                }
-                expandedBytes = converted
-            } else {
-                expandedBytes = payloadBytes
-            }
+        if case .encodedImageProbe = plan.payloadStrategy {
+            return try maximumEncodedImageFootprint(for: plan)
+        }
 
-            let bytesForMip: Int
-            switch plan.payloadStrategy {
-            case .exactUncompressed, .exactBlockCompressed:
-                bytesForMip = expandedBytes
-            case .softwareBC, .encodedImageProbe:
-                bytesForMip = try checkedSum(
-                    [expandedBytes, try physicalRGBABytes(mip.storageExtent)],
+        var retainedMipBytes = 0
+        var maximumBytes = 0
+        for mip in plan.mips {
+            let sizes = try payloadSizes(for: mip)
+            let expansionBytes: Int
+            if mip.isLZ4Compressed {
+                expansionBytes = try checkedSum(
+                    [retainedMipBytes, sizes.selected, sizes.expanded],
+                    limit: .decodedCPUBytes
+                )
+            } else {
+                expansionBytes = try checkedSum(
+                    [retainedMipBytes, sizes.expanded],
                     limit: .decodedCPUBytes
                 )
             }
-            total = try checkedSum([total, bytesForMip], limit: .decodedCPUBytes)
+            maximumBytes = max(maximumBytes, expansionBytes)
+
+            switch plan.payloadStrategy {
+            case .exactUncompressed, .exactBlockCompressed:
+                retainedMipBytes = try checkedSum(
+                    [retainedMipBytes, sizes.expanded],
+                    limit: .decodedCPUBytes
+                )
+                maximumBytes = max(maximumBytes, retainedMipBytes)
+
+            case .softwareBC:
+                let physicalBytes = try physicalRGBABytes(mip.storageExtent)
+                let logicalBytes = try physicalRGBABytes(mip.contentExtent)
+                let decodingBytes = try checkedSum(
+                    [
+                        retainedMipBytes,
+                        sizes.expanded,
+                        sizes.expanded,
+                        physicalBytes,
+                        logicalBytes
+                    ],
+                    limit: .decodedCPUBytes
+                )
+                let paddingBytes = try checkedSum(
+                    [retainedMipBytes, sizes.expanded, logicalBytes, physicalBytes],
+                    limit: .decodedCPUBytes
+                )
+                maximumBytes = max(
+                    maximumBytes,
+                    max(decodingBytes, paddingBytes)
+                )
+                retainedMipBytes = try checkedSum(
+                    [retainedMipBytes, physicalBytes],
+                    limit: .decodedCPUBytes
+                )
+
+            case .encodedImageProbe:
+                preconditionFailure("encoded image footprints are handled separately")
+            }
         }
-        return total
+        return maximumBytes
+    }
+
+    private func maximumEncodedImageFootprint(
+        for plan: SceneTextureLoadPlan
+    ) throws -> Int {
+        var retainedEncodedBytes = 0
+        var maximumBytes = 0
+        for mip in plan.mips {
+            let sizes = try payloadSizes(for: mip)
+            let expansionBytes: Int
+            if mip.isLZ4Compressed {
+                expansionBytes = try checkedSum(
+                    [retainedEncodedBytes, sizes.selected, sizes.expanded],
+                    limit: .decodedCPUBytes
+                )
+            } else {
+                expansionBytes = try checkedSum(
+                    [retainedEncodedBytes, sizes.expanded],
+                    limit: .decodedCPUBytes
+                )
+            }
+            maximumBytes = max(maximumBytes, expansionBytes)
+            retainedEncodedBytes = try checkedSum(
+                [retainedEncodedBytes, sizes.expanded],
+                limit: .decodedCPUBytes
+            )
+        }
+
+        var retainedDecodedBytes = 0
+        for mip in plan.mips {
+            let logicalBytes = try physicalRGBABytes(mip.contentExtent)
+            let physicalBytes = try physicalRGBABytes(mip.storageExtent)
+            let decodingBytes = try checkedSum(
+                [
+                    retainedEncodedBytes,
+                    retainedDecodedBytes,
+                    logicalBytes,
+                    physicalBytes
+                ],
+                limit: .decodedCPUBytes
+            )
+            maximumBytes = max(maximumBytes, decodingBytes)
+            retainedDecodedBytes = try checkedSum(
+                [retainedDecodedBytes, physicalBytes],
+                limit: .decodedCPUBytes
+            )
+        }
+        return maximumBytes
+    }
+
+    private func payloadSizes(
+        for mip: SceneTextureMipPlan
+    ) throws -> (selected: Int, expanded: Int) {
+        let maximumPayloadBytes = min(
+            max(0, limits.singlePayloadBytes),
+            64 * 1_024 * 1_024
+        )
+        guard let selectedBytes = Int(exactly:
+            mip.payloadRange.upperBound - mip.payloadRange.lowerBound
+        ), selectedBytes <= maximumPayloadBytes else {
+            throw SceneTexturePipelineError.resourceLimit(.payloadBytes)
+        }
+        guard mip.isLZ4Compressed else {
+            return (selectedBytes, selectedBytes)
+        }
+        guard let declared = mip.declaredDecompressedBytes,
+              let expandedBytes = Int(exactly: declared),
+              expandedBytes <= maximumPayloadBytes else {
+            throw SceneTexturePipelineError.resourceLimit(.payloadBytes)
+        }
+        return (selectedBytes, expandedBytes)
     }
 
     private func physicalRGBABytes(_ extent: SceneTextureExtent) throws -> Int {

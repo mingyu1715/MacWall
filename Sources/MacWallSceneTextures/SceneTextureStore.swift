@@ -27,6 +27,10 @@ protocol SceneTexturePipelineLoading: Sendable {
     ) async throws -> SceneAllocatedTexture
 }
 
+protocol SceneTextureStoreLoadObserving: Sendable {
+    func preparationFinished(_ prepared: SceneTexturePreparedLoad) async throws
+}
+
 public actor SceneTextureStore {
     private struct Waiter {
         let generation: SceneTextureGenerationID
@@ -48,6 +52,7 @@ public actor SceneTextureStore {
     private let memoryBudget: SceneTextureMemoryBudget
     private let uploadPolicyVersion: Int
     private let deviceRegistryID: UInt64
+    private let loadObserver: (any SceneTextureStoreLoadObserving)?
 
     private var cache = SceneTextureCache<SceneTextureCachedArtifact>()
     private var readySRGBViewSupport: [SceneTextureStorageKey: Bool] = [:]
@@ -77,6 +82,7 @@ public actor SceneTextureStore {
         self.memoryBudget = memoryBudget
         uploadPolicyVersion = 1
         deviceRegistryID = device.registryID
+        loadObserver = nil
     }
 
     init(
@@ -98,19 +104,23 @@ public actor SceneTextureStore {
         self.memoryBudget = memoryBudget
         uploadPolicyVersion = 1
         deviceRegistryID = device.registryID
+        loadObserver = nil
     }
 
     init(
         testPipeline: any SceneTexturePipelineLoading,
         limits: SceneTextureLimits,
+        memoryBudget: SceneTextureMemoryBudget? = nil,
+        loadObserver: (any SceneTextureStoreLoadObserving)? = nil,
         uploadPolicyVersion: Int = 1,
         deviceRegistryID: UInt64 = 0
     ) {
         pipeline = testPipeline
         self.limits = limits
-        memoryBudget = SceneTextureMemoryBudget(limits: limits)
+        self.memoryBudget = memoryBudget ?? SceneTextureMemoryBudget(limits: limits)
         self.uploadPolicyVersion = uploadPolicyVersion
         self.deviceRegistryID = deviceRegistryID
+        self.loadObserver = loadObserver
     }
 
     public func makeGeneration() -> SceneTextureGenerationID {
@@ -286,6 +296,7 @@ public actor SceneTextureStore {
         )
 
         let pipeline = self.pipeline
+        let loadObserver = self.loadObserver
         let task = Task.detached { [self] in
             await Self.runLoad(
                 store: self,
@@ -293,7 +304,8 @@ public actor SceneTextureStore {
                 input: input,
                 key: key,
                 loadID: loadID,
-                submission: submission
+                submission: submission,
+                loadObserver: loadObserver
             )
         }
         loadingEntries[key]?.task = task
@@ -305,7 +317,8 @@ public actor SceneTextureStore {
         input: SceneTexturePipelineInput,
         key: SceneTextureStorageKey,
         loadID: UUID,
-        submission: SceneTextureSubmissionState
+        submission: SceneTextureSubmissionState,
+        loadObserver: (any SceneTextureStoreLoadObserving)?
     ) async {
         let prepared: SceneTexturePreparedLoad
         do {
@@ -317,6 +330,20 @@ public actor SceneTextureStore {
                 error: normalized(error, fallback: .decodeFailed)
             )
             return
+        }
+
+        if let loadObserver {
+            do {
+                try await loadObserver.preparationFinished(prepared)
+            } catch {
+                await store.releaseDecodedReservation(from: prepared)
+                await store.failLoad(
+                    key: key,
+                    loadID: loadID,
+                    error: normalized(error, fallback: .decodeFailed)
+                )
+                return
+            }
         }
 
         do {

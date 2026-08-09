@@ -359,6 +359,88 @@ final class SceneTexturePipelineIntegrationTests: XCTestCase {
         }
     }
 
+    func testLZ4DirectReservesSelectedAndExpandedOverlapAcrossMipChain() async throws {
+        let levelZero = Data(repeating: 0x11, count: 16)
+        let levelOneRGBA = Data([0x21, 0x22, 0x23, 0x24])
+        let levelOneLZ4 = Data([0x40]) + levelOneRGBA
+        let texture = SceneTextureFixtureBuilder.make(
+            formatRawValue: 0,
+            textureSize: (2, 2),
+            imageSize: (2, 2),
+            container: .b0003(imageFormatRawValue: 0),
+            images: [.init(mipmaps: [
+                .init(width: 2, height: 2, payload: levelZero),
+                .init(
+                    width: 1,
+                    height: 1,
+                    isLZ4Compressed: true,
+                    decompressedByteCount: 4,
+                    payload: levelOneLZ4
+                )
+            ])]
+        )
+        let fixture = try makePackageTextureFixture(texture: texture)
+
+        try await assertDecodedFootprintBoundary(
+            fixture: fixture,
+            expectedMaximum: 16 + levelOneLZ4.count + levelOneRGBA.count
+        )
+    }
+
+    func testSoftwareBCReservesInputDecodeCropAndPaddingOverlapAcrossMipChain() async throws {
+        let block = Data([0x00, 0xF8, 0x00, 0x00, 0, 0, 0, 0])
+        let texture = SceneTextureFixtureBuilder.make(
+            formatRawValue: 7,
+            textureSize: (4, 4),
+            imageSize: (2, 2),
+            container: .b0003(imageFormatRawValue: 7),
+            images: [.init(mipmaps: [
+                .init(width: 4, height: 4, payload: block),
+                .init(width: 2, height: 2, payload: block)
+            ])]
+        )
+        let fixture = try makePackageTextureFixture(texture: texture)
+
+        try await assertDecodedFootprintBoundary(
+            fixture: fixture,
+            expectedMaximum: 64 + block.count + block.count + 16 + 4,
+            supportsBCTextureCompression: false
+        )
+    }
+
+    func testImageIOReservesEncodedLogicalAndPaddedTransparencyOverlapAcrossMipChain() async throws {
+        let levelZeroPNG = encodedPNG(
+            width: 2,
+            height: 2,
+            premultipliedRGBA: [
+                64, 32, 0, 64, 0, 0, 0, 0,
+                255, 0, 0, 255, 0, 255, 0, 255
+            ]
+        )
+        let levelOnePNG = encodedPNG(
+            width: 1,
+            height: 1,
+            premultipliedRGBA: [0, 0, 128, 128]
+        )
+        let texture = SceneTextureFixtureBuilder.make(
+            formatRawValue: 77,
+            textureSize: (4, 4),
+            imageSize: (2, 2),
+            container: .b0003(imageFormatRawValue: 77),
+            images: [.init(mipmaps: [
+                .init(width: 4, height: 4, payload: levelZeroPNG),
+                .init(width: 2, height: 2, payload: levelOnePNG)
+            ])]
+        )
+        let fixture = try makePackageTextureFixture(texture: texture)
+        let encodedChainBytes = levelZeroPNG.count + levelOnePNG.count
+
+        try await assertDecodedFootprintBoundary(
+            fixture: fixture,
+            expectedMaximum: encodedChainBytes + 64 + 4 + 16
+        )
+    }
+
     func testPackageRGBAReachesPrivateTextureThroughPublicStore() async throws {
         let expected = Data([255, 0, 0, 255, 0, 255, 0, 128])
         let fixture = try makePackageTextureFixture(texture: makeTexture(
@@ -556,6 +638,8 @@ final class SceneTexturePipelineIntegrationTests: XCTestCase {
     }
 
     func testMalformedLaterMipPreventsAllCacheInstallation() async throws {
+        let payloadMarker = "TASK9_PAYLOAD_SECRET_7F3A"
+        let malformedPayload = Data(payloadMarker.utf8)
         let texture = SceneTextureFixtureBuilder.make(
             formatRawValue: 0,
             textureSize: (2, 2),
@@ -563,12 +647,14 @@ final class SceneTexturePipelineIntegrationTests: XCTestCase {
             container: .b0003(imageFormatRawValue: 0),
             images: [.init(mipmaps: [
                 .init(width: 2, height: 2, payload: Data(repeating: 1, count: 16)),
-                .init(width: 1, height: 1, payload: Data(repeating: 2, count: 3))
+                .init(width: 1, height: 1, payload: malformedPayload)
             ])]
         )
+        XCTAssertNotNil(texture.range(of: malformedPayload))
         let fixture = try makePackageTextureFixture(texture: texture)
         let store = try SceneTextureStore(device: try device())
         let generation = await store.makeGeneration()
+        var capturedError: SceneTexturePipelineError?
 
         await XCTAssertThrowsErrorAsync(
             try await store.acquire(
@@ -578,13 +664,22 @@ final class SceneTexturePipelineIntegrationTests: XCTestCase {
                 for: generation
             )
         ) { error in
-            XCTAssertEqual(error as? SceneTexturePipelineError, .malformedPayload)
+            capturedError = error as? SceneTexturePipelineError
+            XCTAssertEqual(capturedError, .malformedPayload)
         }
 
         let snapshot = await store.snapshot()
         XCTAssertEqual(snapshot.readyEntries, 0)
         XCTAssertEqual(snapshot.residentBytes, 0)
         XCTAssertEqual(snapshot.decodedCPUBytes, 0)
+        for text in [
+            String(describing: capturedError),
+            String(reflecting: capturedError),
+            String(describing: snapshot),
+            String(reflecting: snapshot)
+        ] {
+            assertRedacted(text, payloadMarker: payloadMarker)
+        }
     }
 
     func testSecondRequestIsCacheHitWithoutFurtherReadDecodeOrUpload() async throws {
@@ -699,6 +794,230 @@ final class SceneTexturePipelineIntegrationTests: XCTestCase {
         XCTAssertEqual(snapshot.stagingBytes, 0)
     }
 
+    func testDefaultLoaderUsesConfiguredDecodeLimiterAndFIFO() async throws {
+        let device = try device()
+        let limits = PipelineLimits(
+            maximumConcurrentDecodes: 2,
+            maximumConcurrentUploads: 1
+        )
+        let probe = PipelineStageProbe(blocking: [.decode])
+        let budget = SceneTextureMemoryBudget(limits: limits)
+        let loader = try makeDefaultLoader(
+            device: device,
+            limits: limits,
+            memoryBudget: budget,
+            observer: probe
+        )
+        let fixtures = try (1...4).map { id in
+            try makePackageTextureFixture(
+                texture: makeTexture(
+                    format: 0,
+                    width: 1,
+                    height: 1,
+                    payload: Data([UInt8(id), 0, 0, 255])
+                ),
+                path: "materials/\(id).tex"
+            )
+        }
+        let inputs = try fixtures.map { try pipelineInput(for: $0, device: device) }
+
+        let first = Task { try await loader.prepare(inputs[0]) }
+        await probe.waitForStartedCount(1, stage: .decode)
+        let second = Task { try await loader.prepare(inputs[1]) }
+        await probe.waitForStartedCount(2, stage: .decode)
+        let third = Task { try await loader.prepare(inputs[2]) }
+        await waitForQueuedDecodeCount(1, loader: loader)
+        let fourth = Task { try await loader.prepare(inputs[3]) }
+        await waitForQueuedDecodeCount(2, loader: loader)
+
+        let maximumDecodeConcurrency = await probe.maximumActive(for: .decode)
+        XCTAssertEqual(maximumDecodeConcurrency, 2)
+        await probe.release(id: 1, stage: .decode)
+        await probe.waitForStartedCount(3, stage: .decode)
+        await probe.release(id: 2, stage: .decode)
+        await probe.waitForStartedCount(4, stage: .decode)
+        await probe.release(id: 3, stage: .decode)
+        await probe.release(id: 4, stage: .decode)
+
+        let prepared = try await [first.value, second.value, third.value, fourth.value]
+        let decodeOrder = await probe.startedIDs(for: .decode)
+        XCTAssertEqual(decodeOrder, [1, 2, 3, 4])
+        for load in prepared {
+            try budget.release(try XCTUnwrap(load.decodedReservation))
+        }
+    }
+
+    func testDefaultLoaderUsesSeparateConfiguredUploadLimiterAndFIFO() async throws {
+        let device = try device()
+        let limits = PipelineLimits(
+            maximumConcurrentDecodes: 3,
+            maximumConcurrentUploads: 1
+        )
+        let probe = PipelineStageProbe(blocking: [.upload])
+        let budget = SceneTextureMemoryBudget(limits: limits)
+        let loader = try makeDefaultLoader(
+            device: device,
+            limits: limits,
+            memoryBudget: budget,
+            observer: probe
+        )
+        let fixtures = try (1...3).map { id in
+            try makePackageTextureFixture(
+                texture: makeTexture(
+                    format: 0,
+                    width: 1,
+                    height: 1,
+                    payload: Data([UInt8(id), 0, 0, 255])
+                ),
+                path: "materials/upload-\(id).tex"
+            )
+        }
+        let prepared = try await fixtures.asyncMap {
+            try await loader.prepare(try pipelineInput(for: $0, device: device))
+        }
+
+        let first = Task {
+            try await loader.allocate(prepared[0], submission: SceneTextureSubmissionState())
+        }
+        await probe.waitForStartedCount(1, stage: .upload)
+        let second = Task {
+            try await loader.allocate(prepared[1], submission: SceneTextureSubmissionState())
+        }
+        await waitForQueuedUploadCount(1, loader: loader)
+        let third = Task {
+            try await loader.allocate(prepared[2], submission: SceneTextureSubmissionState())
+        }
+        await waitForQueuedUploadCount(2, loader: loader)
+
+        let maximumUploadConcurrency = await probe.maximumActive(for: .upload)
+        XCTAssertEqual(maximumUploadConcurrency, 1)
+        await probe.release(id: 1, stage: .upload)
+        await probe.waitForStartedCount(2, stage: .upload)
+        await probe.release(id: 2, stage: .upload)
+        await probe.waitForStartedCount(3, stage: .upload)
+        await probe.release(id: 3, stage: .upload)
+        _ = try await (first.value, second.value, third.value)
+
+        let uploadOrder = await probe.startedIDs(for: .upload)
+        XCTAssertEqual(uploadOrder, [1, 2, 3])
+        let snapshot = budget.snapshot()
+        XCTAssertEqual(snapshot.decodedCPUBytes, 0)
+        XCTAssertEqual(snapshot.stagingBytes, 0)
+    }
+
+    func testProductionCancellationAfterPreparationRollsBackExactly() async throws {
+        let device = try device()
+        let limits = PipelineLimits()
+        let probe = PipelineStageProbe(blocking: [.prepared])
+        let fixture = try makePackageTextureFixture(
+            texture: makeTexture(
+                format: 0,
+                width: 1,
+                height: 1,
+                payload: Data([41, 0, 0, 255])
+            ),
+            path: "materials/cancel-prepared-41.tex"
+        )
+        let (store, _) = try makeObservedProductionStore(
+            device: device,
+            limits: limits,
+            observer: probe
+        )
+        let generation = await store.makeGeneration()
+
+        let acquisition = Task {
+            try await store.acquire(
+                fixture.request(color: .dataLinear),
+                resource: fixture.resource,
+                resolver: fixture.resolver,
+                for: generation
+            )
+        }
+        await probe.waitForStartedCount(1, stage: .prepared)
+        let preparedSnapshot = await store.snapshot()
+        XCTAssertGreaterThan(preparedSnapshot.decodedCPUBytes, 0)
+        XCTAssertEqual(preparedSnapshot.stagingBytes, 0)
+        XCTAssertEqual(preparedSnapshot.residentBytes, 0)
+
+        acquisition.cancel()
+        await assertCancelled(acquisition)
+        await assertStoreRolledBack(store)
+    }
+
+    func testProductionCancellationWhileQueuedForUploadRollsBackExactly() async throws {
+        let device = try device()
+        let limits = PipelineLimits(maximumConcurrentUploads: 1)
+        let probe = PipelineStageProbe(blocking: [.upload])
+        let fixtures = try [51, 52].map { id in
+            try makePackageTextureFixture(
+                texture: makeTexture(
+                    format: 0,
+                    width: 1,
+                    height: 1,
+                    payload: Data([UInt8(id), 0, 0, 255])
+                ),
+                path: "materials/cancel-queued-\(id).tex"
+            )
+        }
+        let (store, loader) = try makeObservedProductionStore(
+            device: device,
+            limits: limits,
+            observer: probe
+        )
+        let generation = await store.makeGeneration()
+        let first = acquisitionTask(store: store, fixture: fixtures[0], generation: generation)
+        await probe.waitForStartedCount(1, stage: .upload)
+        let second = acquisitionTask(store: store, fixture: fixtures[1], generation: generation)
+        await waitForQueuedUploadCount(1, loader: loader)
+
+        let queuedSnapshot = await store.snapshot()
+        XCTAssertGreaterThan(queuedSnapshot.decodedCPUBytes, 0)
+        XCTAssertGreaterThan(queuedSnapshot.stagingBytes, 0)
+        XCTAssertGreaterThan(queuedSnapshot.residentBytes, 0)
+
+        second.cancel()
+        await assertCancelled(second)
+        first.cancel()
+        await assertCancelled(first)
+        await assertStoreRolledBack(store)
+    }
+
+    func testProductionCancellationBeforeSubmissionRollsBackExactly() async throws {
+        let device = try device()
+        let limits = PipelineLimits(maximumConcurrentUploads: 1)
+        let probe = PipelineStageProbe(blocking: [.upload])
+        let fixture = try makePackageTextureFixture(
+            texture: makeTexture(
+                format: 0,
+                width: 1,
+                height: 1,
+                payload: Data([61, 0, 0, 255])
+            ),
+            path: "materials/cancel-before-submit-61.tex"
+        )
+        let (store, _) = try makeObservedProductionStore(
+            device: device,
+            limits: limits,
+            observer: probe
+        )
+        let generation = await store.makeGeneration()
+        let acquisition = acquisitionTask(
+            store: store,
+            fixture: fixture,
+            generation: generation
+        )
+        await probe.waitForStartedCount(1, stage: .upload)
+
+        let beforeSubmission = await store.snapshot()
+        XCTAssertGreaterThan(beforeSubmission.decodedCPUBytes, 0)
+        XCTAssertGreaterThan(beforeSubmission.stagingBytes, 0)
+        XCTAssertGreaterThan(beforeSubmission.residentBytes, 0)
+
+        acquisition.cancel()
+        await assertCancelled(acquisition)
+        await assertStoreRolledBack(store)
+    }
+
     func testWorkLimiterBoundsObservedConcurrencyWithoutSleepTiming() async throws {
         let limiter = SceneTextureWorkLimiter(limit: 2)
         let probe = LimiterProbe()
@@ -801,18 +1120,240 @@ final class SceneTexturePipelineIntegrationTests: XCTestCase {
         XCTFail("Timed out waiting for \(count) queued limiter operations", file: file, line: line)
     }
 
+    private func waitForQueuedDecodeCount(
+        _ count: Int,
+        loader: DefaultSceneTexturePipelineLoader,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async {
+        for _ in 0..<10_000 {
+            if await loader.queuedDecodeCount() == count {
+                return
+            }
+            await Task.yield()
+        }
+        XCTFail("Timed out waiting for \(count) queued decodes", file: file, line: line)
+    }
+
+    private func waitForQueuedUploadCount(
+        _ count: Int,
+        loader: DefaultSceneTexturePipelineLoader,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async {
+        for _ in 0..<10_000 {
+            if await loader.queuedUploadCount() == count {
+                return
+            }
+            await Task.yield()
+        }
+        XCTFail("Timed out waiting for \(count) queued uploads", file: file, line: line)
+    }
+
+    private func makeDefaultLoader(
+        device: any MTLDevice,
+        limits: PipelineLimits,
+        memoryBudget: SceneTextureMemoryBudget,
+        observer: any SceneTexturePipelineObserving
+    ) throws -> DefaultSceneTexturePipelineLoader {
+        try DefaultSceneTexturePipelineLoader(
+            device: device,
+            capabilities: .init(
+                supportsBCTextureCompression: device.supportsBCTextureCompression,
+                linearTextureAlignment: [:]
+            ),
+            limits: limits,
+            memoryBudget: memoryBudget,
+            allocator: DirectSceneTextureAllocator(device: device, limits: limits),
+            observer: observer
+        )
+    }
+
+    private func makeObservedProductionStore(
+        device: any MTLDevice,
+        limits: PipelineLimits,
+        observer: any SceneTexturePipelineObserving & SceneTextureStoreLoadObserving
+    ) throws -> (SceneTextureStore, DefaultSceneTexturePipelineLoader) {
+        let budget = SceneTextureMemoryBudget(limits: limits)
+        let loader = try makeDefaultLoader(
+            device: device,
+            limits: limits,
+            memoryBudget: budget,
+            observer: observer
+        )
+        let store = SceneTextureStore(
+            testPipeline: loader,
+            limits: limits,
+            memoryBudget: budget,
+            loadObserver: observer,
+            deviceRegistryID: device.registryID
+        )
+        return (store, loader)
+    }
+
+    private func acquisitionTask(
+        store: SceneTextureStore,
+        fixture: PackageTextureFixture,
+        generation: SceneTextureGenerationID
+    ) -> Task<SceneTextureLease, Error> {
+        Task {
+            try await store.acquire(
+                fixture.request(color: .dataLinear),
+                resource: fixture.resource,
+                resolver: fixture.resolver,
+                for: generation
+            )
+        }
+    }
+
+    private func assertCancelled(
+        _ task: Task<SceneTextureLease, Error>,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async {
+        await XCTAssertThrowsErrorAsync(try await task.value) { error in
+            XCTAssertEqual(
+                error as? SceneTexturePipelineError,
+                .cancelled,
+                file: file,
+                line: line
+            )
+        }
+    }
+
+    private func assertStoreRolledBack(
+        _ store: SceneTextureStore,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async {
+        for _ in 0..<10_000 {
+            let snapshot = await store.snapshot()
+            if snapshot.loadingEntries == 0,
+               snapshot.decodedCPUBytes == 0,
+               snapshot.stagingBytes == 0,
+               snapshot.residentBytes == 0 {
+                XCTAssertEqual(snapshot.readyEntries, 0, file: file, line: line)
+                return
+            }
+            await Task.yield()
+        }
+        let snapshot = await store.snapshot()
+        XCTFail("Store did not roll back exactly: \(snapshot)", file: file, line: line)
+    }
+
+    private func pipelineInput(
+        for fixture: PackageTextureFixture,
+        device: any MTLDevice
+    ) throws -> SceneTexturePipelineInput {
+        let selected = try XCTUnwrap(fixture.resource.resolution.selected)
+        guard case let .package(identity) = selected.provenance else {
+            throw SceneTexturePipelineError.invalidRequest
+        }
+        let request = fixture.request(color: .dataLinear)
+        return SceneTexturePipelineInput(
+            request: request,
+            resource: fixture.resource,
+            resolver: fixture.resolver,
+            storageKey: SceneTextureStorageKey(
+                packageID: request.packageID,
+                canonicalPath: selected.canonicalPath.rawValue,
+                entryRelativeOffset: identity.relativeOffset,
+                entryByteCount: identity.byteCount,
+                imageIndex: request.imageIndex,
+                uploadPolicyVersion: 1,
+                deviceRegistryID: device.registryID
+            )
+        )
+    }
+
     private func device() throws -> any MTLDevice {
         try XCTUnwrap(MTLCreateSystemDefaultDevice())
     }
 
+    private func assertDecodedFootprintBoundary(
+        fixture: PackageTextureFixture,
+        expectedMaximum: Int,
+        supportsBCTextureCompression: Bool? = nil,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async throws {
+        let device = try device()
+        let rejectedLimits = PipelineLimits(decodedCPUBytes: expectedMaximum - 1)
+        let rejectedStore = try makeProductionStore(
+            device: device,
+            limits: rejectedLimits,
+            supportsBCTextureCompression: supportsBCTextureCompression
+        )
+        let rejectedGeneration = await rejectedStore.makeGeneration()
+        await XCTAssertThrowsErrorAsync(
+            try await rejectedStore.acquire(
+                fixture.request(color: .dataLinear),
+                resource: fixture.resource,
+                resolver: fixture.resolver,
+                for: rejectedGeneration
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? SceneTexturePipelineError,
+                .resourceLimit(.decodedCPUBytes),
+                file: file,
+                line: line
+            )
+        }
+
+        let acceptedLimits = PipelineLimits(decodedCPUBytes: expectedMaximum)
+        let acceptedStore = try makeProductionStore(
+            device: device,
+            limits: acceptedLimits,
+            supportsBCTextureCompression: supportsBCTextureCompression
+        )
+        let acceptedGeneration = await acceptedStore.makeGeneration()
+        _ = try await acceptedStore.acquire(
+            fixture.request(color: .dataLinear),
+            resource: fixture.resource,
+            resolver: fixture.resolver,
+            for: acceptedGeneration
+        )
+        let snapshot = await acceptedStore.snapshot()
+        XCTAssertEqual(snapshot.peakDecodedCPUBytes, expectedMaximum, file: file, line: line)
+        XCTAssertEqual(snapshot.decodedCPUBytes, 0, file: file, line: line)
+    }
+
+    private func makeProductionStore(
+        device: any MTLDevice,
+        limits: PipelineLimits,
+        supportsBCTextureCompression: Bool?
+    ) throws -> SceneTextureStore {
+        guard let supportsBCTextureCompression else {
+            return try SceneTextureStore(device: device, limits: limits)
+        }
+        return try SceneTextureStore(
+            device: device,
+            limits: limits,
+            capabilities: .init(
+                supportsBCTextureCompression: supportsBCTextureCompression,
+                linearTextureAlignment: [:]
+            ),
+            allocator: DirectSceneTextureAllocator(device: device, limits: limits)
+        )
+    }
+
     private func assertRedacted(
         _ text: String,
+        payloadMarker: String? = nil,
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
-        XCTAssertFalse(text.contains("/Users/"), file: file, line: line)
-        XCTAssertFalse(text.contains("scene-s3-gpu-texture-pipeline"), file: file, line: line)
-        XCTAssertFalse(text.contains("DEADBEEF"), file: file, line: line)
+        let forbidden = [
+            payloadMarker,
+            "/Users/",
+            "/Users/mingyu/workspace/01_projects/app/wallpaper",
+            "scene-s3-gpu-texture-pipeline",
+            NSUserName()
+        ].compactMap { $0 }.filter { !$0.isEmpty }
+        for value in forbidden {
+            XCTAssertFalse(text.contains(value), file: file, line: line)
+        }
     }
 }
 
@@ -1090,6 +1631,106 @@ private actor LimiterProbe {
     }
 }
 
+private actor PipelineStageProbe: SceneTexturePipelineObserving,
+    SceneTextureStoreLoadObserving {
+    enum Stage: Hashable {
+        case decode
+        case prepared
+        case upload
+    }
+
+    private struct Key: Hashable {
+        let stage: Stage
+        let id: Int
+    }
+
+    private let blocking: Set<Stage>
+    private var order: [Stage: [Int]] = [:]
+    private var active: [Stage: Int] = [:]
+    private var maxima: [Stage: Int] = [:]
+    private var blockers: [Key: CheckedContinuation<Void, any Error>] = [:]
+    private var startWaiters: [Stage: [(Int, CheckedContinuation<Void, Never>)]] = [:]
+
+    init(blocking: Set<Stage>) {
+        self.blocking = blocking
+    }
+
+    func decodeStarted(_ input: SceneTexturePipelineInput) async throws {
+        let component = input.resource.path.rawValue.split(separator: "/").last ?? ""
+        let digits = component.filter(\.isNumber)
+        try await enter(id: Int(digits) ?? 0, stage: .decode)
+    }
+
+    func preparationFinished(_ prepared: SceneTexturePreparedLoad) async throws {
+        try await enter(id: try preparedID(prepared), stage: .prepared)
+    }
+
+    func uploadStarted(_ prepared: SceneTexturePreparedLoad) async throws {
+        try await enter(id: try preparedID(prepared), stage: .upload)
+    }
+
+    func waitForStartedCount(_ count: Int, stage: Stage) async {
+        guard order[stage, default: []].count < count else {
+            return
+        }
+        await withCheckedContinuation { continuation in
+            startWaiters[stage, default: []].append((count, continuation))
+        }
+    }
+
+    func release(id: Int, stage: Stage) {
+        blockers.removeValue(forKey: Key(stage: stage, id: id))?.resume()
+    }
+
+    func maximumActive(for stage: Stage) -> Int {
+        maxima[stage, default: 0]
+    }
+
+    func startedIDs(for stage: Stage) -> [Int] {
+        order[stage, default: []]
+    }
+
+    private func enter(id: Int, stage: Stage) async throws {
+        order[stage, default: []].append(id)
+        active[stage, default: 0] += 1
+        maxima[stage] = max(maxima[stage, default: 0], active[stage, default: 0])
+        resumeStartWaiters(for: stage)
+        defer { active[stage, default: 0] -= 1 }
+
+        guard blocking.contains(stage) else {
+            return
+        }
+        let key = Key(stage: stage, id: id)
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation {
+                (continuation: CheckedContinuation<Void, any Error>) in
+                if Task.isCancelled {
+                    continuation.resume(throwing: CancellationError())
+                } else {
+                    blockers[key] = continuation
+                }
+            }
+        } onCancel: {
+            Task { await self.cancel(key) }
+        }
+    }
+
+    private func cancel(_ key: Key) {
+        blockers.removeValue(forKey: key)?.resume(throwing: CancellationError())
+    }
+
+    private func resumeStartWaiters(for stage: Stage) {
+        let startedCount = order[stage, default: []].count
+        let ready = startWaiters[stage, default: []].filter { $0.0 <= startedCount }
+        startWaiters[stage]?.removeAll(where: { $0.0 <= startedCount })
+        ready.forEach { $0.1.resume() }
+    }
+
+    private func preparedID(_ prepared: SceneTexturePreparedLoad) throws -> Int {
+        Int(try XCTUnwrap(prepared.allocationPlan.mips.first?.bytes.first))
+    }
+}
+
 private actor DetachedCancellationProbe {
     private var started = false
     private var canceled = false
@@ -1130,6 +1771,17 @@ private extension Array where Element == Task<Int, Error> {
             values.append(try await task.value)
         }
         return values
+    }
+}
+
+private extension Array {
+    func asyncMap<T>(_ transform: (Element) async throws -> T) async rethrows -> [T] {
+        var result: [T] = []
+        result.reserveCapacity(count)
+        for element in self {
+            result.append(try await transform(element))
+        }
+        return result
     }
 }
 
