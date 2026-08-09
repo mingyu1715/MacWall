@@ -162,6 +162,23 @@ final class SceneTextureCacheTests: XCTestCase {
         )
     }
 
+    func testEqualAccessOrdinalsTrimInStableStorageKeyOrder() {
+        let sharedOrdinal: UInt64 = 7
+        var cache = SceneTextureCache<FakeTextureValue>(
+            initialAccessOrdinal: sharedOrdinal,
+            initialReadyEntries: [
+                keyC: readyEntry(bytes: 10, accessOrdinal: sharedOrdinal),
+                keyB: readyEntry(bytes: 10, accessOrdinal: sharedOrdinal),
+                keyA: readyEntry(bytes: 10, accessOrdinal: sharedOrdinal)
+            ]
+        )
+
+        XCTAssertEqual(
+            cache.trimUnowned(toResidentBytes: 0).map(\.key),
+            [keyA, keyB, keyC]
+        )
+    }
+
     func testNewInstallIsMoreRecentThanAnOlderCacheHit() {
         var cache = SceneTextureCache<FakeTextureValue>()
         cache.install(
@@ -312,6 +329,19 @@ private let keyC = key(package: packageA, path: "materials/c.tex")
 
 private func textureValue(bytes: Int) -> FakeTextureValue {
     FakeTextureValue(bytes: bytes)
+}
+
+private func readyEntry(
+    bytes: Int,
+    accessOrdinal: UInt64
+) -> SceneTextureCache<FakeTextureValue>.ReadyEntry {
+    SceneTextureCache<FakeTextureValue>.ReadyEntry(
+        value: textureValue(bytes: bytes),
+        residentBytes: bytes,
+        owners: [],
+        lastAccessOrdinal: accessOrdinal,
+        uploadPath: .directUncompressed
+    )
 }
 
 private func key(

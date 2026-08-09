@@ -57,7 +57,11 @@ struct SceneTextureCache<Value: Sendable>: Sendable {
     private var evictions = 0
     private var lastAccessOrdinal: UInt64 = 0
 
-    init(initialAccessOrdinal: UInt64 = 0) {
+    init(
+        initialAccessOrdinal: UInt64 = 0,
+        initialReadyEntries: [SceneTextureStorageKey: ReadyEntry] = [:]
+    ) {
+        readyEntries = initialReadyEntries
         lastAccessOrdinal = initialAccessOrdinal
     }
 
