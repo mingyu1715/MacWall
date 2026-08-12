@@ -1,6 +1,6 @@
 # MacWall Scene Engine Design
 
-상태: Approved design / S0-S2 implemented / S3 implementation plan ready
+상태: Approved design / S0-S3 implemented / S4 next design
 
 작성일: 2026-07-29
 대상: Wallpaper Engine Scene compatibility runtime
@@ -671,15 +671,20 @@ transition은 사용자가 직접 확인합니다. 자동화가 대신 조작하
 
 ### S3: GPU Texture Pipeline
 
-상태: design approved / implementation plan ready / implementation not started
+상태: implemented / completed
 
-S3는 [승인된 GPU Texture Pipeline 설계](2026-08-06-scene-gpu-texture-pipeline-design.md)와
-[실행 계획](../plans/2026-08-06-scene-gpu-texture-pipeline.md)을 기준으로 구현한다.
+S3는 `MacWallSceneTextures` 독립 target에 capability mapping, direct raw/BC
+upload, ImageIO/software fallback, full-mip metadata, memory reservation,
+generation cache/store를 구현했다. 결과는
+[S3 구현 기록](../../implemented/2026-08-06-scene-gpu-texture-pipeline.md)에,
+설계와 실행 계획은 각각
+[archive design](../../archive/superpowers/specs/2026-08-06-scene-gpu-texture-pipeline-design.md) 및
+[archive plan](../../archive/superpowers/plans/2026-08-06-scene-gpu-texture-pipeline.md)에
+보관한다.
 
-- Metal capability mapping
-- direct compressed upload when supported
-- CPU fallback decode
-- async cache and memory accounting
+현재 검증은 focused S3 `159 tests, 0 failures, 0 skips`, full `swift test`
+`576 tests, 0 failures, 0 skips`다. renderer, Desktop output, Scene fallback,
+animation/video, heap/streaming은 S3에 포함하지 않는다.
 
 ### S4: Headless 2D Renderer
 

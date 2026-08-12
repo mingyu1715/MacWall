@@ -2,12 +2,38 @@
 
 모든 시간은 Asia/Seoul 기준입니다.
 
+## 2026-08-13
+
+### 00:46 KST
+
+- 완료: Scene Engine S3 GPU Texture Pipeline 구현 및 completion documentation
+- 문서: [S3 구현 기록](implemented/2026-08-06-scene-gpu-texture-pipeline.md)
+- 구현:
+  - `MacWallSceneTextures` 독립 target, pure planner, bounded payload loader,
+    ImageIO normalization, private Metal direct allocator, generation-aware cache/store
+  - RGBA8/RG8/R8 direct upload, BC1/BC2/BC3 capability direct upload 및 software
+    RGBA fallback, full static mip atomicity, physical padding/content metadata
+  - resident/staging/decoded CPU reservation rollback, in-flight dedupe, generation
+    ownership, unowned LRU, cancellation/submission cleanup
+  - compact format-0 encoded mip과 Core/CALayer selected-mip compatibility,
+    raw PNG-prefix 및 BC signature collision regression 보존
+- local fixture: fixed 3 fixture, `197 resources = 188 GPU successes + 9 typed unsupported`
+- 검증:
+  - focused S3 10 suites: `159 tests, 0 failures, 0 skips`
+  - `SceneLocalFixtureTextureTests`: `15 tests, 0 failures, 0 skips`, `102.257s`
+  - 전체 `swift test`: `576 tests, 0 failures, 0 skips`, XCTest `106.275s`
+  - dependency/privacy/catalog/whitespace static checks 통과
+- 문서: active S3 spec/plan은 archive로 이동했고 S4 Headless 2D Metal Renderer가
+  다음 Scene 설계 단계입니다.
+- 미실행: S4 renderer, Desktop Scene, Scene fallback, animation/video texture,
+  heap/streaming, GUI/앱/System Settings 실행, package/DMG/notarization/dist
+
 ## 2026-08-06
 
 ### 00:33 KST
 
 - 완료: Scene Engine S3 GPU Texture Pipeline executable implementation plan 작성
-- 계획: [S3 GPU Texture Pipeline 실행 계획](superpowers/plans/2026-08-06-scene-gpu-texture-pipeline.md)
+- 계획: [S3 GPU Texture Pipeline 실행 계획](archive/superpowers/plans/2026-08-06-scene-gpu-texture-pipeline.md)
 - 구조:
   - public model/pure planner, bounded payload/ImageIO, memory/Metal allocator,
     generation cache/store, production resolver integration, three-fixture gate로 분해
@@ -24,7 +50,7 @@
 ### 00:03 KST
 
 - 완료: Scene Engine S3 GPU Texture Pipeline 설계 승인 및 문서화
-- 설계: [S3 GPU Texture Pipeline 설계](superpowers/specs/2026-08-06-scene-gpu-texture-pipeline-design.md)
+- 설계: [S3 GPU Texture Pipeline 설계](archive/superpowers/specs/2026-08-06-scene-gpu-texture-pipeline-design.md)
 - 결정:
   - `MacWallSceneTextures` 독립 target에서 capability 기반 BC/raw direct upload와
     software/ImageIO fallback을 제공

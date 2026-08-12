@@ -33,6 +33,7 @@ repository root에는 사용자와 외부 기여자가 바로 확인해야 하�
 - [macOS 26 Native Auto-pause 및 Runtime Stability 구현 기록](implemented/2026-07-29-native-auto-pause-runtime-stability.md)
 - [Scene S1 Format Layer Hardening 구현 기록](implemented/2026-07-29-scene-format-layer-hardening.md)
 - [Scene S2 Asset Resolver and Typed Graph 구현 기록](implemented/2026-08-04-scene-asset-resolver-typed-graph.md)
+- [Scene S3 GPU Texture Pipeline 구현 기록](implemented/2026-08-06-scene-gpu-texture-pipeline.md)
 
 작은 버그 수정이나 판단은 [개발 로그](development-log.md)에만 남겨도 됩니다. 큰 기능은 구현 기록을 만들고 개발 로그에서 링크합니다.
 
@@ -49,13 +50,15 @@ repository root에는 사용자와 외부 기여자가 바로 확인해야 하�
 - [macOS 26 Native Wallpaper AdHocQA Transport 설계](superpowers/specs/2026-07-29-native-wallpaper-adhoc-qa-transport-design.md): provisioning 전 개발용 runtime transport
 - [macOS 26 Native Wallpaper AdHocQA Transport 실행 계획](superpowers/plans/2026-07-29-native-wallpaper-adhoc-qa-transport.md)
 - [Scene Engine 설계](superpowers/specs/2026-07-29-scene-engine-design.md): format, asset resolver, typed graph, Metal renderer, Native Wallpaper integration
-- [Scene S3 GPU Texture Pipeline 설계](superpowers/specs/2026-08-06-scene-gpu-texture-pipeline-design.md): capability 기반 direct/CPU upload, generation cache, memory budget
-- [Scene S3 GPU Texture Pipeline 실행 계획](superpowers/plans/2026-08-06-scene-gpu-texture-pipeline.md): TDD task, Metal readback, local fixture gate, completion documentation
 
 Scene S0/S1 계획은 구현 완료되어 `archive/superpowers/`로 이동했습니다.
 Scene S2 설계와 실행 계획도 구현 완료되어 `archive/superpowers/`로 이동했습니다.
-Scene S3 GPU Texture Pipeline 설계와 executable implementation plan이
-준비되었고 코드 구현은 시작하지 않았습니다.
+Scene S3 GPU Texture Pipeline은 구현 완료되어 결과는
+[구현 기록](implemented/2026-08-06-scene-gpu-texture-pipeline.md)에, 설계와
+실행 계획은 각각
+[archive spec](archive/superpowers/specs/2026-08-06-scene-gpu-texture-pipeline-design.md)과
+[archive plan](archive/superpowers/plans/2026-08-06-scene-gpu-texture-pipeline.md)에
+보관합니다. 다음 Scene 설계 대상은 S4 Headless 2D Metal Renderer입니다.
 
 ## 재사용 템플릿
 

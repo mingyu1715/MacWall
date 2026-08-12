@@ -1,6 +1,6 @@
 # MacWall 개발 로드맵
 
-수정일: 2026-08-04
+수정일: 2026-08-13
 
 이 문서는 현재 활성 제품 개발 방향과 Scene 개발 방향을 정리합니다. 완료된 세부 구현 계획은 `docs/implemented/`에 기록하고, 과거 계획은 `docs/archive/`에 보관합니다.
 
@@ -469,16 +469,23 @@ module은 AppKit/Metal desktop rendering 없이 test와 non-GUI code에서 사�
 
 ### S3: GPU Texture Pipeline
 
-상태: [설계 승인](superpowers/specs/2026-08-06-scene-gpu-texture-pipeline-design.md) /
-[실행 계획 준비](superpowers/plans/2026-08-06-scene-gpu-texture-pipeline.md) /
-코드 미착수
+상태: 구현 완료. [구현 기록](implemented/2026-08-06-scene-gpu-texture-pipeline.md)을
+기준으로 하며, 완료된 [설계](archive/superpowers/specs/2026-08-06-scene-gpu-texture-pipeline-design.md)와
+[실행 계획](archive/superpowers/plans/2026-08-06-scene-gpu-texture-pipeline.md)은
+archive에 보관합니다.
 
-- mipmap과 texture padding metadata를 지원합니다.
-- Metal device capability가 허용하는 경우 compressed texture를 직접 upload합니다.
-- software decompression은 fallback으로만 둡니다.
-- repeated texture reference를 dedupe합니다.
-- async loading과 bounded cache를 추가합니다.
-- active texture memory를 diagnostics에 표시합니다.
+- `MacWallSceneTextures`가 bounded package resource에서 RGBA8/RG8/R8,
+  capability-gated BC1/BC2/BC3, encoded ImageIO texture를 private Metal texture로
+  준비합니다.
+- full static mip chain, physical padding/logical content metadata, top-left origin,
+  generation ownership, in-flight dedupe, unowned LRU, memory reservation rollback을
+  구현했습니다.
+- fixed local fixture 3개는 `197 resources = 188 GPU successes + 9 typed unsupported`
+  결과를 deterministic/path-redacted catalog에 기록합니다.
+- 현재 HEAD 검증: focused S3 10 suites `159 tests, 0 failures, 0 skips`; full
+  `swift test` `576 tests, 0 failures, 0 skips` (XCTest `106.275s`).
+- renderer, Desktop Scene, fallback, animation/video, heap/streaming, GUI 검증은
+  S3 비범위입니다.
 
 ### S4: Headless 2D Metal Renderer
 
@@ -658,7 +665,7 @@ Scene runtime work:
 S0 Format Research and Fixture Catalog (완료)
 -> S1 Format Layer Hardening (완료)
 -> S2 Asset Resolver and Typed Scene Graph (구현 완료: local fixture 5 tests 및 전체 414 tests, 0 failures)
--> S3 GPU Texture Pipeline (설계 승인 / 실행 계획 준비 / 구현 전)
+-> S3 GPU Texture Pipeline (구현 완료: focused 159 tests, full 576 tests, 0 failures/0 skips)
 -> S4 Headless 2D Metal Renderer
 -> S5 Native Scene Frame Adapter
 -> S6 Effects
@@ -679,11 +686,9 @@ S5에서 common 2D Scene은 extension 내부의 실제 Metal output으로 재생
 다음 planning:
 
 1. 별도 사용자 gate에서 Native auto-pause, sleep/wake, 1회 recovery의 실제 Desktop 동작을 확인합니다.
-2. [S3 GPU Texture Pipeline 실행 계획](superpowers/plans/2026-08-06-scene-gpu-texture-pipeline.md)을
-   task-by-task로 실행합니다. S2 graph contract는
-   [구현 기록](implemented/2026-08-04-scene-asset-resolver-typed-graph.md)과
-   [보관된 계획](archive/superpowers/plans/2026-08-04-scene-asset-resolver-typed-graph.md)을 기준으로 합니다.
-3. S3에서는 texture pipeline만 구현하고 S4 Metal renderer, Scene
-   fallback, Native Scene surface는 시작하지 않습니다.
+2. S4 Headless 2D Metal Renderer design/spec과 executable implementation plan을
+   작성합니다. S4는 S3의 `SceneTextureLease`와 S2 graph contract만 소비합니다.
+3. S4 설계 전에는 Desktop Scene, Scene fallback, Native Scene surface,
+   animation/video texture, heap/streaming을 시작하지 않습니다.
 4. snapshot/export는 `docs/superpowers/plans/2026-06-15-native-wallpaper-snapshot-export-gate.md`, BGRA IOSurface memory는 별도 최적화 작업으로 유지합니다.
 5. proper Apple signing/provisioning 기반 App Group runtime QA는 release 전 별도 gate로 유지합니다.
