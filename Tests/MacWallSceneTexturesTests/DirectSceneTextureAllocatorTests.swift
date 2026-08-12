@@ -29,6 +29,43 @@ final class DirectSceneTextureAllocatorTests: XCTestCase {
         XCTAssertFalse(submission.cancelIfPending())
     }
 
+    func testSubmittedResourceCleanupRunsAfterCompletionExactlyOnce() {
+        let submission = SceneTextureSubmissionState()
+        let cleanupCount = LockedInt()
+        XCTAssertTrue(submission.submitIfPending())
+
+        submission.performAfterSubmittedResourcesComplete {
+            cleanupCount.increment()
+        }
+        XCTAssertEqual(cleanupCount.value, 0)
+
+        submission.completeSubmittedResources()
+        submission.completeSubmittedResources()
+        XCTAssertEqual(cleanupCount.value, 1)
+
+        submission.performAfterSubmittedResourcesComplete {
+            cleanupCount.increment()
+        }
+        XCTAssertEqual(cleanupCount.value, 2)
+    }
+
+    func testUnsubmittedResourceCleanupRunsImmediately() {
+        let pending = SceneTextureSubmissionState()
+        let pendingCount = LockedInt()
+        pending.performAfterSubmittedResourcesComplete {
+            pendingCount.increment()
+        }
+        XCTAssertEqual(pendingCount.value, 1)
+
+        let cancelled = SceneTextureSubmissionState()
+        XCTAssertTrue(cancelled.cancelIfPending())
+        let cancelledCount = LockedInt()
+        cancelled.performAfterSubmittedResourcesComplete {
+            cancelledCount.increment()
+        }
+        XCTAssertEqual(cancelledCount.value, 1)
+    }
+
     func testCancellationBeforeSubmissionPreventsCommit() async throws {
         let device = try metalDevice()
         let submission = SceneTextureSubmissionState()

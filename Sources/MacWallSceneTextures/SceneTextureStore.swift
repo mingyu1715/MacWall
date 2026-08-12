@@ -420,6 +420,10 @@ public actor SceneTextureStore {
             return false
         }
 
+        // Persist removed waiters before reserve can throw. failLoad must never
+        // observe and resume continuations that were already rejected above.
+        loadingEntries[key] = entry
+
         let estimate = prepared.estimatedResidentBytes
         let hardAvailable = estimate >= 0 && estimate <= limits.residentHardBytes
             ? limits.residentHardBytes - estimate
@@ -525,7 +529,10 @@ public actor SceneTextureStore {
         }
         loadingEntries.removeValue(forKey: key)
         if let reservation = entry.residentReservation {
-            releaseReservation(reservation)
+            releaseReservation(
+                reservation,
+                afterSubmittedResourcesComplete: entry.submission
+            )
         }
         recordFailure(error)
         resumeAll(entry.waiters, throwing: error)
@@ -605,6 +612,22 @@ public actor SceneTextureStore {
             try memoryBudget.release(reservation)
         } catch {
             assertionFailure("Scene texture memory reservation invariant failed: \(error)")
+        }
+    }
+
+    private func releaseReservation(
+        _ reservation: SceneTextureMemoryReservation,
+        afterSubmittedResourcesComplete submission: SceneTextureSubmissionState
+    ) {
+        let memoryBudget = self.memoryBudget
+        submission.performAfterSubmittedResourcesComplete {
+            do {
+                try memoryBudget.release(reservation)
+            } catch {
+                assertionFailure(
+                    "Scene texture memory reservation invariant failed: \(error)"
+                )
+            }
         }
     }
 

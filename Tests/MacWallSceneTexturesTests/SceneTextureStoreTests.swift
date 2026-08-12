@@ -329,6 +329,43 @@ final class SceneTextureStoreTests: XCTestCase {
         XCTAssertEqual(snapshot.readyEntries, 1)
     }
 
+    func testResidentFailureAfterRejectingColorWaiterResumesEachWaiterOnce() async throws {
+        let fake = ControllableTexturePipeline()
+        let store = SceneTextureStore(
+            testPipeline: fake,
+            limits: .init(residentSoftBytes: 0, residentHardBytes: 0)
+        )
+        let fixture = try textureFixture()
+        let colorGeneration = await store.makeGeneration()
+        let linearGeneration = await store.makeGeneration()
+        let color = acquireTask(
+            store: store,
+            fixture: fixture,
+            intent: .colorSRGB,
+            generation: colorGeneration
+        )
+        let linear = acquireTask(
+            store: store,
+            fixture: fixture,
+            intent: .dataLinear,
+            generation: linearGeneration
+        )
+
+        await fake.waitForPrepareCount(1)
+        let deduped = await storeDedupeCountBecomes(1, store: store)
+        XCTAssertTrue(deduped)
+        try await fake.completePreparation(
+            with: preparedLoad(supportsSRGBView: false, estimatedResidentBytes: 1)
+        )
+
+        await assertTaskError(.invalidRequest, task: color)
+        await assertTaskError(.resourceLimit(.residentBytes), task: linear)
+        let snapshot = await store.snapshot()
+        XCTAssertEqual(snapshot.loadingEntries, 0)
+        XCTAssertEqual(snapshot.residentBytes, 0)
+        XCTAssertEqual(snapshot.resourceLimitFailures, 1)
+    }
+
     func testLateIncompatibleWaiterFailsBeforeSharedAllocationCompletes() async throws {
         let fake = ControllableTexturePipeline()
         let store = SceneTextureStore(testPipeline: fake, limits: .init())

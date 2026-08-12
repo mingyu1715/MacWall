@@ -1060,6 +1060,136 @@ final class SceneTexturePipelineIntegrationTests: XCTestCase {
         await assertStoreRolledBack(store)
     }
 
+    func testTimedOutSubmittedUploadKeepsMemoryReservedUntilGPUCompletion() async throws {
+        let device = try device()
+        let limits = PipelineLimits()
+        let memoryBudget = SceneTextureMemoryBudget(limits: limits)
+        let completion = PipelineCompletionBox()
+        var operations = DirectSceneTextureAllocatorOperations.live
+        operations.addCompletedHandler = { _, callback in
+            completion.store(callback)
+        }
+        operations.commandBufferStatus = { _ in .completed }
+        operations.commit = { _ in }
+        let allocator = try DirectSceneTextureAllocator(
+            device: device,
+            limits: limits,
+            executor: SceneTextureUploadExecutor(
+                sleeper: ImmediatePipelineSleeper()
+            ),
+            operations: operations
+        )
+        let loader = try DefaultSceneTexturePipelineLoader(
+            device: device,
+            capabilities: .init(
+                supportsBCTextureCompression: device.supportsBCTextureCompression,
+                linearTextureAlignment: [:]
+            ),
+            limits: limits,
+            memoryBudget: memoryBudget,
+            allocator: allocator
+        )
+        let store = SceneTextureStore(
+            testPipeline: loader,
+            limits: limits,
+            memoryBudget: memoryBudget,
+            deviceRegistryID: device.registryID
+        )
+        let fixture = try makePackageTextureFixture(
+            texture: makeTexture(
+                format: 0,
+                width: 1,
+                height: 1,
+                payload: Data([71, 0, 0, 255])
+            ),
+            path: "materials/timeout-submitted-71.tex"
+        )
+        let generation = await store.makeGeneration()
+        let acquisition = acquisitionTask(
+            store: store,
+            fixture: fixture,
+            generation: generation
+        )
+
+        await XCTAssertThrowsErrorAsync(try await acquisition.value) { error in
+            XCTAssertEqual(
+                error as? SceneTexturePipelineError,
+                .uploadTimedOut
+            )
+        }
+        XCTAssertTrue(completion.hasCallback)
+        let timedOutSnapshot = await store.snapshot()
+        XCTAssertGreaterThan(timedOutSnapshot.decodedCPUBytes, 0)
+        XCTAssertGreaterThan(timedOutSnapshot.stagingBytes, 0)
+        XCTAssertGreaterThan(timedOutSnapshot.residentBytes, 0)
+
+        completion.invoke()
+        await assertStoreRolledBack(store)
+    }
+
+    func testCancelledSubmittedUploadKeepsMemoryReservedUntilGPUCompletion() async throws {
+        let device = try device()
+        let limits = PipelineLimits()
+        let memoryBudget = SceneTextureMemoryBudget(limits: limits)
+        let completion = PipelineCompletionBox()
+        var operations = DirectSceneTextureAllocatorOperations.live
+        operations.addCompletedHandler = { _, callback in
+            completion.store(callback)
+        }
+        operations.commandBufferStatus = { _ in .completed }
+        operations.commit = { _ in }
+        let allocator = try DirectSceneTextureAllocator(
+            device: device,
+            limits: limits,
+            operations: operations
+        )
+        let loader = try DefaultSceneTexturePipelineLoader(
+            device: device,
+            capabilities: .init(
+                supportsBCTextureCompression: device.supportsBCTextureCompression,
+                linearTextureAlignment: [:]
+            ),
+            limits: limits,
+            memoryBudget: memoryBudget,
+            allocator: allocator
+        )
+        let store = SceneTextureStore(
+            testPipeline: loader,
+            limits: limits,
+            memoryBudget: memoryBudget,
+            deviceRegistryID: device.registryID
+        )
+        let fixture = try makePackageTextureFixture(
+            texture: makeTexture(
+                format: 0,
+                width: 1,
+                height: 1,
+                payload: Data([72, 0, 0, 255])
+            ),
+            path: "materials/cancel-submitted-72.tex"
+        )
+        let generation = await store.makeGeneration()
+        let acquisition = acquisitionTask(
+            store: store,
+            fixture: fixture,
+            generation: generation
+        )
+
+        for _ in 0..<10_000 where !completion.hasCallback {
+            await Task.yield()
+        }
+        XCTAssertTrue(completion.hasCallback)
+        acquisition.cancel()
+        await assertCancelled(acquisition)
+        let cancelledSnapshot = await store.snapshot()
+        XCTAssertGreaterThan(cancelledSnapshot.decodedCPUBytes, 0)
+        XCTAssertGreaterThan(cancelledSnapshot.stagingBytes, 0)
+        XCTAssertGreaterThan(cancelledSnapshot.residentBytes, 0)
+
+        completion.invoke()
+        await assertStoreRolledBack(store)
+    }
+
     func testWorkLimiterBoundsObservedConcurrencyWithoutSleepTiming() async throws {
         let limiter = SceneTextureWorkLimiter(limit: 2)
         let probe = LimiterProbe()
@@ -1632,6 +1762,29 @@ private struct ThrowingTextureAllocator: SceneTextureAllocator {
         submission: SceneTextureSubmissionState
     ) async throws -> SceneAllocatedTexture {
         throw error
+    }
+}
+
+private struct ImmediatePipelineSleeper: SceneTextureSleeper {
+    func sleep(for duration: Duration) async throws {}
+}
+
+private final class PipelineCompletionBox: @unchecked Sendable {
+    typealias Callback = @Sendable () -> Void
+
+    private let lock = NSLock()
+    private var callback: Callback?
+
+    var hasCallback: Bool {
+        lock.withLock { callback != nil }
+    }
+
+    func store(_ callback: @escaping Callback) {
+        lock.withLock { self.callback = callback }
+    }
+
+    func invoke() {
+        lock.withLock { callback }?()
     }
 }
 

@@ -258,7 +258,10 @@ struct DefaultSceneTexturePipelineLoader: SceneTexturePipelineLoading, @unchecke
     ) async throws -> SceneAllocatedTexture {
         defer {
             if let reservation = prepared.decodedReservation {
-                release(reservation)
+                release(
+                    reservation,
+                    afterSubmittedResourcesComplete: submission
+                )
             }
         }
 
@@ -271,7 +274,12 @@ struct DefaultSceneTexturePipelineLoader: SceneTexturePipelineLoading, @unchecke
         } catch {
             throw Self.normalizedAllocationError(error)
         }
-        defer { release(stagingReservation) }
+        defer {
+            release(
+                stagingReservation,
+                afterSubmittedResourcesComplete: submission
+            )
+        }
 
         do {
             return try await uploadLimiter.withPermit {
@@ -487,6 +495,22 @@ struct DefaultSceneTexturePipelineLoader: SceneTexturePipelineLoading, @unchecke
             try memoryBudget.release(reservation)
         } catch {
             assertionFailure("Scene texture memory reservation invariant failed: \(error)")
+        }
+    }
+
+    private func release(
+        _ reservation: SceneTextureMemoryReservation,
+        afterSubmittedResourcesComplete submission: SceneTextureSubmissionState
+    ) {
+        let memoryBudget = self.memoryBudget
+        submission.performAfterSubmittedResourcesComplete {
+            do {
+                try memoryBudget.release(reservation)
+            } catch {
+                assertionFailure(
+                    "Scene texture memory reservation invariant failed: \(error)"
+                )
+            }
         }
     }
 

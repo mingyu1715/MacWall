@@ -160,6 +160,7 @@ struct DirectSceneTextureAllocator: SceneTextureAllocator, @unchecked Sendable {
                 let status = submittedResources.operations.commandBufferStatus(
                     submittedResources.commandBuffer
                 )
+                submission.completeSubmittedResources()
                 if status == .completed {
                     finish(.success(()))
                 } else {

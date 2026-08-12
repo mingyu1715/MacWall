@@ -143,11 +143,13 @@ final class SceneTextureSubmissionState: @unchecked Sendable {
     private enum State {
         case pending
         case submitted
+        case completed
         case cancelled
     }
 
     private let lock = NSLock()
     private var state = State.pending
+    private var completionHandlers: [@Sendable () -> Void] = []
 
     func submitIfPending() -> Bool {
         lock.lock()
@@ -167,5 +169,38 @@ final class SceneTextureSubmissionState: @unchecked Sendable {
         }
         state = .cancelled
         return true
+    }
+
+    func completeSubmittedResources() {
+        let handlers: [@Sendable () -> Void]
+        lock.lock()
+        guard case .submitted = state else {
+            lock.unlock()
+            return
+        }
+        state = .completed
+        handlers = completionHandlers
+        completionHandlers.removeAll()
+        lock.unlock()
+
+        handlers.forEach { $0() }
+    }
+
+    func performAfterSubmittedResourcesComplete(
+        _ operation: @escaping @Sendable () -> Void
+    ) {
+        let shouldRunImmediately: Bool
+        lock.lock()
+        if case .submitted = state {
+            completionHandlers.append(operation)
+            shouldRunImmediately = false
+        } else {
+            shouldRunImmediately = true
+        }
+        lock.unlock()
+
+        if shouldRunImmediately {
+            operation()
+        }
     }
 }
