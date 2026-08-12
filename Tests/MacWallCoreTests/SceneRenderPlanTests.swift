@@ -69,6 +69,64 @@ final class SceneRenderPlanTests: XCTestCase {
         XCTAssertEqual(texture.storage, .encodedImage(png))
     }
 
+    func testRenderPlanPreservesFormatZeroCompactEncodedTexture() throws {
+        let root = try Fixture.makeTempDirectory()
+        let packageURL = root.appending(path: "compact-scene.pkg")
+        let png = Data(base64Encoded:
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lz8KWwAAAABJRU5ErkJggg=="
+        )!
+        let sceneJSON = """
+        {
+          "objects": [
+            {
+              "id": 8,
+              "name": "compact-background",
+              "visible": true,
+              "image": "models/background.json"
+            }
+          ]
+        }
+        """
+        let texture = SceneTextureFixtureBuilder.make(
+            formatRawValue: 0,
+            textureSize: (2, 2),
+            imageSize: (1, 1),
+            container: .b0003(imageFormatRawValue: 0),
+            images: [.init(mipmaps: [
+                .init(width: 1, height: 1, payload: png)
+            ])]
+        )
+        try ScenePackageFixtureBuilder.write(
+            to: packageURL,
+            sceneJSON: sceneJSON,
+            extraEntries: [
+                .init(
+                    path: "models/background.json",
+                    data: Data(
+                        #"{"material":"materials/background.json"}"#.utf8
+                    )
+                ),
+                .init(
+                    path: "materials/background.json",
+                    data: Data(
+                        #"{"passes":[{"textures":["background"]}]}"#.utf8
+                    )
+                ),
+                .init(
+                    path: "materials/background.tex",
+                    data: texture
+                )
+            ]
+        )
+
+        let plan = try SceneRenderPlanBuilder().build(url: packageURL)
+
+        XCTAssertEqual(
+            plan.textures["materials/background.tex"]?.storage,
+            .encodedImage(png)
+        )
+    }
+
     func testRenderPlanPreservesLayerTransformAndOpacityAnimations() throws {
         // Given
         let root = try Fixture.makeTempDirectory()

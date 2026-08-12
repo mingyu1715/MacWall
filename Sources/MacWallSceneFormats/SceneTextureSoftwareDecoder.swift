@@ -82,8 +82,16 @@ public struct SceneTextureSoftwareDecoder: Sendable {
             selectedPayload,
             mipmap: mipmap
         )
-        if ![0, 4, 6, 7, 8, 9].contains(descriptor.formatRawValue),
-           Self.isEncodedImage(payload) {
+        let rawRGBAByteCount = try checkedProduct(
+            pixelCount,
+            4,
+            limit: .decodedPixels
+        )
+        if Self.shouldUseEncodedImage(
+            payload,
+            formatRawValue: descriptor.formatRawValue,
+            rawRGBAByteCount: rawRGBAByteCount
+        ) {
             return SceneDecodedTexture(
                 width: targetWidth,
                 height: targetHeight,
@@ -425,5 +433,23 @@ public struct SceneTextureSoftwareDecoder: Sendable {
             return data[8..<12] == Data("WEBP".utf8)
         }
         return false
+    }
+
+    private static func shouldUseEncodedImage(
+        _ data: Data,
+        formatRawValue: Int,
+        rawRGBAByteCount: Int
+    ) -> Bool {
+        guard isEncodedImage(data) else {
+            return false
+        }
+        switch formatRawValue {
+        case 0:
+            return data.count != rawRGBAByteCount
+        case 4, 6, 7, 8, 9:
+            return false
+        default:
+            return true
+        }
     }
 }

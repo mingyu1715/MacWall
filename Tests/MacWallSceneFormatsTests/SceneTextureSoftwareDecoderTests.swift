@@ -67,6 +67,57 @@ final class SceneTextureSoftwareDecoderTests: XCTestCase {
         }
     }
 
+    func testFormatZeroCompactEncodedImageRemainsEncoded() throws {
+        let png = Data(base64Encoded:
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lz8KWwAAAABJRU5ErkJggg=="
+        )!
+        let bytes = SceneTextureFixtureBuilder.make(
+            formatRawValue: 0,
+            textureSize: (2, 2),
+            imageSize: (1, 1),
+            container: .b0003(imageFormatRawValue: 0),
+            images: [.init(mipmaps: [
+                .init(width: 1, height: 1, payload: png)
+            ])]
+        )
+        let source = SceneDataByteSource(data: bytes)
+        let descriptor = try SceneTextureFormatReader().read(
+            source: source,
+            path: "materials/compact.tex"
+        )
+
+        let decoded = try SceneTextureSoftwareDecoder().decode(
+            descriptor: descriptor,
+            source: source,
+            imageIndex: 0,
+            mipmapIndex: 0
+        )
+
+        XCTAssertEqual(decoded.storage, .encodedImage(png))
+    }
+
+    func testFormatZeroExactRawRGBAWithPNGPrefixRemainsRaw() throws {
+        let rawPixel = Data([0x89, 0x50, 0x4E, 0x47])
+        let (descriptor, source) = try parsedFixture(
+            formatRawValue: 0,
+            textureSize: (1, 1),
+            imageSize: (1, 1),
+            payload: rawPixel
+        )
+
+        let decoded = try SceneTextureSoftwareDecoder().decode(
+            descriptor: descriptor,
+            source: source,
+            imageIndex: 0,
+            mipmapIndex: 0
+        )
+
+        XCTAssertEqual(
+            decoded.storage,
+            .rgba(width: 1, height: 1, data: rawPixel)
+        )
+    }
+
     func testRawRGBAIsCroppedFromPaddedTexture() throws {
         let red: [UInt8] = [255, 0, 0, 255]
         let green: [UInt8] = [0, 255, 0, 255]
