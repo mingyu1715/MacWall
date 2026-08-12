@@ -118,6 +118,71 @@ final class SceneTextureSoftwareDecoderTests: XCTestCase {
         )
     }
 
+    func testFormatZeroCompactEncodedImageWinsWhenSizeMatchesRawRGBA() throws {
+        let png = Data(base64Encoded:
+            "iVBORw0KGgoAAAANSUhEUgAAAA0AAAANCAYAAABy6+R8AAAAAXNSR0IArs4c6QAAADhlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAAqACAAQAAAABAAAADaADAAQAAAABAAAADQAAAACKAjqUAAAB72lUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iWE1QIENvcmUgNi4wLjAiPgogICA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPgogICAgICA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIgogICAgICAgICAgICB4bWxuczpkYz0iaHR0cDovL3B1cmwub3JnL2RjL2VsZW1lbnRzLzEuMS8iPgogICAgICAgICA8ZGM6ZGVzY3JpcHRpb24+CiAgICAgICAgICAgIDxyZGY6QWx0PgogICAgICAgICAgICAgICA8cmRmOmxpIHhtbDpsYW5nPSJ4LWRlZmF1bHQiPnh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eDwvcmRmOmxpPgogICAgICAgICAgICA8L3JkZjpBbHQ+CiAgICAgICAgIDwvZGM6ZGVzY3JpcHRpb24+CiAgICAgIDwvcmRmOkRlc2NyaXB0aW9uPgogICA8L3JkZjpSREY+CjwveDp4bXBtZXRhPgqO9F00AAAAH0lEQVQoFWP8//9/PQOJgIlE9WDlo5qgoTYaEJQEBAB++wOWRNA4GgAAAABJRU5ErkJggg=="
+        )!
+        XCTAssertEqual(png.count, 13 * 13 * 4)
+        let bytes = SceneTextureFixtureBuilder.make(
+            formatRawValue: 0,
+            textureSize: (16, 16),
+            imageSize: (13, 13),
+            container: .b0003(imageFormatRawValue: 0),
+            images: [.init(mipmaps: [
+                .init(width: 13, height: 13, payload: png)
+            ])]
+        )
+        let source = SceneDataByteSource(data: bytes)
+        let descriptor = try SceneTextureFormatReader().read(
+            source: source,
+            path: "materials/equal-size-compact.tex"
+        )
+
+        let decoded = try SceneTextureSoftwareDecoder().decode(
+            descriptor: descriptor,
+            source: source,
+            imageIndex: 0,
+            mipmapIndex: 0
+        )
+
+        XCTAssertEqual(decoded.storage, .encodedImage(png))
+    }
+
+    func testFormatZeroStorageChainLowerMipWithPNGPrefixRemainsRaw() throws {
+        let lowerMip = Data([0x89, 0x50, 0x4E, 0x47])
+        let bytes = SceneTextureFixtureBuilder.make(
+            formatRawValue: 0,
+            textureSize: (2, 2),
+            imageSize: (1, 1),
+            container: .b0003(imageFormatRawValue: 0),
+            images: [.init(mipmaps: [
+                .init(
+                    width: 2,
+                    height: 2,
+                    payload: Data(repeating: 0, count: 16)
+                ),
+                .init(width: 1, height: 1, payload: lowerMip)
+            ])]
+        )
+        let source = SceneDataByteSource(data: bytes)
+        let descriptor = try SceneTextureFormatReader().read(
+            source: source,
+            path: "materials/storage-chain.tex"
+        )
+
+        let decoded = try SceneTextureSoftwareDecoder().decode(
+            descriptor: descriptor,
+            source: source,
+            imageIndex: 0,
+            mipmapIndex: 1
+        )
+
+        XCTAssertEqual(
+            decoded.storage,
+            .rgba(width: 1, height: 1, data: lowerMip)
+        )
+    }
+
     func testRawRGBAIsCroppedFromPaddedTexture() throws {
         let red: [UInt8] = [255, 0, 0, 255]
         let green: [UInt8] = [0, 255, 0, 255]

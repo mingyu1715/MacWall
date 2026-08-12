@@ -89,7 +89,8 @@ public struct SceneTextureSoftwareDecoder: Sendable {
         )
         if Self.shouldUseEncodedImage(
             payload,
-            formatRawValue: descriptor.formatRawValue,
+            descriptor: descriptor,
+            image: image,
             rawRGBAByteCount: rawRGBAByteCount
         ) {
             return SceneDecodedTexture(
@@ -437,19 +438,62 @@ public struct SceneTextureSoftwareDecoder: Sendable {
 
     private static func shouldUseEncodedImage(
         _ data: Data,
-        formatRawValue: Int,
+        descriptor: SceneTextureDescriptor,
+        image: SceneTextureImageDescriptor,
         rawRGBAByteCount: Int
     ) -> Bool {
         guard isEncodedImage(data) else {
             return false
         }
-        switch formatRawValue {
+        switch descriptor.formatRawValue {
         case 0:
-            return data.count != rawRGBAByteCount
+            return isCompactContentChain(
+                descriptor: descriptor,
+                image: image
+            ) || data.count != rawRGBAByteCount
         case 4, 6, 7, 8, 9:
             return false
         default:
             return true
         }
+    }
+
+    private static func isCompactContentChain(
+        descriptor: SceneTextureDescriptor,
+        image: SceneTextureImageDescriptor
+    ) -> Bool {
+        let isStorageChain = image.mipmaps.enumerated().allSatisfy {
+            level, mipmap in
+            mipmap.width == mipDimension(
+                descriptor.textureWidth,
+                level: level
+            ) && mipmap.height == mipDimension(
+                descriptor.textureHeight,
+                level: level
+            )
+        }
+        guard !isStorageChain else {
+            return false
+        }
+        guard descriptor.textureWidth != descriptor.imageWidth
+                || descriptor.textureHeight != descriptor.imageHeight else {
+            return false
+        }
+        return image.mipmaps.enumerated().allSatisfy { level, mipmap in
+            mipmap.width == mipDimension(
+                descriptor.imageWidth,
+                level: level
+            ) && mipmap.height == mipDimension(
+                descriptor.imageHeight,
+                level: level
+            )
+        }
+    }
+
+    private static func mipDimension(_ base: Int, level: Int) -> Int {
+        guard level < Int.bitWidth else {
+            return 1
+        }
+        return max(1, base >> level)
     }
 }
