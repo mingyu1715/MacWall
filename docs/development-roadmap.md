@@ -480,10 +480,14 @@ archive에 보관합니다.
 - full static mip chain, physical padding/logical content metadata, top-left origin,
   generation ownership, in-flight dedupe, unowned LRU, memory reservation rollback을
   구현했습니다.
+- compact format-0 payload는 전체 mip chain을 기준으로 encoded/storage/raw를
+  구분하며, 제출된 Metal resource와 memory reservation은 command completion까지
+  유지합니다.
 - fixed local fixture 3개는 `197 resources = 188 GPU successes + 9 typed unsupported`
   결과를 deterministic/path-redacted catalog에 기록합니다.
-- 현재 HEAD 검증: focused S3 10 suites `159 tests, 0 failures, 0 skips`; full
-  `swift test` `576 tests, 0 failures, 0 skips` (XCTest `106.275s`).
+- 최종 S3 코드 commit `9677d1d` 검증: focused S3 10 suites
+  `164 tests, 0 failures, 0 skips`; full `swift test`
+  `583 tests, 0 failures, 0 skips` (XCTest `107.902s`).
 - renderer, Desktop Scene, fallback, animation/video, heap/streaming, GUI 검증은
   S3 비범위입니다.
 
@@ -665,7 +669,7 @@ Scene runtime work:
 S0 Format Research and Fixture Catalog (완료)
 -> S1 Format Layer Hardening (완료)
 -> S2 Asset Resolver and Typed Scene Graph (구현 완료: local fixture 5 tests 및 전체 414 tests, 0 failures)
--> S3 GPU Texture Pipeline (구현 완료: focused 159 tests, full 576 tests, 0 failures/0 skips)
+-> S3 GPU Texture Pipeline (구현 완료: focused 164 tests, full 583 tests, 0 failures/0 skips)
 -> S4 Headless 2D Metal Renderer
 -> S5 Native Scene Frame Adapter
 -> S6 Effects

@@ -61,6 +61,9 @@ Core/App/Native Wallpaper/fallback/Workshop thumbnail 경로에 의존하지 않
   compact format-0 encoded payload를 계속 처리한다.
 - package가 제공한 static mip chain 전체를 validate하고 upload한다. 한 mip이라도
   malformed, cancel, timeout, upload failure면 texture 전체를 publish하지 않는다.
+- compact format-0 payload는 전체 image mip chain을 기준으로 storage/raw/encoded를
+  분류한다. 크기가 우연히 raw byte count와 같은 PNG, lower mip에서 PNG signature와
+  충돌하는 padded storage chain을 각각 올바른 경로로 유지한다.
 
 ## 메모리와 동시성
 
@@ -72,6 +75,11 @@ Core/App/Native Wallpaper/fallback/Workshop thumbnail 경로에 의존하지 않
 - package read, LZ4, ImageIO, CPU decode와 GPU completion wait는 Store actor
   executor 밖에서 수행한다. 이미 제출된 Metal command buffer는 completion cleanup을
   끝내되 cancellation 결과를 cache에 publish하지 않는다.
+- GPU submission 뒤 timeout/cancellation이 반환되어도 command completion 전에는
+  staging/private texture와 decoded/staging/resident reservation을 해제하지 않는다.
+  completion handler가 제출 resource를 정확히 한 번 정리한다.
+- incompatible color waiter를 거부한 뒤 resident reserve가 실패하는 경로에서도
+  각 continuation은 정확히 한 번만 완료한다.
 
 ## Local Fixture Gate
 
@@ -92,7 +100,8 @@ path, payload, screenshot은 기록하지 않는다.
 
 ## 검증
 
-현재 HEAD `7d2748f`에서 2026-08-13 Asia/Seoul 기준으로 실행했다.
+최종 전체 검증은 S3 코드 commit `9677d1d`에서 2026-08-13 Asia/Seoul 기준으로
+실행했다. 아래 focused 표는 해당 최종 전체 실행에 포함된 S3 suite별 결과다.
 
 | Focused suite | Tests | Failures | Skips |
 | --- | ---: | ---: | ---: |
@@ -101,23 +110,24 @@ path, payload, screenshot은 기록하지 않는다.
 | `SceneTexturePayloadLoaderTests` | 13 | 0 | 0 |
 | `SceneTextureImageDecoderTests` | 12 | 0 | 0 |
 | `SceneTextureMemoryBudgetTests` | 13 | 0 | 0 |
-| `DirectSceneTextureAllocatorTests` | 21 | 0 | 0 |
+| `DirectSceneTextureAllocatorTests` | 23 | 0 | 0 |
 | `SceneTextureCacheTests` | 12 | 0 | 0 |
-| `SceneTextureStoreTests` | 25 | 0 | 0 |
-| `SceneTexturePipelineIntegrationTests` | 29 | 0 | 0 |
+| `SceneTextureStoreTests` | 26 | 0 | 0 |
+| `SceneTexturePipelineIntegrationTests` | 31 | 0 | 0 |
 | `SceneLocalFixtureTextureTests` | 15 | 0 | 0 |
-| **Focused total** | **159** | **0** | **0** |
+| **Focused total** | **164** | **0** | **0** |
 
-- local fixture GPU aggregate check: `15 tests, 0 failures, 0 skips`, XCTest
-  duration `102.257s`.
-- full `swift test`: `576 tests, 0 failures, 0 skips`; XCTest duration
-  `106.275s` (`106.319s` including suite accounting).
+- Task 11 중 `7d2748f`에서 별도로 실행한 local fixture GPU aggregate 기록은
+  `15 tests, 0 failures, 0 skips`, XCTest duration `102.257s`다. 같은 15 tests는
+  최종 `9677d1d` 전체 실행에도 포함되어 실패/skip 없이 통과했다.
+- full `swift test`: `583 tests, 0 failures, 0 skips`; XCTest duration
+  `107.902s` (`107.947s` including suite accounting).
 - static/privacy checks: Formats/Assets/Graph forbidden framework import 없음,
   S3 production의 Core/App/Native/fallback/thumbnail reference 없음, tracked
   catalog의 host/entry path 없음, `git diff --check` 통과, fixture directory 변경 없음.
-- 전체 S3 diff를 design과 대조했다. dependency/ownership, format/signature,
-  full-mip atomicity/padding, actor/cancellation, cache generation, memory rollback,
-  deterministic catalog 경계에서 추가 코드 문제를 발견하지 못했다.
+- 최종 독립 code review는 Important finding 없이 통과했다. 남은 의도적 제약은
+  WindowServer/GPU completion callback이 영구히 오지 않을 경우 제출 resource의
+  reservation도 유지된다는 점이다. hard-limit 우회를 막기 위해 조기 해제하지 않는다.
 
 ## 명시적 비범위
 

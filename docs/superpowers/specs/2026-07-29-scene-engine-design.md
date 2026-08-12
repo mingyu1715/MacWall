@@ -682,11 +682,13 @@ generation cache/store를 구현했다. 결과는
 [archive plan](../../archive/superpowers/plans/2026-08-06-scene-gpu-texture-pipeline.md)에
 보관한다.
 
-현재 검증은 focused S3 `159 tests, 0 failures, 0 skips`, full `swift test`
-`576 tests, 0 failures, 0 skips`다. renderer, Desktop output, Scene fallback,
-animation/video, heap/streaming은 S3에 포함하지 않는다.
+최종 S3 코드 commit `9677d1d` 검증은 focused S3
+`164 tests, 0 failures, 0 skips`, full `swift test`
+`583 tests, 0 failures, 0 skips`다. Compact mip-chain classification과 제출된
+Metal resource의 completion lifetime까지 회귀 검증했다. Renderer, Desktop output,
+Scene fallback, animation/video, heap/streaming은 S3에 포함하지 않는다.
 
-### S4: Headless 2D Renderer
+### S4: Headless 2D Metal Renderer
 
 - image layer
 - transform/opacity/Z order

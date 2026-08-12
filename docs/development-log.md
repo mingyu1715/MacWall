@@ -4,6 +4,23 @@
 
 ## 2026-08-13
 
+### 01:39 KST
+
+- 완료: Scene Engine S3 최종 review hardening 및 재검증
+- 코드 기준: `9677d1d`
+- 수정:
+  - resident reserve 실패 전에 incompatible color waiter를 loading entry에서
+    제거해 continuation을 정확히 한 번만 완료
+  - 제출된 Metal command buffer가 끝날 때까지 staging texture와 decoded/staging/
+    resident reservation을 유지하고 completion에서 정확히 한 번 정리
+  - compact format-0 payload를 전체 mip chain 단위로 분류해 encoded PNG와
+    padded raw/storage chain의 크기·signature collision을 구분
+- 검증:
+  - focused S3 10 suites: `164 tests, 0 failures, 0 skips`
+  - 전체 `swift test`: `583 tests, 0 failures, 0 skips`, XCTest `107.902s`
+  - 독립 final code review: Important finding 없음
+- 문서: [S3 구현 기록](implemented/2026-08-06-scene-gpu-texture-pipeline.md)
+
 ### 00:46 KST
 
 - 완료: Scene Engine S3 GPU Texture Pipeline 구현 및 completion documentation
@@ -21,7 +38,10 @@
 - 검증:
   - focused S3 10 suites: `159 tests, 0 failures, 0 skips`
   - `SceneLocalFixtureTextureTests`: `15 tests, 0 failures, 0 skips`, `102.257s`
-  - 전체 `swift test`: `576 tests, 0 failures, 0 skips`, XCTest `106.275s`
+  - S3 code commit `7d2748f` 전체 `swift test`:
+    `576 tests, 0 failures, 0 skips`, XCTest `106.275s`
+  - completion documentation commit `698a28b` 뒤 전체 재검증:
+    `576 tests, 0 failures, 0 skips`, XCTest `105.892s`
   - dependency/privacy/catalog/whitespace static checks 통과
 - 문서: active S3 spec/plan은 archive로 이동했고 S4 Headless 2D Metal Renderer가
   다음 Scene 설계 단계입니다.
