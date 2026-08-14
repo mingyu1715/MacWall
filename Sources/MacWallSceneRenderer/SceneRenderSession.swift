@@ -11,7 +11,12 @@ public actor SceneRenderSession {
     private let preparedStatus: SceneRenderStatus
     private let preparationDiagnostics: [SceneRenderDiagnostic]
     private let preparedDrawIndices: [Int]
+    private let limits: SceneRenderLimits
     private var textureLeasesByManifestIndex: [Int: SceneTextureLease]
+    private var metalRenderer: SceneMetalRenderer?
+    private var lastSuccessfulAllocation: SceneRenderTargetAllocation?
+    private var pendingFrameCount = 0
+    private var invalidationWaiters: [CheckedContinuation<Void, Never>] = []
     private var invalidated = false
 
     private init(
@@ -22,7 +27,8 @@ public actor SceneRenderSession {
         status: SceneRenderStatus,
         diagnostics: [SceneRenderDiagnostic],
         survivingDrawIndices: [Int],
-        textureLeasesByManifestIndex: [Int: SceneTextureLease]
+        textureLeasesByManifestIndex: [Int: SceneTextureLease],
+        limits: SceneRenderLimits
     ) {
         self.program = program
         self.device = device
@@ -32,6 +38,7 @@ public actor SceneRenderSession {
         preparationDiagnostics = diagnostics
         preparedDrawIndices = survivingDrawIndices
         self.textureLeasesByManifestIndex = textureLeasesByManifestIndex
+        self.limits = limits
     }
 
     public static func prepare(
@@ -99,7 +106,8 @@ public actor SceneRenderSession {
                 status: .unsupported,
                 diagnostics: diagnostics,
                 survivingDrawIndices: [],
-                textureLeasesByManifestIndex: [:]
+                textureLeasesByManifestIndex: [:],
+                limits: limits
             )
         }
 
@@ -111,8 +119,57 @@ public actor SceneRenderSession {
             status: failedManifestIndices.isEmpty ? .exact : .degraded,
             diagnostics: diagnostics,
             survivingDrawIndices: survivingDrawIndices,
-            textureLeasesByManifestIndex: leases
+            textureLeasesByManifestIndex: leases,
+            limits: limits
         )
+    }
+
+    public func render(
+        _ request: SceneRenderFrameRequest
+    ) async throws -> SceneRenderCompletedFrame {
+        guard !invalidated else {
+            throw SceneRenderError.sessionInvalidated
+        }
+        guard preparedStatus != .unsupported,
+              !preparedDrawIndices.isEmpty else {
+            throw SceneRenderError.unsupported
+        }
+        let renderer: SceneMetalRenderer
+        if let existing = metalRenderer {
+            renderer = existing
+        } else {
+            let created = try SceneMetalRenderer(
+                device: device,
+                program: program,
+                textureLeases: textureLeasesByManifestIndex,
+                limits: limits
+            )
+            metalRenderer = created
+            renderer = created
+        }
+        pendingFrameCount += 1
+
+        let frame: SceneRenderCompletedFrame
+        do {
+            frame = try await renderer.render(
+                program: program,
+                request: request,
+                status: preparedStatus,
+                diagnostics: preparationDiagnostics
+            )
+        } catch {
+            await finishPendingFrame()
+            throw error
+        }
+        await finishPendingFrame()
+        guard !invalidated else {
+            frame.release()
+            throw SceneRenderError.sessionInvalidated
+        }
+        if case .owned = request.output {
+            lastSuccessfulAllocation = frame.retainedTargetAllocation
+        }
+        return frame
     }
 
     public func snapshot() -> SceneRenderSessionSnapshot {
@@ -122,18 +179,26 @@ public actor SceneRenderSession {
             survivingDrawIndices: preparedDrawIndices,
             textureLeaseCount: textureLeasesByManifestIndex.count,
             deviceRegistryID: device.registryID,
+            pendingFrameCount: pendingFrameCount,
             isInvalidated: invalidated
         )
     }
 
     public func invalidate() async {
-        guard !invalidated else {
-            return
+        if !invalidated {
+            invalidated = true
+            textureLeasesByManifestIndex.removeAll(keepingCapacity: false)
+            lastSuccessfulAllocation = nil
+            if let renderer = metalRenderer {
+                await renderer.invalidate()
+            }
         }
-        invalidated = true
-        textureLeasesByManifestIndex.removeAll(keepingCapacity: false)
-        if let generation = generationOwner.take() {
-            await textureStore.releaseGeneration(generation)
+        if pendingFrameCount > 0 {
+            await withCheckedContinuation { continuation in
+                invalidationWaiters.append(continuation)
+            }
+        } else {
+            await releaseGenerationIfNeeded()
         }
     }
 
@@ -145,6 +210,24 @@ public actor SceneRenderSession {
             throw SceneRenderError.unsupported
         }
         return lease
+    }
+
+    private func finishPendingFrame() async {
+        precondition(pendingFrameCount > 0)
+        pendingFrameCount -= 1
+        guard invalidated, pendingFrameCount == 0 else {
+            return
+        }
+        await releaseGenerationIfNeeded()
+        let waiters = invalidationWaiters
+        invalidationWaiters.removeAll(keepingCapacity: false)
+        waiters.forEach { $0.resume() }
+    }
+
+    private func releaseGenerationIfNeeded() async {
+        if let generation = generationOwner.take() {
+            await textureStore.releaseGeneration(generation)
+        }
     }
 
     private nonisolated static func validate(

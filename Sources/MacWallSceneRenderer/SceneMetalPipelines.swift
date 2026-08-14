@@ -53,7 +53,8 @@ enum SceneMetalPipelines {
 
     static func makeResources(
         device: any MTLDevice,
-        maximumInFlightFrameCount: Int
+        maximumInFlightFrameCount: Int,
+        uniformBytesPerFrame: Int = 256
     ) throws -> SceneMetalPipelineResources {
         let library = try makeDefaultLibrary(device: device)
         guard let imageVertex = library.makeFunction(name: "sceneImageVertex"),
@@ -85,7 +86,7 @@ enum SceneMetalPipelines {
             uniformBuffers: try SceneUniformBufferRing(
                 device: device,
                 count: maximumInFlightFrameCount,
-                bytesPerBuffer: 256
+                bytesPerBuffer: uniformBytesPerFrame
             )
         )
     }

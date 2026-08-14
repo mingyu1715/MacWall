@@ -102,6 +102,7 @@ public struct SceneRenderSessionSnapshot: Equatable, Sendable {
     public let survivingDrawIndices: [Int]
     public let textureLeaseCount: Int
     public let deviceRegistryID: UInt64
+    public let pendingFrameCount: Int
     public let isInvalidated: Bool
 
     public init(
@@ -110,6 +111,7 @@ public struct SceneRenderSessionSnapshot: Equatable, Sendable {
         survivingDrawIndices: [Int],
         textureLeaseCount: Int,
         deviceRegistryID: UInt64,
+        pendingFrameCount: Int,
         isInvalidated: Bool
     ) {
         self.status = status
@@ -117,6 +119,7 @@ public struct SceneRenderSessionSnapshot: Equatable, Sendable {
         self.survivingDrawIndices = survivingDrawIndices
         self.textureLeaseCount = textureLeaseCount
         self.deviceRegistryID = deviceRegistryID
+        self.pendingFrameCount = pendingFrameCount
         self.isInvalidated = isInvalidated
     }
 }
@@ -126,6 +129,55 @@ public final class SceneExternalRenderTargetLease: @unchecked Sendable {
 
     public init(texture: any MTLTexture) {
         self.texture = texture
+    }
+}
+
+public final class SceneRenderCompletedFrame: @unchecked Sendable {
+    public let texture: any MTLTexture
+    public let mediaTimeSeconds: Double
+    public let status: SceneRenderStatus
+    public let diagnostics: [SceneRenderDiagnostic]
+    public let drawCount: Int
+    public let skippedDrawCount: Int
+    public let snapshotPNG: Data?
+
+    private let lock = NSLock()
+    private var targetAllocation: SceneRenderTargetAllocation?
+
+    init(
+        texture: any MTLTexture,
+        mediaTimeSeconds: Double,
+        status: SceneRenderStatus,
+        diagnostics: [SceneRenderDiagnostic],
+        drawCount: Int,
+        skippedDrawCount: Int,
+        snapshotPNG: Data?,
+        targetAllocation: SceneRenderTargetAllocation?
+    ) {
+        self.texture = texture
+        self.mediaTimeSeconds = mediaTimeSeconds
+        self.status = status
+        self.diagnostics = diagnostics
+        self.drawCount = drawCount
+        self.skippedDrawCount = skippedDrawCount
+        self.snapshotPNG = snapshotPNG
+        self.targetAllocation = targetAllocation
+    }
+
+    var retainedTargetAllocation: SceneRenderTargetAllocation? {
+        lock.lock()
+        defer { lock.unlock() }
+        return targetAllocation
+    }
+
+    public func release() {
+        lock.lock()
+        targetAllocation = nil
+        lock.unlock()
+    }
+
+    deinit {
+        release()
     }
 }
 
