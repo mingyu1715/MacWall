@@ -2,7 +2,7 @@
 
 작성일: 2026-08-14
 
-상태: approved design / executable implementation plan pending / implementation not started
+상태: approved design / Gate 0 passed / implementation not started
 
 ## 1. 결정 요약
 
@@ -83,12 +83,13 @@ S4 구현 기반으로 확장하거나 최종 renderer와 공유하지 않는다
 ## 3. 목표
 
 - 독립 target `MacWallSceneRenderer`를 추가한다.
-- image node를 stable Z/source order로 합성한다.
-- parent-child transform과 supported instance override를 평가한다.
-- origin/position, pivot, scale, Z rotation, opacity, visibility animation을 지정된
-  time에서 평가한다.
-- Loop, Mirror, Single playback mode와 relative/absolute track을 지원한다.
-- cubic Bezier, linear, step interpolation을 typed contract로 평가한다.
+- image node를 stable source order로 합성한다.
+- parent-child transform을 평가한다.
+- origin, scale, Z rotation, opacity, visibility의 증명된 absolute linear animation을
+  지정된 time에서 평가한다.
+- Loop, Mirror, Single playback mode를 지원한다.
+- pivot, explicit Z/position, instance override, relative/start-paused track과 증명되지
+  않은 Bezier/step은 diagnostic으로 제한한다.
 - `Fit`, `Fill`, `Stretch` output scaling을 지원한다.
 - S3 `contentRect`, top-left origin, mip chain을 정확히 사용한다.
 - 선형 색 공간에서 premultiplied-alpha composition을 수행한다.
@@ -286,10 +287,10 @@ compiler는 `SceneGraphDocument`만 따로 받지 않고 `SceneGraphBuildResult`
 2. graph status와 cycle/reference diagnostics를 확인한다.
 3. renderable image node를 선택한다.
 4. model/material/pass/texture dependency에서 image texture request를 결정한다.
-5. hierarchy와 instance graph를 stable topological order로 정규화한다.
-6. `MacWallSceneGraph`가 검증한 typed instance override를 소비한다.
-7. animation track을 typed binding으로 연결한다.
-8. Z, source order, node ID의 deterministic tie-break order를 계산한다.
+5. hierarchy graph를 stable topological order로 정규화한다.
+6. instance와 override는 typed evidence를 보존하되 S4 draw에서는 제한한다.
+7. Gate 0이 허용한 animation track만 typed binding으로 연결한다.
+8. source order와 node ID의 deterministic tie-break order를 계산한다.
 9. unsupported feature와 skipped layer diagnostic을 기록한다.
 10. immutable program과 texture acquisition manifest를 만든다.
 
@@ -311,16 +312,17 @@ image subset을 render할 수 있으면 renderer 결과는 `degraded`가 맞다.
 
 ### 8.1 Stable draw order
 
-draw order는 투명 합성 결과이므로 단순 최적화 대상이 아니다. 기본 key는 다음과
-같다.
+draw order는 투명 합성 결과이므로 단순 최적화 대상이 아니다. Gate 0 이후 S4
+기본 key는 다음과 같다.
 
 ```text
-effective Z -> sourceOrder -> stable node/instance identity
+sourceOrder -> stable node identity
 ```
 
-Z 방향과 instance가 source order를 상속/대체하는 정확한 의미는 구현 gate 0의
-fixture evidence로 확정한다. evidence가 현재 가정과 다르면 key 자체를 수정하고
-테스트로 고정한다. 같은 key의 draw를 texture별로 재정렬하지 않는다.
+2D explicit Z 방향과 instance precedence는 증명되지 않았으므로 S4 exact 범위에서
+제외한다. explicit `zorder`/`zindex`가 있는 node와 override가 있는 instance는
+diagnostic과 함께 skip한다. ascending `sourceOrder`로 encode하고 뒤에 encode된
+layer가 앞에 합성된다. 같은 key의 draw를 texture별로 재정렬하지 않는다.
 
 ### 8.2 Resource mapping
 
@@ -360,7 +362,7 @@ value를 유지하고 track에 degraded diagnostic을 남긴다.
 
 ### 9.2 Typed instance override
 
-S4 지원 override:
+Graph typed contract가 보존할 override 후보:
 
 - origin/position
 - scale
@@ -369,9 +371,11 @@ S4 지원 override:
 - visible/enabled
 - Z
 
-unknown path, type mismatch, X/Y rotation은 적용하지 않고 degraded diagnostic으로
-보존한다. `SceneInstanceEdge`가 typed override collection을 공개하고 기존 raw
-override는 audit/compatibility evidence로만 보존한다. renderer compiler는
+unknown path, type mismatch, X/Y rotation은 typed value로 만들지 않고 degraded
+diagnostic으로 보존한다. Gate 0에서 source animation과 instance override의
+precedence를 증명하지 못했으므로 S4 renderer는 typed override를 적용하지 않는다.
+`SceneInstanceEdge`가 typed override collection을 공개하더라도 기존 raw override는
+audit/compatibility evidence로 유지한다. renderer compiler는
 `ScenePropertyOverride.propertyPath/value`를 직접 해석하지 않는다.
 
 ## 10. Transform와 좌표계
@@ -383,15 +387,15 @@ GPU `Float`로 변환한다.
 
 ```text
 base property
--> instance override
--> timeline value at time
+-> supported timeline value at time
 -> local transform
 -> parent world * local
 -> canvas-to-output transform
 ```
 
-- `origin`은 Wallpaper Engine 공식 API상 layer position이다.
-- `pivot`은 회전/scale 기준점으로 사용한다.
+- `origin`은 Wallpaper Engine 공식 API상 2D pixel layer position이다.
+- explicit `pivot`은 S4에서 지원하지 않는다. pivot이 없으면 image local quad의
+  중심을 origin에 둔다.
 - `angles.z`만 2D 회전으로 지원한다.
 - parent transform과 opacity/visibility는 child에 전파한다.
 - opacity는 각 단계에서 임의 clamp하지 않고 final fragment 입력 전 유효 범위로
@@ -399,17 +403,10 @@ base property
 - NaN, infinity, singular/overflowing matrix는 해당 frame/layer diagnostic과 skip
   또는 invalid로 분류한다.
 
-다음은 아직 근거 검증이 필요한 항목이다.
-
-- pivot 단위와 texture/canvas 상대 기준
-- origin과 별도 position이 동시에 있을 때 결합 순서
-- Z의 앞/뒤 방향
-- instance override와 source animation의 우선순위
-- top-left Scene 좌표에서 Metal clip space로 가는 Y 변환 위치
-
-이 항목은 gate 0에서 fixture 값을 수작업으로 추측하지 않고 parser evidence,
-Wallpaper Engine 공식 동작, 기존 prototype output을 교차 대조한 뒤 synthetic test로
-고정한다.
+local transform은 column-vector 기준 `T(origin) * Rz * S`, hierarchy는
+`parentWorld * local`로 고정한다. 별도 `position`, explicit pivot/Z, instance
+override는 Gate 0에서 증명하지 못했으므로 지원하지 않는다. top-left Scene의 Y를
+Metal clip space로 바꾸는 처리는 canvas-to-output boundary에서 정확히 한 번 한다.
 
 ## 11. Timeline Evaluation
 
@@ -428,13 +425,19 @@ interpolation을 적용한다.
 
 정책:
 
-- invalid/zero duration은 typed diagnostic으로 분류한다.
+- serialized `options.length`와 keyframe `frame`은 frame 단위이며 exact seconds는
+  각각 `length / fps`, `frame / fps`로 계산한다.
+- invalid/zero duration, fps 없는 length, explicit-time-only track은 typed
+  diagnostic으로 분류한다.
 - keyframe time은 stable sort하며 동일 time 처리 규칙을 parser contract로 고정한다.
-- relative track은 base/override property에 evaluated delta를 적용한다.
+- relative track은 precedence evidence가 없으므로 S4에서 base value를 유지하고
+  unsupported diagnostic을 낸다.
 - supported property의 channel 일부만 invalid면 전체 vector를 임의 보간하지 않고
   base channel을 유지한다.
-- frame rate는 keyframe frame 값을 seconds로 변환하는 metadata이며 render tick을
-  강제하지 않는다.
+- frame rate는 frame 값을 seconds로 변환하는 metadata이며 render tick을 강제하지
+  않는다. `startpaused` track은 SceneScript가 없는 S4에서 자동 시작하지 않는다.
+- raw `front`/`back` Bezier handle의 normalized basis와 step serialization은 아직
+  증명되지 않았다. linear임을 증명할 수 없는 segment는 base value를 유지한다.
 - fixed input/time 평가에는 allocation과 I/O가 없어야 한다.
 
 ## 12. Output Scaling
@@ -453,7 +456,7 @@ output, integer overflow는 frame 제출 전에 거부한다.
 
 S4 image color request는 S3 `.colorSRGB` lease를 사용한다.
 
-- `contentRect`만 sample하며 texel-center mapping과 logical-edge clamp로 physical
+- level별 `contentRect`만 sample하며 texel-center mapping과 logical-edge clamp로 physical
   padding이 linear filter footprint에 섞이지 않게 한다.
 - top-left origin 변환은 shader boundary에서 정확히 한 번 수행한다.
 - minification/magnification은 linear다.
@@ -462,12 +465,11 @@ S4 image color request는 S3 `.colorSRGB` lease를 사용한다.
 - address mode는 clamp-to-edge다.
 - sampler와 pipeline state는 frame마다 생성하지 않는다.
 
-현재 `SceneTextureLease`는 mip-0 `contentRect`만 공개한다. gate 0에서 모든 supported
-padded mip의 logical/storage 비율이 이 단일 rect로 안전하게 표현되는지 검증한다.
-비율이 level마다 달라지면 S4 구현 전에 S3 lease를 per-mip content extent/rect로
-확장한다. metadata가 부족한 padded texture에 trilinear filtering을 추측 적용하지
-않으며, 정확한 lod-aware clamp가 준비될 때까지 해당 mip path를 degraded로
-제한한다.
+Gate 0에서 188개 supported static texture 중 padded multi-mip 88개를 확인했고,
+85개는 level마다 logical/storage 비율이 달랐다. 따라서 S4 구현 전에
+`SceneTextureLease`를 per-mip content extent/rect로 확장한다. metadata가 부족한
+padded texture에 trilinear filtering을 추측 적용하지 않으며, 정확한 lod-aware
+clamp가 준비될 때까지 mip 0 고정 또는 layer skip으로 명시적으로 degrade한다.
 
 Apple 문서상 mip filtering은 sampler의 별도 설정이며 sRGB pixel format은 texture
 read/write에서 색 channel 감마 변환을 수행한다. 따라서 S4는 source sRGB texture
@@ -488,8 +490,8 @@ sRGB color texture
 ```
 
 - source alpha는 S3 계약에 따라 straight alpha다.
-- node tint가 sRGB numeric value라는 evidence를 gate 0에서 확인하고 linear로
-  변환한 뒤 곱한다. 의미가 불명확한 non-white tint를 linear 값으로 추측하지 않는다.
+- 공식 문서는 node color의 `0...255` 범위만 설명하고 transfer function은 명시하지
+  않는다. absent/identity white만 exact로 허용하고 non-white tint는 S4에서 skip한다.
 - final fragment output은 premultiplied alpha다.
 - blend factor는 source `one`, destination `oneMinusSourceAlpha`다.
 - alpha channel에는 sRGB transfer function을 적용하지 않는다.
@@ -659,19 +661,24 @@ completed final target
 
 | 질문 | 확인 방법 | gate 결과 |
 | --- | --- | --- |
-| pivot의 단위와 기준 | local fixture raw graph + 공식 동작 + prototype 비교 | 식과 fixture expectation 고정 |
-| Z 앞/뒤 방향 및 tie-break | 서로 겹치는 fixture node/order 분석 | stable order test 고정 |
-| origin/position 결합 | graph raw value와 실제 composition 비교 | local matrix 순서 고정 |
-| instance override 우선순위 | source/instance/animation 조합 fixture 분석 | typed override contract 고정 |
-| texture orientation | S3 top-left/contentRect synthetic texture | shader flip 위치 고정 |
-| padded mip sampling | mip별 logical/storage extent와 edge pixel probe | per-mip rect 필요 여부 고정 |
-| alpha convention | S3 decoder/fixture edge pixel 확인 | premultiplication test 고정 |
-| node tint color space | raw color와 controlled fixture pixel 비교 | sRGB-to-linear 규칙 고정 |
-| timeline mode/interpolation | Wallpaper Engine 공식 문서 + raw keyframe evidence | typed parser/evaluator test 고정 |
+| pivot의 단위와 기준 | local fixture raw graph + 공식 동작 + prototype 비교 | `unsupported-for-S4`: explicit pivot skip, absent pivot은 centered quad |
+| Z 앞/뒤 방향 및 tie-break | 공식 2D Z/layer-list 문서 + fixture field count | `unsupported-for-S4`: explicit Z skip, ascending source order |
+| origin/position 결합 | 공식 origin 문서 + fixture field count | origin `confirmed`, position `unsupported-for-S4` |
+| parent matrix 순서 | 공식 hierarchy 동작 + 53개 local parent edge | `confirmed`: `parentWorld * local` |
+| instance override 우선순위 | source/instance/animation 조합 fixture 분석 | `unsupported-for-S4`: fixture instance/override 0건 |
+| texture orientation | S3 top-left/contentRect synthetic texture | `confirmed`: clip-space Y conversion 한 번 |
+| padded mip sampling | mip별 logical/storage extent와 edge pixel probe | `requires-contract-change`: 85개 per-mip rect 필요 |
+| alpha convention | S3 decoder/fixture edge pixel 확인 | `confirmed`: straight source, fragment premultiply |
+| node tint color space | 공식 color 범위 + local field count | `unsupported-for-S4`: non-white tint skip |
+| `length/fps/time/frame` | official duration + raw keyframe evidence | `requires-contract-change`: `length/fps`, `frame/fps` |
+| timeline mode/endpoints | Wallpaper Engine 공식 문서 | `confirmed`: Loop/Mirror/Single |
+| interpolation/start-paused | 공식 문서 + raw keyframe evidence | `unsupported-for-S4` unless linear; start-paused base 유지 |
 
-기존 CALayer prototype은 참고 출력일 뿐 정답 source가 아니다. 공식 문서에 없는
-세부 동작은 fixture evidence와 controlled synthetic probe가 일치할 때만 exact로
-채택한다. 불명확하면 기능을 degraded로 남기고 추측 구현하지 않는다.
+상세 근거와 diagnostic 정책은
+[S4 renderer evidence](2026-08-14-scene-headless-2d-metal-renderer-evidence.md)에
+고정했다. 기존 CALayer prototype은 참고 출력일 뿐 정답 source가 아니다. 공식
+문서에 없는 세부 동작은 fixture evidence와 controlled synthetic probe가 일치할
+때만 exact로 채택한다. 불명확하면 기능을 degraded로 남기고 추측 구현하지 않는다.
 
 ## 22. 테스트 전략
 
@@ -680,10 +687,10 @@ completed final target
 - compile status와 stable diagnostics
 - resource mapping과 layer skip
 - hierarchy topological order와 cycle rejection
-- instance expansion/override precedence
-- stable Z/source/identity order
+- unsupported instance/override diagnostics
+- stable source/identity order
 - Loop/Mirror/Single time mapping
-- absolute/relative and Bezier/linear/step interpolation
+- supported absolute linear interpolation과 unsupported relative/Bezier/step diagnostics
 - parent/local/world/canvas matrix
 - Fit/Fill/Stretch matrix
 - checked limit and byte-budget calculation
@@ -788,8 +795,9 @@ S4를 완료하고 별도 승인된 뒤에만 S5 Native Scene Frame Adapter 계�
 
 ### Format 의미를 잘못 추정할 위험
 
-가장 큰 위험이다. gate 0에서 pivot, Z, instance, timeline 의미를 먼저 증명하고
-불명확한 의미는 degraded로 남긴다.
+가장 큰 위험이다. Gate 0은 pivot, explicit Z, instance precedence와 일부 timeline
+의미를 S4에서 제외했다. 이 항목을 편의상 base image로 조용히 대체하지 않고
+deterministic diagnostic과 skip/base 유지 정책을 적용한다.
 
 ### 색/alpha가 대체로 맞지만 edge에서 틀릴 위험
 
@@ -842,8 +850,9 @@ in-flight resource synchronization 설계의 근거다. 구체적인 budget과 m
 - [Resize Screen Event](https://docs.wallpaperengine.io/en/scene/scenescript/reference/event/resizeScreen.html)
 
 이 문서는 origin이 layer position이라는 점, Loop/Mirror/Single 동작, 기본 Bezier와
-linear 전환 개념을 확인하는 근거다. package 내부 field mapping과 세부 transform
-순서는 공개 문서만으로 확정할 수 없으므로 gate 0 evidence가 추가로 필요하다.
+linear 전환 개념을 확인하는 근거다. package 내부 field mapping과 세부 transform은
+공개 문서와 [Gate 0 evidence](2026-08-14-scene-headless-2d-metal-renderer-evidence.md)를
+함께 적용한다.
 
 ### 내부 기준
 
