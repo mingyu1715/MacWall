@@ -33,6 +33,8 @@ final class SceneGraphAnimationTests: XCTestCase {
         XCTAssertEqual(track.fps, 30)
         XCTAssertEqual(track.duration, 60)
         XCTAssertEqual(track.isRelative, false)
+        XCTAssertEqual(track.playbackMode, .loop)
+        XCTAssertEqual(track.startsPaused, false)
         XCTAssertEqual(track.channels.map(\.name), ["c0", "c1", "c2"])
         XCTAssertEqual(track.channels[0].keyframes[1].frame, 30)
         XCTAssertEqual(track.channels[0].keyframes[1].time, 1.0)
