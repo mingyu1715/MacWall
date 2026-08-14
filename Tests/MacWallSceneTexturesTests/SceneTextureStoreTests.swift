@@ -1357,6 +1357,12 @@ private func allocatedTexture(hasSRGBView: Bool = true) throws -> SceneAllocated
         storageExtent: .init(width: 4, height: 4),
         contentExtent: .init(width: 4, height: 4),
         contentRect: .init(u: 0, v: 0, width: 1, height: 1),
+        mipContentRegions: [.init(
+            level: 0,
+            storageExtent: .init(width: 4, height: 4),
+            contentExtent: .init(width: 4, height: 4),
+            contentRect: .init(u: 0, v: 0, width: 1, height: 1)
+        )],
         origin: .topLeft,
         mipmapLevelCount: 1,
         residentBytes: linearTexture.allocatedSize

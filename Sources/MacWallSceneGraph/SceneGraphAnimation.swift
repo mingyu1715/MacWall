@@ -2,6 +2,7 @@ import Foundation
 
 public enum SceneAnimationValueKind: String, Codable, Equatable, Sendable {
     case scalar
+    case boolean
     case vector2
     case vector3
     case raw
@@ -15,6 +16,7 @@ public enum SceneAnimationTrackStatus: String, Codable, Equatable, Sendable {
 public struct SceneAnimationKeyframe: Equatable, Sendable {
     public let frame: Double?
     public let time: Double?
+    public let explicitTime: Double?
     public let value: SceneJSONValue?
     public let interpolation: SceneJSONValue?
     public let unknownFields: [String: SceneJSONValue]
@@ -22,12 +24,14 @@ public struct SceneAnimationKeyframe: Equatable, Sendable {
     public init(
         frame: Double?,
         time: Double?,
+        explicitTime: Double? = nil,
         value: SceneJSONValue?,
         interpolation: SceneJSONValue?,
         unknownFields: [String: SceneJSONValue]
     ) {
         self.frame = frame
         self.time = time
+        self.explicitTime = explicitTime
         self.value = value
         self.interpolation = interpolation
         self.unknownFields = unknownFields
@@ -51,8 +55,10 @@ public struct SceneAnimationTrack: Equatable, Sendable {
     public let propertyPath: String
     public let valueKind: SceneAnimationValueKind
     public let fps: Double?
-    public let duration: Double?
+    public let lengthFrames: Double?
     public let isRelative: Bool?
+    public let playbackMode: SceneTimelinePlaybackMode?
+    public let startsPaused: Bool
     public let channels: [SceneAnimationChannel]
     public let status: SceneAnimationTrackStatus
     public let rawValue: SceneJSONValue
@@ -64,6 +70,8 @@ public struct SceneAnimationTrack: Equatable, Sendable {
         fps: Double?,
         duration: Double?,
         isRelative: Bool?,
+        playbackMode: SceneTimelinePlaybackMode? = .loop,
+        startsPaused: Bool = false,
         channels: [SceneAnimationChannel],
         status: SceneAnimationTrackStatus,
         rawValue: SceneJSONValue
@@ -72,10 +80,16 @@ public struct SceneAnimationTrack: Equatable, Sendable {
         self.propertyPath = propertyPath
         self.valueKind = valueKind
         self.fps = fps
-        self.duration = duration
+        lengthFrames = duration
         self.isRelative = isRelative
+        self.playbackMode = playbackMode
+        self.startsPaused = startsPaused
         self.channels = channels
         self.status = status
         self.rawValue = rawValue
+    }
+
+    public var duration: Double? {
+        lengthFrames
     }
 }

@@ -493,27 +493,34 @@ archive에 보관합니다.
 
 ### S4: Headless 2D Metal Renderer
 
-상태: 설계 승인 / [S4 설계 문서](superpowers/specs/2026-08-14-scene-headless-2d-metal-renderer-design.md) 작성 완료 / [executable implementation plan](superpowers/plans/2026-08-14-scene-headless-2d-metal-renderer.md) 준비 완료 / 구현 대기
+상태: 구현 완료. 결과는
+[S4 구현 기록](implemented/2026-08-14-scene-headless-2d-metal-renderer.md)을
+기준으로 하며, 완료된
+[설계](archive/superpowers/specs/2026-08-14-scene-headless-2d-metal-renderer-design.md),
+[Gate 0 evidence](archive/superpowers/specs/2026-08-14-scene-headless-2d-metal-renderer-evidence.md),
+[실행 계획](archive/superpowers/plans/2026-08-14-scene-headless-2d-metal-renderer.md)은
+archive에 보관합니다.
 
-- `MacWallSceneRenderer` 독립 target에 `MTKView` 비의존 headless renderer를 추가합니다.
+- `MacWallSceneRenderer` 독립 target에 `MTKView` 비의존 headless renderer를
+  구현했습니다.
 - graph를 immutable render program으로 compile하고 frame마다 typed timeline과
   transform만 평가합니다.
-- image layer를 stable Z/source order로 render합니다.
-- parent-child transform, supported instance override, opacity, visibility,
-  Loop/Mirror/Single timeline을 평가합니다.
-- `Fit`, `Fill`, `Stretch`를 구현합니다.
+- stable Z/source order, parent-child transform, supported instance override,
+  opacity, visibility, Loop/Mirror/Single timeline을 평가합니다.
+- image `size` 또는 texture logical content extent를 centered local geometry로
+  사용하고 relative planar scale을 적용합니다.
+- `Fit`, `Fill`, `Stretch`를 구현했습니다.
 - sRGB source를 linear RGBA16Float에서 premultiplied-alpha 합성하고 final
   BGRA8 sRGB output으로 변환합니다.
-- 같은 actual Metal output에서 snapshot을 캡처합니다.
+- 같은 actual Metal output에서 PNG snapshot을 생성합니다.
 - effect/shader/text/particle/media/3D는 fake output 없이 degraded/unsupported로
   분류합니다.
-
-완료 기준:
-
-- `2174863503`이 합리적인 static composition으로 보입니다.
-- `2834933421`, `3516106265`가 fixed layer cap 없이 graph로 load됩니다.
-- 같은 time/input/property에서 deterministic offscreen frame을 생성합니다.
-- Scene snapshot은 실제 Metal output에서 생성할 수 있습니다.
+- fixed local fixture 3개는 `320x180 @ 0.5s` actual Metal output과 semantic pixel
+  hash를 deterministic/path-redacted catalog로 검증합니다.
+- focused S4 `67 tests, 0 failures, 1 skip`, renderer target
+  `77 tests, 0 failures, 1 skip`, 전체 `swift test`
+  `668 tests, 0 failures, 1 skip`를 기록했습니다. skip은 single-GPU 환경의
+  cross-device validation 1건입니다.
 
 ### S5: Native Scene Frame Adapter
 
@@ -587,9 +594,9 @@ local fixture는 `test/` 아래에 있습니다. 사용자가 직접 복사한 l
 
 | Workshop ID | PKG version | Package entries | Objects | 주요 feature | 현재 결과 |
 | --- | --- | ---: | ---: | --- | --- |
-| `2174863503` | `PKGV0008` | 107 | 28 | 23 image layers, 3 particle systems, 7 effects, 14 shaders, 2 sound layers | prototype이 14 image texture decode, advanced feature 미지원 |
-| `2834933421` | `PKGV0018` | 387 | 98 | 88 image layers, 3 particle systems, 16 effects, 44 shaders, 2 text layers, 5 sound layers | prototype fixed layer cap에 걸려 composition detail 손실 |
-| `3516106265` | `PKGV0023` | 125 | 69 | 49 image layers, 7 particle systems, 12 effects, 24 shaders, 11 text layers, 1 sound layer | renderable image-layer path resolve 실패 |
+| `2174863503` | `PKGV0008` | 107 | 28 | 23 image layers, 3 particle systems, 7 effects, 14 shaders, 2 sound layers | S4 compiled/rendered `7/7`, degraded actual Metal output |
+| `2834933421` | `PKGV0018` | 387 | 98 | 88 image layers, 3 particle systems, 16 effects, 44 shaders, 2 text layers, 5 sound layers | S4 compiled/rendered/skipped `7/6/1`, degraded actual Metal output |
+| `3516106265` | `PKGV0023` | 125 | 69 | 49 image layers, 7 particle systems, 12 effects, 24 shaders, 11 text layers, 1 sound layer | S4 compiled/rendered/skipped `11/1/10`, degraded actual Metal output |
 
 추가 fixture:
 
@@ -606,6 +613,7 @@ local fixture는 `test/` 아래에 있습니다. 사용자가 직접 복사한 l
 | --- | --- |
 | `Sources/MacWallSceneFormats/` | bounded PKG/TEX format, selected-mip software decode |
 | `Sources/MacWallSceneAudit/` | deterministic Audit schema 2와 support policy |
+| `Sources/MacWallSceneRenderer/` | immutable program, typed frame evaluation, headless Metal output와 PNG snapshot |
 | `Sources/MacWallCore/Scene/SceneRenderPlan.swift` | prototype image-layer extraction과 basic animation parsing |
 | `Sources/MacWallApp/Playback/SceneWallpaperView.swift` | prototype `CALayer` rendering |
 
@@ -614,7 +622,8 @@ local fixture는 `test/` 아래에 있습니다. 사용자가 직접 복사한 l
 - module을 나누는 동안 기존 parser test를 보존합니다.
 - audit output 없이 unknown feature를 조용히 skip하지 않습니다.
 - `preview.gif`를 Scene rendering 성공 증거로 사용하지 않습니다.
-- S4가 검증될 때까지 experimental Scene rendering은 development toggle 뒤에 둡니다.
+- S5 Native adapter가 검증될 때까지 experimental Desktop Scene rendering은
+  development toggle 뒤에 둡니다.
 
 ## 8. 참고 자료
 
@@ -678,7 +687,7 @@ S0 Format Research and Fixture Catalog (완료)
 -> S1 Format Layer Hardening (완료)
 -> S2 Asset Resolver and Typed Scene Graph (구현 완료: local fixture 5 tests 및 전체 414 tests, 0 failures)
 -> S3 GPU Texture Pipeline (구현 완료: focused 164 tests, full 583 tests, 0 failures/0 skips)
--> S4 Headless 2D Metal Renderer (설계 및 executable plan 준비 완료 / 구현 대기)
+-> S4 Headless 2D Metal Renderer (구현 완료: focused 67, renderer 77, full 668 tests, 0 failures)
 -> S5 Native Scene Frame Adapter
 -> S6 Effects
 -> S7 Text
@@ -697,13 +706,16 @@ S5에서 common 2D Scene은 extension 내부의 실제 Metal output으로 재생
 
 다음 planning:
 
-1. 별도 사용자 gate에서 Native auto-pause, sleep/wake, 1회 recovery의 실제 Desktop 동작을 확인합니다.
-2. 승인된 [S4 Headless 2D Metal Renderer 설계](superpowers/specs/2026-08-14-scene-headless-2d-metal-renderer-design.md)와
-   [실행 계획](superpowers/plans/2026-08-14-scene-headless-2d-metal-renderer.md)을
-   기준으로 S4를 구현합니다.
-3. Task 0에서 pivot/Z/instance/timeline/orientation 가정을 공식 문서와 fixture
-   evidence로 먼저 고정한 뒤 typed graph와 renderer 구현을 시작합니다.
-4. S4 완료 전에는 Desktop Scene, Scene fallback, Native Scene surface,
-   animation/video texture, effect render graph, heap/streaming을 시작하지 않습니다.
-5. snapshot/export는 `docs/superpowers/plans/2026-06-15-native-wallpaper-snapshot-export-gate.md`, BGRA IOSurface memory는 별도 최적화 작업으로 유지합니다.
-6. proper Apple signing/provisioning 기반 App Group runtime QA는 release 전 별도 gate로 유지합니다.
+1. S5 Native Scene Frame Adapter design/spec을 작성합니다.
+2. S4의 external target lease, same-device validation, first-frame completion을
+   extension-side IOSurface-backed target 계약과 대조합니다.
+3. S5 executable implementation plan에서 generation staging, all-target first-frame
+   commit, pause/resume, invalidate와 failure rollback을 먼저 고정합니다.
+4. S5가 검증되기 전에는 Scene Desktop playback, Scene fallback,
+   effect/text/particle/animated texture/SceneScript 구현을 시작하지 않습니다.
+5. 별도 사용자 gate의 Native auto-pause, sleep/wake, 1회 recovery Desktop QA는
+   기존 계획대로 유지합니다.
+6. snapshot/export는 `docs/superpowers/plans/2026-06-15-native-wallpaper-snapshot-export-gate.md`,
+   BGRA IOSurface memory는 별도 최적화 작업으로 유지합니다.
+7. proper Apple signing/provisioning 기반 App Group runtime QA는 release 전 별도
+   gate로 유지합니다.

@@ -1,0 +1,76 @@
+{
+  "configuration" : {
+    "height" : 180,
+    "mediaTimeSeconds" : 0.5,
+    "scalingMode" : "fit",
+    "semanticSampleSchemaVersion" : 1,
+    "width" : 320
+  },
+  "fixtures" : [
+    {
+      "compiledDrawCount" : 7,
+      "diagnosticCounts" : {
+        "asset.builtin-candidate" : 45,
+        "asset.invalid-reference" : 2,
+        "graph.invalid-property" : 256,
+        "renderer.builtin-shader-emulated" : 7,
+        "renderer.unsupported-model" : 16,
+        "renderer.unsupported-node-kind" : 5
+      },
+      "renderedDrawCount" : 7,
+      "sampledNonTransparentPixelCount" : 153,
+      "semanticSampleHash" : "216869d0367c25b1d3450b82328daa0a17f65c0163c5e43f5bc0877e2e948b7f",
+      "skippedDrawCount" : 0,
+      "status" : "degraded",
+      "workshopID" : "2174863503"
+    },
+    {
+      "compiledDrawCount" : 7,
+      "diagnosticCounts" : {
+        "asset.builtin-candidate" : 77,
+        "asset.invalid-reference" : 5,
+        "asset.unresolved" : 2,
+        "graph.invalid-property" : 1054,
+        "graph.scenescript-preserved-not-executed" : 2,
+        "graph.unresolved-texture" : 1,
+        "renderer.builtin-shader-emulated" : 9,
+        "renderer.missing-model" : 1,
+        "renderer.missing-texture" : 2,
+        "renderer.texture-load-failed" : 1,
+        "renderer.unsupported-model" : 78,
+        "renderer.unsupported-node-kind" : 10
+      },
+      "renderedDrawCount" : 6,
+      "sampledNonTransparentPixelCount" : 153,
+      "semanticSampleHash" : "8cab8ceedbb5328610d3b284cd16b4b3b46feca2714043a9649fdef6d3edd078",
+      "skippedDrawCount" : 1,
+      "status" : "degraded",
+      "workshopID" : "2834933421"
+    },
+    {
+      "compiledDrawCount" : 11,
+      "diagnosticCounts" : {
+        "asset.builtin-candidate" : 24,
+        "asset.invalid-reference" : 1,
+        "asset.unresolved" : 2,
+        "graph.invalid-property" : 563,
+        "graph.scenescript-preserved-not-executed" : 119,
+        "graph.unknown-node" : 1,
+        "graph.unresolved-material" : 2,
+        "renderer.builtin-shader-emulated" : 11,
+        "renderer.missing-model" : 7,
+        "renderer.unsupported-animation" : 2,
+        "renderer.unsupported-material" : 4,
+        "renderer.unsupported-model" : 27,
+        "renderer.unsupported-node-kind" : 20
+      },
+      "renderedDrawCount" : 1,
+      "sampledNonTransparentPixelCount" : 153,
+      "semanticSampleHash" : "abcf4604e72a629fdafc925c6fb2734b504ee5d0e27df7427f9abb87ff28f43d",
+      "skippedDrawCount" : 10,
+      "status" : "degraded",
+      "workshopID" : "3516106265"
+    }
+  ],
+  "schemaVersion" : 1
+}

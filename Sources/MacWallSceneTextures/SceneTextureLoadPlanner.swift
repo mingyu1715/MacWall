@@ -28,6 +28,24 @@ struct SceneTextureLoadPlan: Equatable, Sendable {
     let origin: SceneTextureOrigin
     let mips: [SceneTextureMipPlan]
     let supportsSRGBView: Bool
+
+    var mipContentRegions: [SceneTextureMipContentRegion] {
+        mips.map { mip in
+            SceneTextureMipContentRegion(
+                level: mip.level,
+                storageExtent: mip.storageExtent,
+                contentExtent: mip.contentExtent,
+                contentRect: SceneTextureContentRect(
+                    u: 0,
+                    v: 0,
+                    width: Float(mip.contentExtent.width)
+                        / Float(mip.storageExtent.width),
+                    height: Float(mip.contentExtent.height)
+                        / Float(mip.storageExtent.height)
+                )
+            )
+        }
+    }
 }
 
 struct SceneTextureLoadPlanner: Sendable {

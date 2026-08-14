@@ -196,6 +196,13 @@ final class SceneGraphHierarchyTests: XCTestCase {
             .init(propertyPath: "alpha", value: .number(0.5)),
             .init(propertyPath: "z", value: .integer(3))
         ])
+        XCTAssertEqual(
+            objectResult.document?.instanceEdges.first?.overrides.compactMap(\.typedOverride),
+            [
+                .init(property: .opacity, value: .scalar(0.5)),
+                .init(property: .zOrder, value: .scalar(3))
+            ]
+        )
 
         let arrayResult = try build(#"""
         {"objects":[

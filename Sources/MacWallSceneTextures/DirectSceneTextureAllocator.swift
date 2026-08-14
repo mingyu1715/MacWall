@@ -187,6 +187,7 @@ struct DirectSceneTextureAllocator: SceneTextureAllocator, @unchecked Sendable {
             storageExtent: plan.storageExtent,
             contentExtent: plan.contentExtent,
             contentRect: plan.contentRect,
+            mipContentRegions: plan.mipContentRegions,
             origin: plan.origin,
             mipmapLevelCount: plan.mips.count,
             residentBytes: linearTexture.allocatedSize

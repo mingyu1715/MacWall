@@ -129,6 +129,27 @@ public actor SceneTextureStore {
         return generation
     }
 
+    public func registryID() -> UInt64 {
+        deviceRegistryID
+    }
+
+    public func acquire(
+        _ request: SceneTextureRequest,
+        resource: SceneTextureResource,
+        context: SceneTexturePackageContext,
+        for generation: SceneTextureGenerationID
+    ) async throws -> SceneTextureLease {
+        guard request.packageID == context.packageID else {
+            throw SceneTexturePipelineError.invalidRequest
+        }
+        return try await acquire(
+            request,
+            resource: resource,
+            resolver: context.resolver,
+            for: generation
+        )
+    }
+
     public func acquire(
         _ request: SceneTextureRequest,
         resource: SceneTextureResource,
@@ -708,6 +729,7 @@ public actor SceneTextureStore {
             storageExtent: allocated.storageExtent,
             contentExtent: allocated.contentExtent,
             contentRect: allocated.contentRect,
+            mipContentRegions: allocated.mipContentRegions,
             origin: allocated.origin,
             mipmapLevelCount: allocated.mipmapLevelCount,
             residentBytes: residentBytes

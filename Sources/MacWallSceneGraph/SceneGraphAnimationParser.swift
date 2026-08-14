@@ -118,6 +118,8 @@ private struct SceneGraphAnimationParseState {
                 fps: options.fps,
                 duration: options.duration,
                 isRelative: options.isRelative,
+                playbackMode: options.playbackMode,
+                startsPaused: options.startsPaused,
                 channels: channels,
                 status: status,
                 rawValue: .object(animation)
@@ -131,11 +133,25 @@ private struct SceneGraphAnimationParseState {
         basePath: String
     ) -> SceneGraphAnimationOptions {
         guard let rawValue else {
-            return .init(fps: nil, duration: nil, isRelative: nil, isValid: true)
+            return .init(
+                fps: nil,
+                duration: nil,
+                isRelative: nil,
+                playbackMode: .loop,
+                startsPaused: false,
+                isValid: true
+            )
         }
         guard case let .object(values) = rawValue else {
             appendInvalidProperty(node: node, jsonPath: "\(basePath).options")
-            return .init(fps: nil, duration: nil, isRelative: nil, isValid: false)
+            return .init(
+                fps: nil,
+                duration: nil,
+                isRelative: nil,
+                playbackMode: nil,
+                startsPaused: false,
+                isValid: false
+            )
         }
 
         var isValid = true
@@ -151,8 +167,10 @@ private struct SceneGraphAnimationParseState {
         }
         let duration: Double?
         if let value = values["length"] {
-            duration = value.finiteNumber
-            if duration == nil {
+            if let parsed = value.finiteNumber, parsed > 0 {
+                duration = parsed
+            } else {
+                duration = nil
                 isValid = false
                 appendInvalidProperty(node: node, jsonPath: "\(basePath).options.length")
             }
@@ -174,10 +192,43 @@ private struct SceneGraphAnimationParseState {
         } else {
             isRelative = nil
         }
+        let playbackMode: SceneTimelinePlaybackMode?
+        if let value = values["mode"] {
+            if case let .string(rawMode) = value,
+               let parsed = SceneTimelinePlaybackMode(rawValue: rawMode) {
+                playbackMode = parsed
+            } else {
+                playbackMode = nil
+                isValid = false
+                appendInvalidProperty(
+                    node: node,
+                    jsonPath: "\(basePath).options.mode"
+                )
+            }
+        } else {
+            playbackMode = .loop
+        }
+        let startsPaused: Bool
+        if let value = values["startpaused"] {
+            if case let .bool(parsed) = value {
+                startsPaused = parsed
+            } else {
+                startsPaused = false
+                isValid = false
+                appendInvalidProperty(
+                    node: node,
+                    jsonPath: "\(basePath).options.startpaused"
+                )
+            }
+        } else {
+            startsPaused = false
+        }
         return .init(
             fps: fps,
             duration: duration,
             isRelative: isRelative,
+            playbackMode: playbackMode,
+            startsPaused: startsPaused,
             isValid: isValid
         )
     }
@@ -247,6 +298,7 @@ private struct SceneGraphAnimationParseState {
                 keyframe: SceneAnimationKeyframe(
                     frame: nil,
                     time: nil,
+                    explicitTime: nil,
                     value: nil,
                     interpolation: nil,
                     unknownFields: [:]
@@ -300,6 +352,7 @@ private struct SceneGraphAnimationParseState {
             keyframe: SceneAnimationKeyframe(
                 frame: frame.value,
                 time: resolvedTime,
+                explicitTime: explicitTimePresent ? time.value : nil,
                 value: value,
                 interpolation: interpolation,
                 unknownFields: fields
@@ -348,6 +401,15 @@ private struct SceneGraphAnimationParseState {
     private func valueKind(
         channels: [SceneAnimationChannel]
     ) -> SceneAnimationValueKind {
+        if channels.count == 1,
+           channels[0].name == "c0",
+           !channels[0].keyframes.isEmpty,
+           channels[0].keyframes.allSatisfy({
+               if case .bool? = $0.value { return true }
+               return false
+           }) {
+            return .boolean
+        }
         guard (1...3).contains(channels.count),
               channels.enumerated().allSatisfy({
                   $0.element.name == "c\($0.offset)"
@@ -445,6 +507,8 @@ private struct SceneGraphAnimationOptions {
     let fps: Double?
     let duration: Double?
     let isRelative: Bool?
+    let playbackMode: SceneTimelinePlaybackMode?
+    let startsPaused: Bool
     let isValid: Bool
 }
 

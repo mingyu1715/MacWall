@@ -21,7 +21,11 @@ macOS 14다.
 
 작성일: 2026-08-14
 
-상태: executable plan ready / implementation not started
+상태: implemented / completed / archived plan
+
+구현 결과와 최종 검증은
+[S4 구현 기록](../../../implemented/2026-08-14-scene-headless-2d-metal-renderer.md)을
+기준으로 한다. 아래 checkbox는 실행 당시의 계획 구조를 보존한다.
 
 **승인 설계:**
 [Scene S4 Headless 2D Metal Renderer Design](../specs/2026-08-14-scene-headless-2d-metal-renderer-design.md)
@@ -455,21 +459,25 @@ items `100_000`, maximum in-flight `3`, target budget `512 MiB`, snapshot budget
   value에는 URL, `MTLDevice`, random UUID가 섞이지 않게 한다.
 - [ ] shader에 full quad vertex function, textured fragment function, linear composition용
   tint/opacity uniform만 추가한다.
-- [ ] `.metal`은 별도 `.process` resource 선언 없이 target source로 두어 SwiftPM의
-  metallib compile 경로를 사용한다.
+- [ ] Xcode 26.6 toolchain 검증 결과에 따라 `.metal`은 `.process` resource로 선언한다.
+  native SwiftPM engine은 이를 source resource로 복사해 CPU test를 유지하고,
+  `swiftbuild` engine은 같은 파일을 `default.metallib`로 compile한다.
 - [ ] production은 runtime `makeLibrary(source:)`를 사용하지 않고
   `device.makeDefaultLibrary(bundle: Bundle.module)`로 `sceneImageVertex`와
   `sceneImageFragment`를 찾는다.
 - [ ] default Metal device가 없으면 Metal test만 `XCTSkip`하고 CPU model test는
   계속 실행한다.
-- [ ] command-line SwiftPM focused test로 shader function을 실제로 찾는다. 실패하면
-  renderer 구현 전에 Package resource layout을 바로잡는다.
+- [ ] `swift test --build-system swiftbuild` focused test로 shader function을 실제로
+  찾는다. Xcode의 별도 Metal Toolchain component가 필요하며, 실패하면 renderer 구현
+  전에 Package resource layout을 바로잡는다. native SwiftPM engine에서는 shader
+  test만 명시적으로 skip하고 CPU test는 계속 실행한다.
 
 **RED:**
 
 ```bash
 swift test --filter SceneRenderModelTests
-swift test --filter SceneMetalPipelineTests/testDefaultShaderLibraryContainsSceneFunctions
+swift test --build-system swiftbuild \
+  --filter SceneMetalPipelineTests/testDefaultShaderLibraryContainsSceneFunctions
 ```
 
 **GREEN:** RED와 같은 두 명령이 모두 통과해야 한다.
@@ -629,9 +637,9 @@ struct SceneEvaluatedNodeProperties: Sendable {
   timestamp test로 고정한다.
 - [ ] linear, step, cubic Bezier를 CPU-only로 평가한다. Bezier x-to-progress inversion은
   bounded iteration과 epsilon을 사용한다.
-- [ ] relative track은 base value에 평가값을 한 번만 합산하고 absolute track은
-  대체한다.
-- [ ] property 우선순위는 `base → instance override → timeline`으로 고정한다.
+- [ ] Gate 0에서 precedence가 확인되지 않은 relative track과 instance override는
+  compiler에서 제외한다. evaluator에 직접 유입되면 추측 적용하지 않고 거부한다.
+- [ ] S4 property 우선순위는 `base → supported absolute timeline`으로 고정한다.
 - [ ] vector track 일부 channel만 invalid하면 전체 vector를 보간하지 않고 그
   channel의 base/override 값을 유지한다.
 - [ ] visibility는 step만 허용하고 연속 interpolation은 compiler에서 unsupported로
@@ -652,12 +660,16 @@ git add Sources/MacWallSceneRenderer/SceneTimelineEvaluator.swift \
 git commit -m "feat(scene): evaluate typed scene timelines"
 ```
 
-## 9. Task 5: Hierarchy, instance, output transform 구현
+## 9. Task 5: Hierarchy와 output transform 구현, instance 명시적 제외
 
 **Files:**
 
 - 생성: `Sources/MacWallSceneRenderer/SceneTransformEvaluator.swift`
+- 수정: `Sources/MacWallSceneRenderer/SceneRenderCompiler.swift`
 - 수정: `Sources/MacWallSceneRenderer/SceneRenderModels.swift`
+- 수정: `Sources/MacWallSceneRenderer/SceneTimelineEvaluator.swift`
+- 수정: `Tests/MacWallSceneRendererTests/SceneRenderCompilerTests.swift`
+- 수정: `Tests/MacWallSceneRendererTests/SceneTimelineEvaluatorTests.swift`
 - 생성: `Tests/MacWallSceneRendererTests/SceneTransformEvaluatorTests.swift`
 
 **Interfaces:**
@@ -695,8 +707,12 @@ struct SceneFrameDrawItem: Sendable {
 }
 ```
 
-- [ ] identity, origin, pivot, scale, Z rotation, parent-child, nested instance,
-  typed instance override priority tests를 먼저 작성한다.
+- [ ] identity, origin, scale, Z rotation, parent-child transform tests를 먼저 작성한다.
+- [ ] explicit pivot/position/Z와 instance/instance override는 Gate 0 판정대로
+  compiler에서 지원하지 않고 deterministic diagnostic과 layer skip으로 고정한다.
+- [ ] draw에 base/animation을 중복 저장하지 않는다. evaluation order와 같은 immutable
+  node template array에 parent index, base, absolute timeline을 저장하고 draw는 해당
+  node index만 참조한다.
 - [ ] visibility/enabled false parent가 descendant draw에 미치는 Gate 0 의미를 test로
   고정한다.
 - [ ] scene coordinate → clip coordinate matrix와 top-left texture flip을 각각 한
@@ -705,7 +721,7 @@ struct SceneFrameDrawItem: Sendable {
   size와 portrait/landscape를 test한다.
 - [ ] Fill crop은 texture UV 변조가 아니라 canvas-to-output transform/scissor로
   수행한다.
-- [ ] opacity는 node의 `base → override → timeline` 평가 후 parent opacity를 곱하고,
+- [ ] opacity는 node의 `base → supported absolute timeline` 평가 후 parent opacity를 곱하고,
   각 단계가 아니라 final fragment 입력 직전에만 유효 범위로 정규화한다.
 - [ ] tint는 Gate 0이 sRGB 의미를 confirmed한 경우에만 linear shader input으로
   변환한다.
@@ -726,7 +742,11 @@ swift test --filter SceneTimelineEvaluatorTests
 
 ```bash
 git add Sources/MacWallSceneRenderer/SceneTransformEvaluator.swift \
+  Sources/MacWallSceneRenderer/SceneRenderCompiler.swift \
   Sources/MacWallSceneRenderer/SceneRenderModels.swift \
+  Sources/MacWallSceneRenderer/SceneTimelineEvaluator.swift \
+  Tests/MacWallSceneRendererTests/SceneRenderCompilerTests.swift \
+  Tests/MacWallSceneRendererTests/SceneTimelineEvaluatorTests.swift \
   Tests/MacWallSceneRendererTests/SceneTransformEvaluatorTests.swift
 git commit -m "feat(scene): evaluate scene transforms and scaling"
 ```
@@ -758,8 +778,9 @@ actor SceneRenderTargetPool {
 
 - [ ] `.rgba16Float` internal target, `.bgra8Unorm_srgb` final target, render usage,
   same-device tests를 먼저 작성한다.
-- [ ] sampler는 linear min/mag/mip, clamp-to-edge, anisotropy
-  `min(8, device.maxSamplerAnisotropy)`로 만든다.
+- [ ] sampler는 linear min/mag/mip, clamp-to-edge로 만들고 anisotropy는 공식
+  `MTLSamplerDescriptor` 허용 범위 `1...16` 안의 `8`로 고정한다. Metal에는
+  device별 maximum anisotropy query가 없으므로 존재하지 않는 API를 가정하지 않는다.
 - [ ] source sRGB decode → linear tint/opacity → premultiplied source-over blend를 pipeline
   descriptor에 고정한다.
 - [ ] straight source RGB에 alpha를 명시적으로 곱한 뒤 blend factor source `one`,
@@ -775,8 +796,10 @@ actor SceneRenderTargetPool {
   갖고 마지막 owner가 해제되는 `deinit`에서만 pool slot을 반환한다.
 - [ ] caller target validation은 device/size/pixel format/usage를 검사하되 외부 command의
   전역 in-flight 상태를 안다고 주장하지 않는다.
-- [ ] content rect sampling은 texel-center mapping과 logical-edge clamp를 사용해 physical
-  padding이 linear filter footprint에 섞이지 않게 한다.
+- [ ] Task 6은 clamp sampler 기반만 고정한다. content rect uniform과 exact per-mip
+  texel-center/logical-edge clamp는 Task 7의 immutable per-mip rect 계약을 받은 뒤
+  Task 8 encode/pixel test에서 완성해 physical padding이 filter footprint에 섞이지
+  않게 한다.
 
 **RED:** `swift test --filter SceneMetalPipelineTests`
 

@@ -112,6 +112,24 @@ struct SceneTextureAllocationPlan: Sendable {
     let contentExtent: SceneTextureExtent
     let contentRect: SceneTextureContentRect
     let origin: SceneTextureOrigin
+
+    var mipContentRegions: [SceneTextureMipContentRegion] {
+        mips.map { mip in
+            SceneTextureMipContentRegion(
+                level: mip.level,
+                storageExtent: mip.storageExtent,
+                contentExtent: mip.contentExtent,
+                contentRect: SceneTextureContentRect(
+                    u: 0,
+                    v: 0,
+                    width: Float(mip.contentExtent.width)
+                        / Float(mip.storageExtent.width),
+                    height: Float(mip.contentExtent.height)
+                        / Float(mip.storageExtent.height)
+                )
+            )
+        }
+    }
 }
 
 struct SceneAllocatedTexture: @unchecked Sendable {
@@ -121,6 +139,7 @@ struct SceneAllocatedTexture: @unchecked Sendable {
     let storageExtent: SceneTextureExtent
     let contentExtent: SceneTextureExtent
     let contentRect: SceneTextureContentRect
+    let mipContentRegions: [SceneTextureMipContentRegion]
     let origin: SceneTextureOrigin
     let mipmapLevelCount: Int
     let residentBytes: Int

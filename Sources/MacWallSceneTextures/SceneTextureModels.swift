@@ -1,5 +1,6 @@
 import Foundation
 import Metal
+import MacWallSceneAssets
 import MacWallSceneGraph
 import MacWallSceneFormats
 
@@ -8,6 +9,19 @@ public struct SceneTexturePackageID: Hashable, Sendable {
 
     public init(rawValue: UUID = UUID()) {
         self.rawValue = rawValue
+    }
+}
+
+public struct SceneTexturePackageContext: Sendable {
+    public let packageID: SceneTexturePackageID
+    let resolver: ScenePackageAssetResolver
+
+    public init(
+        packageID: SceneTexturePackageID,
+        resolver: ScenePackageAssetResolver
+    ) {
+        self.packageID = packageID
+        self.resolver = resolver
     }
 }
 
@@ -64,6 +78,25 @@ public struct SceneTextureContentRect: Equatable, Sendable {
         self.v = v
         self.width = width
         self.height = height
+    }
+}
+
+public struct SceneTextureMipContentRegion: Equatable, Sendable {
+    public let level: Int
+    public let storageExtent: SceneTextureExtent
+    public let contentExtent: SceneTextureExtent
+    public let contentRect: SceneTextureContentRect
+
+    public init(
+        level: Int,
+        storageExtent: SceneTextureExtent,
+        contentExtent: SceneTextureExtent,
+        contentRect: SceneTextureContentRect
+    ) {
+        self.level = level
+        self.storageExtent = storageExtent
+        self.contentExtent = contentExtent
+        self.contentRect = contentRect
     }
 }
 
@@ -155,6 +188,7 @@ public struct SceneTextureLease: @unchecked Sendable {
     public let storageExtent: SceneTextureExtent
     public let contentExtent: SceneTextureExtent
     public let contentRect: SceneTextureContentRect
+    public let mipContentRegions: [SceneTextureMipContentRegion]
     public let origin: SceneTextureOrigin
     public let mipmapLevelCount: Int
     public let residentBytes: Int
