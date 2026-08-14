@@ -70,7 +70,7 @@ final class SceneMetalPixelTests: XCTestCase {
                     0, 0, 255, 255, 255, 255, 255, 255
                 ]
             )],
-            layers: [.init(textureIndex: 0, scale: (2, 2))],
+            layers: [.init(textureIndex: 0)],
             canvasSize: (2, 2)
         )
         let session = try await fixture.makeSession()
@@ -91,6 +91,31 @@ final class SceneMetalPixelTests: XCTestCase {
         await session.invalidate()
     }
 
+    func testTextureContentExtentDefinesCenteredLocalQuad() async throws {
+        let fixture = try makeRendererFixture(
+            textures: [.init(
+                storageSize: (2, 1),
+                contentSize: (2, 1),
+                rgba: [255, 0, 0, 255, 0, 255, 0, 255]
+            )],
+            layers: [.init(textureIndex: 0, origin: (1, 0.5))],
+            canvasSize: (2, 1)
+        )
+        let session = try await fixture.makeSession()
+
+        let frame = try await session.render(.init(
+            mediaTimeSeconds: 0,
+            outputWidth: 2,
+            outputHeight: 1,
+            scalingMode: .stretch
+        ))
+        let pixels = try await readBGRA8(frame.texture)
+
+        XCTAssertEqual(Array(pixels), [0, 0, 255, 255, 0, 255, 0, 255])
+        frame.release()
+        await session.invalidate()
+    }
+
     func testContentRectExcludesPhysicalPaddingFromFiltering() async throws {
         let fixture = try makeRendererFixture(
             textures: [.init(
@@ -103,7 +128,7 @@ final class SceneMetalPixelTests: XCTestCase {
                     0, 0, 255, 255, 0, 0, 255, 255
                 ]
             )],
-            layers: [.init(textureIndex: 0, scale: (2, 1))],
+            layers: [.init(textureIndex: 0)],
             canvasSize: (2, 1)
         )
         let session = try await fixture.makeSession()
@@ -424,13 +449,13 @@ final class SceneMetalPixelTests: XCTestCase {
                         255, 0, 255, 255, 255, 0, 255, 255
                     ]
                 )],
-                layers: [.init(textureIndex: 0, scale: (2, 2))],
+                layers: [.init(textureIndex: 0)],
                 canvasSize: (2, 2)
             )
         case "fit-letterbox", "stretch-full-frame":
             return try makeRendererFixture(
                 textures: [.solid([255, 0, 0, 255])],
-                layers: [.init(textureIndex: 0, scale: (2, 1))],
+                layers: [.init(textureIndex: 0, localSize: (2, 1))],
                 canvasSize: (2, 1)
             )
         case "fill-center-crop":
@@ -440,7 +465,7 @@ final class SceneMetalPixelTests: XCTestCase {
                     contentSize: (2, 1),
                     rgba: [255, 0, 0, 255, 0, 0, 255, 255]
                 )],
-                layers: [.init(textureIndex: 0, scale: (2, 1))],
+                layers: [.init(textureIndex: 0)],
                 canvasSize: (2, 1)
             )
         case "hierarchy-opacity":
@@ -450,7 +475,7 @@ final class SceneMetalPixelTests: XCTestCase {
                     .solid([255, 0, 0, 255])
                 ],
                 layers: [
-                    .init(textureIndex: 0, opacity: 0.5),
+                    .init(textureIndex: 0, origin: (0, 0), opacity: 0.5),
                     .init(textureIndex: 1, opacity: 0.5, parentIndex: 0)
                 ]
             )
@@ -628,11 +653,15 @@ final class SceneMetalPixelTests: XCTestCase {
             canvas: .init(width: canvasSize.0, height: canvasSize.1),
             fingerprint: "metal-pixel-test",
             nodeTemplates: zip(identities, layers).map { identity, layer in
-                .init(
+                let texture = textures[layer.textureIndex]
+                let width = layer.localSize?.0 ?? Double(texture.contentSize.0)
+                let height = layer.localSize?.1 ?? Double(texture.contentSize.1)
+                let origin = layer.origin ?? (width * 0.5, height * 0.5)
+                return .init(
                     identity: identity,
                     parentIndex: layer.parentIndex,
                     baseProperties: .init(
-                        origin: .init(x: layer.origin.0, y: layer.origin.1, z: 0),
+                        origin: .init(x: origin.0, y: origin.1, z: 0),
                         pivot: .init(x: 0, y: 0, z: 0),
                         position: .init(x: 0, y: 0, z: 0),
                         scale: .init(x: layer.scale.0, y: layer.scale.1, z: 1),
@@ -654,7 +683,10 @@ final class SceneMetalPixelTests: XCTestCase {
                     sourceOrder: drawIndex,
                     effectiveZ: 0,
                     evaluationNodeIndex: drawIndex,
-                    textureManifestIndex: pair.1.textureIndex
+                    textureManifestIndex: pair.1.textureIndex,
+                    localSize: pair.1.localSize.map {
+                        .init(width: $0.0, height: $0.1)
+                    }
                 )
             },
             textureManifest: resources.enumerated().map { textureIndex, resource in
@@ -778,8 +810,9 @@ private struct PixelTexture {
 
 private struct PixelLayer {
     let textureIndex: Int
-    let origin: (Double, Double)
+    let origin: (Double, Double)?
     let scale: (Double, Double)
+    let localSize: (Double, Double)?
     let opacity: Double
     let visible: Bool
     let parentIndex: Int?
@@ -787,8 +820,9 @@ private struct PixelLayer {
 
     init(
         textureIndex: Int,
-        origin: (Double, Double) = (0, 0),
+        origin: (Double, Double)? = nil,
         scale: (Double, Double) = (1, 1),
+        localSize: (Double, Double)? = nil,
         opacity: Double = 1,
         visible: Bool = true,
         parentIndex: Int? = nil,
@@ -797,6 +831,7 @@ private struct PixelLayer {
         self.textureIndex = textureIndex
         self.origin = origin
         self.scale = scale
+        self.localSize = localSize
         self.opacity = opacity
         self.visible = visible
         self.parentIndex = parentIndex

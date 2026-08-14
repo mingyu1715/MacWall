@@ -80,6 +80,34 @@ final class SceneRenderCompilerTests: XCTestCase {
         ))
     }
 
+    func testCompilesAutosizedImageWithLocalSizeAndPlanarScale() throws {
+        let graph = try build(entries: [
+            entry(
+                "scene.json",
+                scene(objects: [
+                    #"{"image":"models/base.json","origin":"320 240 0","size":"640 480","scale":"2 3 0.5"}"#
+                ])
+            ),
+            entry(
+                "models/base.json",
+                #"{"autosize":true,"material":"materials/base.json"}"#
+            ),
+            entry("materials/base.json", #"{"texture":"base"}"#),
+            texture("materials/base.tex")
+        ])
+
+        let result = SceneRenderCompiler().compile(graph)
+        let program = try XCTUnwrap(result.program)
+        let draw = try XCTUnwrap(program.drawTemplates.first)
+
+        XCTAssertEqual(result.status, .degraded)
+        XCTAssertEqual(draw.localSize, .init(width: 640, height: 480))
+        XCTAssertEqual(
+            program.nodeTemplates[draw.evaluationNodeIndex].baseProperties.scale,
+            .init(x: 2, y: 3, z: 1)
+        )
+    }
+
     func testKeepsStableDrawOrderWithoutTextureGrouping() throws {
         let graph = try build(entries: sharedTextureEntries())
         let program = try XCTUnwrap(SceneRenderCompiler().compile(graph).program)
@@ -164,6 +192,69 @@ final class SceneRenderCompilerTests: XCTestCase {
         })
         XCTAssertTrue(result.diagnostics.contains {
             $0.code == "renderer.base-effect-omitted"
+        })
+    }
+
+    func testCompilesKnownGenericImagePassStateAndRejectsUnknownCombo() throws {
+        let graph = try build(entries: [
+            entry("scene.json", scene(objects: [
+                #"{"image":"models/base.json"}"#,
+                #"{"image":"models/uppercase.json"}"#,
+                #"{"image":"models/empty.json"}"#,
+                #"{"image":"models/unknown.json"}"#
+            ])),
+            entry(
+                "models/base.json",
+                #"{"autosize":true,"material":"materials/base.json"}"#
+            ),
+            entry(
+                "models/uppercase.json",
+                #"{"autosize":true,"material":"materials/uppercase.json"}"#
+            ),
+            entry(
+                "models/empty.json",
+                #"{"autosize":true,"material":"materials/empty.json"}"#
+            ),
+            entry(
+                "models/unknown.json",
+                #"{"autosize":true,"material":"materials/unknown.json"}"#
+            ),
+            entry(
+                "materials/base.json",
+                #"{"passes":[{"shader":"genericimage2","texture":"base","blending":"translucent","combos":{"version":2},"cullmode":"nocull","depthtest":"disabled","depthwrite":"disabled"}]}"#
+            ),
+            entry(
+                "materials/uppercase.json",
+                #"{"passes":[{"shader":"genericimage2","texture":"uppercase","blending":"translucent","combos":{"VERSION":2},"cullmode":"nocull","depthtest":"disabled","depthwrite":"disabled"}]}"#
+            ),
+            entry(
+                "materials/empty.json",
+                #"{"passes":[{"shader":"genericimage4","texture":"empty","blending":"translucent","combos":{},"cullmode":"nocull","depthtest":"disabled","depthwrite":"disabled"}]}"#
+            ),
+            entry(
+                "materials/unknown.json",
+                #"{"passes":[{"shader":"genericimage4","texture":"unknown","blending":"translucent","combos":{"version":3},"cullmode":"nocull","depthtest":"disabled","depthwrite":"disabled"}]}"#
+            ),
+            texture("materials/base.tex"),
+            texture("materials/uppercase.tex"),
+            texture("materials/empty.tex"),
+            texture("materials/unknown.tex")
+        ])
+
+        let result = SceneRenderCompiler().compile(graph)
+
+        XCTAssertEqual(result.status, .degraded)
+        XCTAssertEqual(
+            result.program?.drawTemplates.map(\.identity.nodeID.objectIndex),
+            [0, 1, 2]
+        )
+        XCTAssertTrue(result.diagnostics.contains {
+            $0.code == "renderer.builtin-shader-emulated"
+                && $0.nodeID?.objectIndex == 0
+        })
+        XCTAssertTrue(result.diagnostics.contains {
+            $0.code == "renderer.unsupported-material"
+                && $0.nodeID?.objectIndex == 3
         })
     }
 

@@ -145,6 +145,37 @@ final class SceneTimelineEvaluatorTests: XCTestCase {
         XCTAssertEqual(scratch.nodes.only?.visible, true)
     }
 
+    func testTreatsAnimatedScaleAsPlanarAndIgnoresZComponent() throws {
+        let program = try makeProgram(track: .init(
+            property: .scale,
+            playbackMode: .single,
+            durationSeconds: 1,
+            isRelative: false,
+            startsPaused: false,
+            keyframes: [
+                keyframe(
+                    time: 0,
+                    value: .vector3(.init(x: 1, y: 2, z: 0.5)),
+                    interpolation: .linear
+                ),
+                keyframe(
+                    time: 1,
+                    value: .vector3(.init(x: 3, y: 4, z: 2)),
+                    interpolation: .linear
+                )
+            ]
+        ))
+        var scratch = SceneEvaluationScratch()
+
+        try SceneTimelineEvaluator().evaluate(
+            program: program,
+            mediaTimeSeconds: 0.5,
+            into: &scratch
+        )
+
+        XCTAssertEqual(scratch.nodes.only?.scale, .init(x: 2, y: 3, z: 1))
+    }
+
     func testRejectsInvalidMediaTimeTrackShapeAndRelativeSemantics() throws {
         let valid = try makeProgram(track: scalarTrack(
             property: .opacity,

@@ -1,6 +1,7 @@
 import Foundation
 import Metal
 import simd
+import MacWallSceneGraph
 import MacWallSceneTextures
 
 actor SceneMetalRenderer {
@@ -217,9 +218,17 @@ actor SceneMetalRenderer {
                 skippedDrawCount += 1
                 continue
             }
+            guard let localSize = Self.localSize(
+                explicit: item.localSize,
+                textureLease: lease
+            ) else {
+                skippedDrawCount += 1
+                continue
+            }
             let uniformOffset = encodedDrawCount * MemoryLayout<SceneImageDrawUniforms>.stride
             var uniforms = SceneImageDrawUniforms(
-                clipTransform: item.clipTransform,
+                clipTransform: item.clipTransform
+                    * Self.centeredQuadTransform(size: localSize),
                 textureCoordinates: item.textureCoordinates,
                 premultipliedTint: item.linearPremultipliedTint
             )
@@ -398,6 +407,44 @@ actor SceneMetalRenderer {
         case .snapshotEncodingFailed: return "snapshotEncodingFailed"
         case .texturePipeline: return "texturePipeline"
         }
+    }
+
+    private static func localSize(
+        explicit: SceneGraphSize?,
+        textureLease: SceneTextureLease
+    ) -> SIMD2<Float>? {
+        let width: Double
+        let height: Double
+        if let explicit {
+            width = explicit.width
+            height = explicit.height
+        } else if let region = textureLease.mipContentRegions.first {
+            width = Double(region.contentExtent.width)
+            height = Double(region.contentExtent.height)
+        } else {
+            return nil
+        }
+        guard width.isFinite, height.isFinite,
+              width > 0, height > 0 else {
+            return nil
+        }
+        let floatSize = SIMD2<Float>(Float(width), Float(height))
+        guard floatSize.x.isFinite, floatSize.y.isFinite,
+              floatSize.x > 0, floatSize.y > 0 else {
+            return nil
+        }
+        return floatSize
+    }
+
+    private static func centeredQuadTransform(
+        size: SIMD2<Float>
+    ) -> simd_float4x4 {
+        simd_float4x4(columns: (
+            SIMD4<Float>(size.x, 0, 0, 0),
+            SIMD4<Float>(0, size.y, 0, 0),
+            SIMD4<Float>(0, 0, 1, 0),
+            SIMD4<Float>(-size.x * 0.5, -size.y * 0.5, 0, 1)
+        ))
     }
 }
 

@@ -16,6 +16,7 @@ struct SceneRenderOutputGeometry: Equatable, Sendable {
 struct SceneFrameDrawItem: Sendable {
     let identity: SceneRenderNodeIdentity
     let textureManifestIndex: Int
+    let localSize: SceneGraphSize?
     let clipTransform: simd_float4x4
     let textureCoordinates: SIMD4<Float>
     let linearPremultipliedTint: SIMD4<Float>
@@ -114,6 +115,7 @@ struct SceneTransformEvaluator: Sendable {
             framePlan.drawItems.append(.init(
                 identity: draw.identity,
                 textureManifestIndex: draw.textureManifestIndex,
+                localSize: draw.localSize,
                 clipTransform: floatTransform,
                 textureCoordinates: SIMD4<Float>(0, 0, 1, 1),
                 linearPremultipliedTint: SIMD4<Float>(repeating: opacity)

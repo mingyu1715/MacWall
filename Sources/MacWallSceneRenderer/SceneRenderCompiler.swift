@@ -304,6 +304,16 @@ public struct SceneRenderCompiler: Sendable {
             ))
             return .init(template: nil, diagnostics: diagnostics, wasDegraded: true)
         }
+        if let size = node.size,
+           !size.isFiniteAndPositive {
+            diagnostics.append(.init(
+                severity: .warning,
+                code: "renderer.invalid-node-property",
+                nodeID: node.id,
+                arguments: ["size"]
+            ))
+            return .init(template: nil, diagnostics: diagnostics, wasDegraded: true)
+        }
 
         return .init(
             template: SceneRenderUnboundDrawTemplate(
@@ -313,7 +323,8 @@ public struct SceneRenderCompiler: Sendable {
                 evaluationNodeIndex: evaluationNodeIndex,
                 textureResource: texture,
                 imageIndex: 0,
-                colorIntent: .colorSRGB
+                colorIntent: .colorSRGB,
+                localSize: node.size
             ),
             diagnostics: diagnostics,
             wasDegraded: wasDegraded
@@ -352,8 +363,7 @@ public struct SceneRenderCompiler: Sendable {
               scale.isFinite,
               rotationZ.isFinite,
               opacity.isFinite,
-              origin.z == 0,
-              scale.z == 1 else {
+              origin.z == 0 else {
             diagnostics.append(.init(
                 severity: .warning,
                 code: "renderer.invalid-node-property",
@@ -366,7 +376,7 @@ public struct SceneRenderCompiler: Sendable {
             origin: origin,
             pivot: .init(x: 0, y: 0, z: 0),
             position: .init(x: 0, y: 0, z: 0),
-            scale: scale,
+            scale: .init(x: scale.x, y: scale.y, z: 1),
             rotationZ: rotationZ,
             opacity: opacity,
             visible: node.visible ?? true,
@@ -480,7 +490,8 @@ public struct SceneRenderCompiler: Sendable {
                 sourceOrder: draw.sourceOrder,
                 effectiveZ: draw.effectiveZ,
                 evaluationNodeIndex: draw.evaluationNodeIndex,
-                textureManifestIndex: manifestIndex
+                textureManifestIndex: manifestIndex,
+                localSize: draw.localSize
             ))
         }
         return .init(
@@ -550,12 +561,21 @@ public struct SceneRenderCompiler: Sendable {
             return false
         }
         let name = dependency.request.requestedPath.lowercased()
-        return name == "genericimage" || name == "genericimage4"
+        return name == "genericimage"
+            || name == "genericimage2"
+            || name == "genericimage4"
     }
 
     private func modelFieldsAreRenderable(_ model: SceneModelResource) -> Bool {
         model.unknownFields.allSatisfy { key, value in
-            key == "mesh" && value == .string("quad")
+            switch key {
+            case "mesh":
+                value == .string("quad")
+            case "autosize":
+                value == .bool(true)
+            default:
+                false
+            }
         }
     }
 
@@ -567,7 +587,20 @@ public struct SceneRenderCompiler: Sendable {
 
     private func passFieldsAreRenderable(_ pass: SceneMaterialPass) -> Bool {
         pass.unknownFields.allSatisfy { key, value in
-            key == "depth" && value == .bool(false)
+            switch key {
+            case "blending":
+                value == .string("translucent")
+            case "combos":
+                value == .object([:])
+                    || value == .object(["version": .integer(2)])
+                    || value == .object(["VERSION": .integer(2)])
+            case "cullmode":
+                value == .string("nocull")
+            case "depth", "depthtest", "depthwrite":
+                value == .bool(false) || value == .string("disabled")
+            default:
+                false
+            }
         }
     }
 
@@ -595,6 +628,7 @@ struct SceneRenderUnboundDrawTemplate: Sendable {
     let textureResource: SceneTextureResource
     let imageIndex: Int
     let colorIntent: SceneTextureColorIntent
+    let localSize: SceneGraphSize?
 }
 
 private struct CompiledNode {
@@ -733,6 +767,12 @@ private extension SceneGraphVector3 {
     }
 }
 
+private extension SceneGraphSize {
+    var isFiniteAndPositive: Bool {
+        width.isFinite && height.isFinite && width > 0 && height > 0
+    }
+}
+
 private enum SceneRenderFingerprint {
     static func make(
         canvas: SceneRenderCanvas,
@@ -742,7 +782,7 @@ private enum SceneRenderFingerprint {
     ) -> String {
         var encoder = CanonicalEncoder()
         encoder.append("MacWall.SceneRenderProgram")
-        encoder.append(2)
+        encoder.append(3)
         encoder.append(canvas.width)
         encoder.append(canvas.height)
         encoder.append(nodes.count)
@@ -795,6 +835,11 @@ private struct CanonicalEncoder {
         append(draw.effectiveZ)
         append(draw.evaluationNodeIndex)
         append(draw.textureManifestIndex)
+        append(draw.localSize != nil)
+        if let localSize = draw.localSize {
+            append(localSize.width)
+            append(localSize.height)
+        }
     }
 
     mutating func append(_ node: SceneRenderNodeTemplate) {

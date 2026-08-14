@@ -270,7 +270,7 @@ struct SceneTimelineEvaluator: Sendable {
         case let (.position, .vector3(value)):
             properties.position = value
         case let (.scale, .vector3(value)):
-            properties.scale = value
+            properties.scale = .init(x: value.x, y: value.y, z: 1)
         case let (.rotationZ, .scalar(value)):
             properties.rotationZ = value
         case let (.opacity, .scalar(value)):

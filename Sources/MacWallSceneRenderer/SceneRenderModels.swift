@@ -289,6 +289,23 @@ struct SceneRenderDrawTemplate: Equatable, Sendable {
     let effectiveZ: Double
     let evaluationNodeIndex: Int
     let textureManifestIndex: Int
+    let localSize: SceneGraphSize?
+
+    init(
+        identity: SceneRenderNodeIdentity,
+        sourceOrder: Int,
+        effectiveZ: Double,
+        evaluationNodeIndex: Int,
+        textureManifestIndex: Int,
+        localSize: SceneGraphSize? = nil
+    ) {
+        self.identity = identity
+        self.sourceOrder = sourceOrder
+        self.effectiveZ = effectiveZ
+        self.evaluationNodeIndex = evaluationNodeIndex
+        self.textureManifestIndex = textureManifestIndex
+        self.localSize = localSize
+    }
 }
 
 struct SceneRenderBaseProperties: Equatable, Sendable {
