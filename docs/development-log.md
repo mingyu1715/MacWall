@@ -4,6 +4,39 @@
 
 ## 2026-08-14
 
+### 23:47 KST
+
+- 완료: Scene Engine S4 Headless 2D Metal Renderer 구현 및 local fixture gate
+- 문서: [S4 구현 기록](implemented/2026-08-14-scene-headless-2d-metal-renderer.md)
+- 구현:
+  - `MacWallSceneRenderer` 독립 target, immutable compile program, typed
+    timeline/transform evaluator, stable draw order
+  - linear RGBA16Float premultiplied composition, BGRA8 sRGB output,
+    renderer-owned/caller-provided target와 max 3 in-flight lifetime
+  - actual Metal output PNG snapshot, failure diagnostic, cancellation/invalidation
+  - image source geometry와 relative planar scale, S3 content rect/origin/mip 계약
+- local fixture:
+  - fixed 3 fixture를 `320x180 @ 0.5s`에서 두 번 실제 Metal render
+  - compiled/rendered/skipped는 `7/7/0`, `7/6/1`, `11/1/10`
+  - path/payload-free semantic pixel hash와 deterministic diagnostic aggregate 기록
+- 검증:
+  - focused Graph/compiler/evaluator/Metal/snapshot/local fixture:
+    `67 tests, 0 failures, 1 skip`
+  - renderer target: `77 tests, 0 failures, 1 skip`
+  - 전체 `swift test`: `668 tests, 0 failures, 1 skip`
+  - skip은 single-GPU 환경에서 실행할 수 없는 cross-device validation 1건
+  - renderer dependency/source guard, catalog redaction, `git diff --check`, root
+    `test/` 무변경 확인
+- review: 전체 S4 diff와 승인 설계의 완료 조건을 다시 대조했으며 남은
+  Critical/Important finding은 없음
+- 문서 정리: S4 spec/evidence/plan을 archive로 이동하고 roadmap의 다음 Scene
+  phase를 S5 Native Scene Frame Adapter로 변경
+- 비범위: Main App, Native Wallpaper backend, CALayer prototype, Scene fallback,
+  effect/text/particle/media/SceneScript/3D는 변경하지 않음
+- README: 사용자에게 보이는 동작 변화가 없어 `README.ko.md`와 `README.md`는
+  수정하지 않음
+- 미실행: 앱/GUI/System Settings, package/DMG/notarization/dist
+
 ### S4 Headless 2D Metal Renderer 실행 계획 준비
 
 - 완료:
@@ -23,7 +56,7 @@
   - GUI, Main App, Native Wallpaper, fallback, Scene effect/Web 확장은 S4 범위에서
     제외했습니다.
 - 다음:
-  - [S4 실행 계획](superpowers/plans/2026-08-14-scene-headless-2d-metal-renderer.md)
+  - [S4 실행 계획](archive/superpowers/plans/2026-08-14-scene-headless-2d-metal-renderer.md)
     실행 방식 선택
   - 구현 전 Task 0 Scene 의미 evidence gate 완료
 - 미실행: S4 코드, `swift test`, 앱/GUI/System Settings, package/DMG/notarization/dist
@@ -50,7 +83,7 @@
 ### 20:08 KST
 
 - 완료: Scene Engine S4 Headless 2D Metal Renderer 설계 승인 및 written spec 작성
-- 설계: [S4 Headless 2D Metal Renderer](superpowers/specs/2026-08-14-scene-headless-2d-metal-renderer-design.md)
+- 설계: [S4 Headless 2D Metal Renderer](archive/superpowers/specs/2026-08-14-scene-headless-2d-metal-renderer-design.md)
 - 핵심 결정:
   - `MacWallSceneRenderer` 독립 target과 immutable compiled render program
   - raw JSON을 renderer에서 해석하지 않는 typed timeline/instance override 경계

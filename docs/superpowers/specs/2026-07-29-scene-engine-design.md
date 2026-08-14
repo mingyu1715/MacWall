@@ -1,6 +1,6 @@
 # MacWall Scene Engine Design
 
-상태: Approved design / S0-S3 implemented / S4 design approved
+상태: Approved design / S0-S4 implemented / S5 next
 
 작성일: 2026-07-29
 대상: Wallpaper Engine Scene compatibility runtime
@@ -690,9 +690,13 @@ Scene fallback, animation/video, heap/streaming은 S3에 포함하지 않는다.
 
 ### S4: Headless 2D Metal Renderer
 
-상태: 설계 승인. 세부 계약은
-[S4 Headless 2D Metal Renderer 설계](2026-08-14-scene-headless-2d-metal-renderer-design.md)를
-기준으로 한다.
+상태: implemented / completed. 결과는
+[S4 구현 기록](../../implemented/2026-08-14-scene-headless-2d-metal-renderer.md)을
+기준으로 한다. 완료된
+[설계](../../archive/superpowers/specs/2026-08-14-scene-headless-2d-metal-renderer-design.md),
+[Gate 0 evidence](../../archive/superpowers/specs/2026-08-14-scene-headless-2d-metal-renderer-evidence.md),
+[실행 계획](../../archive/superpowers/plans/2026-08-14-scene-headless-2d-metal-renderer.md)은
+archive에 보관한다.
 
 - immutable compiled render program
 - image layer와 stable transform/opacity/Z order
@@ -700,6 +704,13 @@ Scene fallback, animation/video, heap/streaming은 S3에 포함하지 않는다.
 - linear RGBA16Float composition과 BGRA8 sRGB output
 - deterministic offscreen frame과 actual Metal snapshot
 - effect/text/particle/media/3D는 후속 phase로 유지
+
+세 fixed local fixture는 `320x180 @ 0.5s`에서 actual Metal output을 만들고,
+path/payload-free semantic pixel catalog와 두 번의 deterministic render로
+검증했다. focused S4 `67 tests`, renderer target `77 tests`, full
+`swift test` `668 tests`가 실패 없이 통과했고 single-GPU 환경의 cross-device
+validation 1건만 skip했다. Desktop output, Native adapter와 Scene fallback은
+S4에 연결하지 않았다.
 
 ### S5: Native Scene Frame Adapter
 

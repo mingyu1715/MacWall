@@ -21,7 +21,11 @@ macOS 14다.
 
 작성일: 2026-08-14
 
-상태: executable plan ready / implementation not started
+상태: implemented / completed / archived plan
+
+구현 결과와 최종 검증은
+[S4 구현 기록](../../../implemented/2026-08-14-scene-headless-2d-metal-renderer.md)을
+기준으로 한다. 아래 checkbox는 실행 당시의 계획 구조를 보존한다.
 
 **승인 설계:**
 [Scene S4 Headless 2D Metal Renderer Design](../specs/2026-08-14-scene-headless-2d-metal-renderer-design.md)

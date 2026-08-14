@@ -2,7 +2,11 @@
 
 작성일: 2026-08-14
 
-상태: approved design / Gate 0 passed / implementation not started
+상태: implemented / completed / archived design
+
+구현 결과는
+[S4 구현 기록](../../../implemented/2026-08-14-scene-headless-2d-metal-renderer.md)을
+기준으로 한다. 이 문서는 완료된 설계와 결정 근거를 보관한다.
 
 ## 1. 결정 요약
 
@@ -856,7 +860,7 @@ linear 전환 개념을 확인하는 근거다. package 내부 field mapping과 
 
 ### 내부 기준
 
-- [Scene Engine Design](2026-07-29-scene-engine-design.md)
-- [S2 implementation record](../../implemented/2026-08-04-scene-asset-resolver-typed-graph.md)
-- [S3 implementation record](../../implemented/2026-08-06-scene-gpu-texture-pipeline.md)
-- [S3 archived design](../../archive/superpowers/specs/2026-08-06-scene-gpu-texture-pipeline-design.md)
+- [Scene Engine Design](../../../superpowers/specs/2026-07-29-scene-engine-design.md)
+- [S2 implementation record](../../../implemented/2026-08-04-scene-asset-resolver-typed-graph.md)
+- [S3 implementation record](../../../implemented/2026-08-06-scene-gpu-texture-pipeline.md)
+- [S3 archived design](2026-08-06-scene-gpu-texture-pipeline-design.md)
