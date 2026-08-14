@@ -93,6 +93,32 @@ public enum SceneRenderError: Error, Equatable, Sendable {
     case sessionInvalidated
     case cancelled
     case commandFailed
+    case texturePipeline(SceneTexturePipelineError)
+}
+
+public struct SceneRenderSessionSnapshot: Equatable, Sendable {
+    public let status: SceneRenderStatus
+    public let diagnostics: [SceneRenderDiagnostic]
+    public let survivingDrawIndices: [Int]
+    public let textureLeaseCount: Int
+    public let deviceRegistryID: UInt64
+    public let isInvalidated: Bool
+
+    public init(
+        status: SceneRenderStatus,
+        diagnostics: [SceneRenderDiagnostic],
+        survivingDrawIndices: [Int],
+        textureLeaseCount: Int,
+        deviceRegistryID: UInt64,
+        isInvalidated: Bool
+    ) {
+        self.status = status
+        self.diagnostics = diagnostics
+        self.survivingDrawIndices = survivingDrawIndices
+        self.textureLeaseCount = textureLeaseCount
+        self.deviceRegistryID = deviceRegistryID
+        self.isInvalidated = isInvalidated
+    }
 }
 
 public final class SceneExternalRenderTargetLease: @unchecked Sendable {

@@ -1,6 +1,5 @@
 import CryptoKit
 import Foundation
-import MacWallSceneAssets
 import MacWallSceneGraph
 import MacWallSceneTextures
 
@@ -211,9 +210,8 @@ public struct SceneRenderCompiler: Sendable {
         dependencies: DependencyIndex
     ) -> CompiledNode {
         var diagnostics: [SceneRenderDiagnostic] = []
-        guard let modelPath = dependencies.packagePath(
-            owner: .node(node.id),
-            role: .model
+        guard let modelPath = dependencies.modelPackagePath(
+            owner: .node(node.id)
         ), let model = resources.models[modelPath] else {
             diagnostics.append(.init(
                 severity: .error,
@@ -538,11 +536,11 @@ public struct SceneRenderCompiler: Sendable {
 
     private func packagePath(
         _ dependency: SceneDependencyEdge
-    ) -> SceneVirtualPath? {
+    ) -> String? {
         guard dependency.resolution.kind == .package else {
             return nil
         }
-        return dependency.resolution.selected?.canonicalPath
+        return dependency.resolution.selected?.canonicalPath.rawValue
     }
 
     private func isSupportedBuiltInImageShader(
@@ -639,16 +637,16 @@ private struct MutableManifestEntry {
 }
 
 private struct ResourceIndex {
-    var models: [SceneVirtualPath: SceneModelResource] = [:]
-    var materials: [SceneVirtualPath: SceneMaterialResource] = [:]
-    var textures: [SceneVirtualPath: SceneTextureResource] = [:]
+    var models: [String: SceneModelResource] = [:]
+    var materials: [String: SceneMaterialResource] = [:]
+    var textures: [String: SceneTextureResource] = [:]
 
     init(_ resources: [SceneGraphResource]) {
         for resource in resources {
             switch resource {
-            case let .model(model): models[model.path] = model
-            case let .material(material): materials[material.path] = material
-            case let .texture(texture): textures[texture.path] = texture
+            case let .model(model): models[model.path.rawValue] = model
+            case let .material(material): materials[material.path.rawValue] = material
+            case let .texture(texture): textures[texture.path.rawValue] = texture
             case .effect, .shader: break
             }
         }
@@ -667,18 +665,15 @@ private struct DependencyIndex {
         }
     }
 
-    func packagePath(
-        owner: SceneDependencyOwner,
-        role: SceneAssetRole
-    ) -> SceneVirtualPath? {
+    func modelPackagePath(owner: SceneDependencyOwner) -> String? {
         guard case let .node(nodeID) = owner,
-              let matches = edgesByNode[nodeID]?.filter({ $0.request.role == role }),
+              let matches = edgesByNode[nodeID]?.filter({ $0.request.role == .model }),
               matches.count == 1,
               let dependency = matches.first,
               dependency.resolution.kind == .package else {
             return nil
         }
-        return dependency.resolution.selected?.canonicalPath
+        return dependency.resolution.selected?.canonicalPath.rawValue
     }
 }
 

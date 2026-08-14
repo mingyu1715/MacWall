@@ -47,6 +47,19 @@ final class SceneTextureLoadPlannerTests: XCTestCase {
         XCTAssertEqual(plan.contentRect.width, 0.75, accuracy: 0.0001)
         XCTAssertEqual(plan.contentRect.height, 0.625, accuracy: 0.0001)
         XCTAssertEqual(plan.mips[1].contentExtent, .init(width: 3, height: 3))
+        XCTAssertEqual(plan.mipContentRegions.map(\.level), [0, 1])
+        XCTAssertEqual(
+            plan.mipContentRegions.map(\.storageExtent),
+            [.init(width: 8, height: 8), .init(width: 4, height: 4)]
+        )
+        XCTAssertEqual(
+            plan.mipContentRegions.map(\.contentExtent),
+            [.init(width: 6, height: 5), .init(width: 3, height: 3)]
+        )
+        XCTAssertEqual(plan.mipContentRegions[0].contentRect.width, 0.75, accuracy: 0.0001)
+        XCTAssertEqual(plan.mipContentRegions[0].contentRect.height, 0.625, accuracy: 0.0001)
+        XCTAssertEqual(plan.mipContentRegions[1].contentRect.width, 0.75, accuracy: 0.0001)
+        XCTAssertEqual(plan.mipContentRegions[1].contentRect.height, 0.75, accuracy: 0.0001)
     }
 
     func testCalculatesExactUncompressedBytesAndRowStrides() throws {

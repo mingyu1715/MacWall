@@ -467,6 +467,57 @@ final class SceneTexturePipelineIntegrationTests: XCTestCase {
         XCTAssertEqual(snapshot.cacheMisses, 1)
     }
 
+    func testPackageContextAcquireHidesResolverFromRendererCallSite() async throws {
+        let fixture = try makePackageTextureFixture(texture: makeTexture(
+            format: 0,
+            width: 2,
+            height: 1,
+            payload: Data([255, 0, 0, 255, 0, 255, 0, 255])
+        ))
+        let store = try SceneTextureStore(device: try device())
+        let generation = await store.makeGeneration()
+        let context = SceneTexturePackageContext(
+            packageID: fixture.packageID,
+            resolver: fixture.resolver
+        )
+
+        let lease = try await store.acquire(
+            fixture.request(color: .colorSRGB),
+            resource: fixture.resource,
+            context: context,
+            for: generation
+        )
+
+        XCTAssertEqual(lease.contentExtent, .init(width: 2, height: 1))
+        XCTAssertEqual(lease.mipContentRegions.count, 1)
+        XCTAssertEqual(lease.mipContentRegions[0].contentRect, lease.contentRect)
+    }
+
+    func testPackageContextAcquireRejectsUnknownGeneration() async throws {
+        let fixture = try makePackageTextureFixture(texture: makeTexture(
+            format: 0,
+            width: 1,
+            height: 1,
+            payload: Data([255, 255, 255, 255])
+        ))
+        let store = try SceneTextureStore(device: try device())
+        let context = SceneTexturePackageContext(
+            packageID: fixture.packageID,
+            resolver: fixture.resolver
+        )
+
+        await XCTAssertThrowsErrorAsync(
+            try await store.acquire(
+                fixture.request(color: .colorSRGB),
+                resource: fixture.resource,
+                context: context,
+                for: SceneTextureGenerationID()
+            )
+        ) { error in
+            XCTAssertEqual(error as? SceneTexturePipelineError, .invalidRequest)
+        }
+    }
+
     func testR8AndRG8DirectPathsRetainChannelFormats() async throws {
         let device = try device()
         let cases: [(Int32, Data, MTLPixelFormat)] = [
@@ -675,6 +726,11 @@ final class SceneTexturePipelineIntegrationTests: XCTestCase {
         )
 
         XCTAssertEqual(lease.mipmapLevelCount, 2)
+        XCTAssertEqual(lease.mipContentRegions.map(\.level), [0, 1])
+        XCTAssertEqual(
+            lease.mipContentRegions.map(\.contentExtent),
+            [.init(width: 2, height: 2), .init(width: 1, height: 1)]
+        )
         XCTAssertEqual(try readBack(lease.texture, level: 0), levelZero)
         XCTAssertEqual(try readBack(lease.texture, level: 1), levelOne)
     }
