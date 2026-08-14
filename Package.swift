@@ -41,6 +41,14 @@ let package = Package(
             ]
         ),
         .target(
+            name: "MacWallSceneRenderer",
+            dependencies: [
+                "MacWallSceneGraph",
+                "MacWallSceneTextures"
+            ],
+            resources: [.process("Shaders/SceneImage.metal")]
+        ),
+        .target(
             name: "MacWallSceneTestSupport",
             dependencies: ["MacWallSceneFormats"],
             path: "Tests/MacWallSceneTestSupport"
@@ -117,6 +125,17 @@ let package = Package(
             dependencies: [
                 "MacWallSceneTextures",
                 "MacWallSceneGraph",
+                "MacWallSceneAssets",
+                "MacWallSceneFormats",
+                "MacWallSceneTestSupport"
+            ]
+        ),
+        .testTarget(
+            name: "MacWallSceneRendererTests",
+            dependencies: [
+                "MacWallSceneRenderer",
+                "MacWallSceneGraph",
+                "MacWallSceneTextures",
                 "MacWallSceneAssets",
                 "MacWallSceneFormats",
                 "MacWallSceneTestSupport"

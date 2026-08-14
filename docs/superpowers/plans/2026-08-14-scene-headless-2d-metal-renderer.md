@@ -455,21 +455,25 @@ items `100_000`, maximum in-flight `3`, target budget `512 MiB`, snapshot budget
   value에는 URL, `MTLDevice`, random UUID가 섞이지 않게 한다.
 - [ ] shader에 full quad vertex function, textured fragment function, linear composition용
   tint/opacity uniform만 추가한다.
-- [ ] `.metal`은 별도 `.process` resource 선언 없이 target source로 두어 SwiftPM의
-  metallib compile 경로를 사용한다.
+- [ ] Xcode 26.6 toolchain 검증 결과에 따라 `.metal`은 `.process` resource로 선언한다.
+  native SwiftPM engine은 이를 source resource로 복사해 CPU test를 유지하고,
+  `swiftbuild` engine은 같은 파일을 `default.metallib`로 compile한다.
 - [ ] production은 runtime `makeLibrary(source:)`를 사용하지 않고
   `device.makeDefaultLibrary(bundle: Bundle.module)`로 `sceneImageVertex`와
   `sceneImageFragment`를 찾는다.
 - [ ] default Metal device가 없으면 Metal test만 `XCTSkip`하고 CPU model test는
   계속 실행한다.
-- [ ] command-line SwiftPM focused test로 shader function을 실제로 찾는다. 실패하면
-  renderer 구현 전에 Package resource layout을 바로잡는다.
+- [ ] `swift test --build-system swiftbuild` focused test로 shader function을 실제로
+  찾는다. Xcode의 별도 Metal Toolchain component가 필요하며, 실패하면 renderer 구현
+  전에 Package resource layout을 바로잡는다. native SwiftPM engine에서는 shader
+  test만 명시적으로 skip하고 CPU test는 계속 실행한다.
 
 **RED:**
 
 ```bash
 swift test --filter SceneRenderModelTests
-swift test --filter SceneMetalPipelineTests/testDefaultShaderLibraryContainsSceneFunctions
+swift test --build-system swiftbuild \
+  --filter SceneMetalPipelineTests/testDefaultShaderLibraryContainsSceneFunctions
 ```
 
 **GREEN:** RED와 같은 두 명령이 모두 통과해야 한다.
