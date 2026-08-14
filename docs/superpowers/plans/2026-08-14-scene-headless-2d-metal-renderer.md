@@ -633,9 +633,9 @@ struct SceneEvaluatedNodeProperties: Sendable {
   timestamp test로 고정한다.
 - [ ] linear, step, cubic Bezier를 CPU-only로 평가한다. Bezier x-to-progress inversion은
   bounded iteration과 epsilon을 사용한다.
-- [ ] relative track은 base value에 평가값을 한 번만 합산하고 absolute track은
-  대체한다.
-- [ ] property 우선순위는 `base → instance override → timeline`으로 고정한다.
+- [ ] Gate 0에서 precedence가 확인되지 않은 relative track과 instance override는
+  compiler에서 제외한다. evaluator에 직접 유입되면 추측 적용하지 않고 거부한다.
+- [ ] S4 property 우선순위는 `base → supported absolute timeline`으로 고정한다.
 - [ ] vector track 일부 channel만 invalid하면 전체 vector를 보간하지 않고 그
   channel의 base/override 값을 유지한다.
 - [ ] visibility는 step만 허용하고 연속 interpolation은 compiler에서 unsupported로
