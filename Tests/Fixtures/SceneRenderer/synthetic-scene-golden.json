@@ -1,0 +1,114 @@
+{
+  "cases" : [
+    {
+      "drawCount" : 2,
+      "height" : 1,
+      "id" : "order-alpha-srgb",
+      "mediaTimeSeconds" : 0,
+      "samples" : [
+        {
+          "bgra" : [187, 0, 188, 255],
+          "x" : 0,
+          "y" : 0
+        }
+      ],
+      "scalingMode" : "stretch",
+      "skippedDrawCount" : 0,
+      "status" : "exact",
+      "width" : 1
+    },
+    {
+      "drawCount" : 1,
+      "height" : 2,
+      "id" : "content-rect-top-left",
+      "mediaTimeSeconds" : 0,
+      "samples" : [
+        { "bgra" : [0, 0, 255, 255], "x" : 0, "y" : 0 },
+        { "bgra" : [0, 255, 0, 255], "x" : 1, "y" : 0 },
+        { "bgra" : [255, 0, 0, 255], "x" : 0, "y" : 1 },
+        { "bgra" : [255, 255, 255, 255], "x" : 1, "y" : 1 }
+      ],
+      "scalingMode" : "stretch",
+      "skippedDrawCount" : 0,
+      "status" : "exact",
+      "width" : 2
+    },
+    {
+      "drawCount" : 1,
+      "height" : 3,
+      "id" : "fit-letterbox",
+      "mediaTimeSeconds" : 0,
+      "samples" : [
+        { "bgra" : [0, 0, 0, 0], "x" : 0, "y" : 0 },
+        { "bgra" : [0, 0, 255, 255], "x" : 1, "y" : 1 },
+        { "bgra" : [0, 0, 0, 0], "x" : 0, "y" : 2 }
+      ],
+      "scalingMode" : "fit",
+      "skippedDrawCount" : 0,
+      "status" : "exact",
+      "width" : 2
+    },
+    {
+      "drawCount" : 1,
+      "height" : 3,
+      "id" : "stretch-full-frame",
+      "mediaTimeSeconds" : 0,
+      "samples" : [
+        { "bgra" : [0, 0, 255, 255], "x" : 0, "y" : 0 },
+        { "bgra" : [0, 0, 255, 255], "x" : 1, "y" : 1 },
+        { "bgra" : [0, 0, 255, 255], "x" : 0, "y" : 2 }
+      ],
+      "scalingMode" : "stretch",
+      "skippedDrawCount" : 0,
+      "status" : "exact",
+      "width" : 2
+    },
+    {
+      "drawCount" : 1,
+      "height" : 2,
+      "id" : "fill-center-crop",
+      "mediaTimeSeconds" : 0,
+      "samples" : [
+        { "bgra" : [188, 0, 188, 255], "x" : 0, "y" : 0 },
+        { "bgra" : [188, 0, 188, 255], "x" : 0, "y" : 1 }
+      ],
+      "scalingMode" : "fill",
+      "skippedDrawCount" : 0,
+      "status" : "exact",
+      "width" : 1
+    },
+    {
+      "drawCount" : 2,
+      "height" : 1,
+      "id" : "hierarchy-opacity",
+      "mediaTimeSeconds" : 0,
+      "samples" : [
+        { "bgra" : [0, 0, 137, 64], "x" : 0, "y" : 0 }
+      ],
+      "scalingMode" : "stretch",
+      "skippedDrawCount" : 0,
+      "status" : "exact",
+      "width" : 1
+    },
+    {
+      "drawCount" : 1,
+      "height" : 1,
+      "id" : "fixed-time-opacity",
+      "mediaTimeSeconds" : 0.25,
+      "samples" : [
+        { "bgra" : [0, 0, 137, 64], "x" : 0, "y" : 0 }
+      ],
+      "scalingMode" : "stretch",
+      "skippedDrawCount" : 0,
+      "status" : "exact",
+      "width" : 1
+    }
+  ],
+  "instancePolicy" : {
+    "diagnosticCode" : "renderer.unsupported-instance",
+    "status" : "degraded",
+    "survivingDrawCount" : 1
+  },
+  "schemaVersion" : 1,
+  "tolerance" : 1
+}

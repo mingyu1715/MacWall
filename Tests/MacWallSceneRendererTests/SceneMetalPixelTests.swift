@@ -321,6 +321,77 @@ final class SceneMetalPixelTests: XCTestCase {
         await session.invalidate()
     }
 
+    func testSyntheticGoldenMatrix() async throws {
+        let golden = try loadSyntheticGolden()
+        XCTAssertEqual(golden.schemaVersion, 1)
+        XCTAssertEqual(golden.tolerance, 1)
+        try assertInstancePolicy(golden.instancePolicy)
+
+        for testCase in golden.cases {
+            let fixture = try makeGoldenFixture(id: testCase.id)
+            let session = try await fixture.makeSession()
+            let scalingMode = try XCTUnwrap(
+                SceneOutputScalingMode(rawValue: testCase.scalingMode)
+            )
+            let expectedStatus = try XCTUnwrap(
+                SceneRenderStatus(rawValue: testCase.status)
+            )
+            let request = SceneRenderFrameRequest(
+                mediaTimeSeconds: testCase.mediaTimeSeconds,
+                outputWidth: testCase.width,
+                outputHeight: testCase.height,
+                scalingMode: scalingMode
+            )
+
+            let first = try await session.render(request)
+            let firstPixels = try await readBGRA8(first.texture)
+            XCTAssertEqual(first.texture.width, testCase.width, testCase.id)
+            XCTAssertEqual(first.texture.height, testCase.height, testCase.id)
+            XCTAssertEqual(first.status, expectedStatus, testCase.id)
+            XCTAssertEqual(first.drawCount, testCase.drawCount, testCase.id)
+            XCTAssertEqual(
+                first.skippedDrawCount,
+                testCase.skippedDrawCount,
+                testCase.id
+            )
+            first.release()
+
+            let second = try await session.render(request)
+            let secondPixels = try await readBGRA8(second.texture)
+            XCTAssertEqual(
+                second.texture.width,
+                first.texture.width,
+                testCase.id
+            )
+            XCTAssertEqual(
+                second.texture.height,
+                first.texture.height,
+                testCase.id
+            )
+            XCTAssertEqual(second.status, first.status, testCase.id)
+            XCTAssertEqual(second.drawCount, first.drawCount, testCase.id)
+            XCTAssertEqual(
+                second.skippedDrawCount,
+                first.skippedDrawCount,
+                testCase.id
+            )
+            XCTAssertEqual(secondPixels, firstPixels, testCase.id)
+            for sample in testCase.samples {
+                assertSample(
+                    pixels: secondPixels,
+                    width: testCase.width,
+                    height: testCase.height,
+                    sample: sample,
+                    tolerance: golden.tolerance,
+                    caseID: testCase.id
+                )
+            }
+
+            second.release()
+            await session.invalidate()
+        }
+    }
+
     private func makeRendererFixture(
         textureBytes: [UInt8],
         visible: Bool = true
@@ -329,6 +400,186 @@ final class SceneMetalPixelTests: XCTestCase {
             textures: [.solid(textureBytes)],
             layers: [.init(textureIndex: 0, visible: visible)]
         )
+    }
+
+    private func makeGoldenFixture(id: String) throws -> RendererFixture {
+        switch id {
+        case "order-alpha-srgb":
+            return try makeRendererFixture(
+                textures: [
+                    .solid([0, 0, 255, 255]),
+                    .solid([255, 0, 0, 128])
+                ],
+                layers: [.init(textureIndex: 0), .init(textureIndex: 1)]
+            )
+        case "content-rect-top-left":
+            return try makeRendererFixture(
+                textures: [.init(
+                    storageSize: (4, 2),
+                    contentSize: (2, 2),
+                    rgba: [
+                        255, 0, 0, 255, 0, 255, 0, 255,
+                        255, 0, 255, 255, 255, 0, 255, 255,
+                        0, 0, 255, 255, 255, 255, 255, 255,
+                        255, 0, 255, 255, 255, 0, 255, 255
+                    ]
+                )],
+                layers: [.init(textureIndex: 0, scale: (2, 2))],
+                canvasSize: (2, 2)
+            )
+        case "fit-letterbox", "stretch-full-frame":
+            return try makeRendererFixture(
+                textures: [.solid([255, 0, 0, 255])],
+                layers: [.init(textureIndex: 0, scale: (2, 1))],
+                canvasSize: (2, 1)
+            )
+        case "fill-center-crop":
+            return try makeRendererFixture(
+                textures: [.init(
+                    storageSize: (2, 1),
+                    contentSize: (2, 1),
+                    rgba: [255, 0, 0, 255, 0, 0, 255, 255]
+                )],
+                layers: [.init(textureIndex: 0, scale: (2, 1))],
+                canvasSize: (2, 1)
+            )
+        case "hierarchy-opacity":
+            return try makeRendererFixture(
+                textures: [
+                    .solid([0, 0, 0, 0]),
+                    .solid([255, 0, 0, 255])
+                ],
+                layers: [
+                    .init(textureIndex: 0, opacity: 0.5),
+                    .init(textureIndex: 1, opacity: 0.5, parentIndex: 0)
+                ]
+            )
+        case "fixed-time-opacity":
+            return try makeRendererFixture(
+                textures: [.solid([255, 0, 0, 255])],
+                layers: [.init(
+                    textureIndex: 0,
+                    animationBindings: [.init(
+                        property: .opacity,
+                        playbackMode: .single,
+                        durationSeconds: 1,
+                        isRelative: false,
+                        startsPaused: false,
+                        keyframes: [
+                            .init(
+                                timeSeconds: 0,
+                                value: .scalar(0),
+                                interpolation: .linear
+                            ),
+                            .init(
+                                timeSeconds: 1,
+                                value: .scalar(1),
+                                interpolation: .linear
+                            )
+                        ]
+                    )]
+                )]
+            )
+        default:
+            throw GoldenTestError.unknownCase(id)
+        }
+    }
+
+    private func loadSyntheticGolden() throws -> SyntheticGolden {
+        let repositoryRoot = URL(filePath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let url = repositoryRoot
+            .appending(path: "Tests")
+            .appending(path: "Fixtures")
+            .appending(path: "SceneRenderer")
+            .appending(path: "synthetic-scene-golden.json")
+        return try JSONDecoder().decode(
+            SyntheticGolden.self,
+            from: Data(contentsOf: url)
+        )
+    }
+
+    private func assertInstancePolicy(
+        _ expected: SyntheticInstancePolicy
+    ) throws {
+        let entries = [
+            ScenePackageFixtureEntry(
+                path: "scene.json",
+                data: Data(
+                    #"{"general":{"orthogonalprojection":{"width":1,"height":1}},"objects":[{"id":20,"image":"models/base.json"},{"id":10,"image":"models/base.json","instance":20}]}"#.utf8
+                )
+            ),
+            ScenePackageFixtureEntry(
+                path: "models/base.json",
+                data: Data(#"{"material":"materials/base.json"}"#.utf8)
+            ),
+            ScenePackageFixtureEntry(
+                path: "materials/base.json",
+                data: Data(#"{"texture":"base"}"#.utf8)
+            ),
+            ScenePackageFixtureEntry(
+                path: "materials/base.tex",
+                data: Data([0x54, 0x45, 0x58])
+            )
+        ]
+        let resolver = try ScenePackageAssetResolver.open(
+            source: SceneDataByteSource(data: ScenePackageFixtureBuilder.make(
+                entries: entries
+            ))
+        )
+        let result = SceneRenderCompiler().compile(
+            SceneGraphBuilder().build(resolver: resolver)
+        )
+
+        XCTAssertEqual(result.status.rawValue, expected.status)
+        XCTAssertEqual(result.program?.drawCount, expected.survivingDrawCount)
+        XCTAssertTrue(result.diagnostics.contains {
+            $0.code == expected.diagnosticCode
+        })
+    }
+
+    private func assertSample(
+        pixels: Data,
+        width: Int,
+        height: Int,
+        sample: SyntheticGoldenSample,
+        tolerance: Int,
+        caseID: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertTrue(
+            (0..<width).contains(sample.x),
+            caseID,
+            file: file,
+            line: line
+        )
+        XCTAssertTrue(
+            (0..<height).contains(sample.y),
+            caseID,
+            file: file,
+            line: line
+        )
+        let offset = (sample.y * width + sample.x) * 4
+        let actual = Array(pixels[offset..<(offset + 4)])
+        XCTAssertEqual(
+            actual.count,
+            sample.bgra.count,
+            caseID,
+            file: file,
+            line: line
+        )
+        for (actualByte, expectedByte) in zip(actual, sample.bgra) {
+            XCTAssertLessThanOrEqual(
+                abs(Int(actualByte) - Int(expectedByte)),
+                tolerance,
+                caseID,
+                file: file,
+                line: line
+            )
+        }
     }
 
     private func makeRendererFixture(
@@ -379,7 +630,7 @@ final class SceneMetalPixelTests: XCTestCase {
             nodeTemplates: zip(identities, layers).map { identity, layer in
                 .init(
                     identity: identity,
-                    parentIndex: nil,
+                    parentIndex: layer.parentIndex,
                     baseProperties: .init(
                         origin: .init(x: layer.origin.0, y: layer.origin.1, z: 0),
                         pivot: .init(x: 0, y: 0, z: 0),
@@ -392,7 +643,7 @@ final class SceneMetalPixelTests: XCTestCase {
                         color: .init(red: 255, green: 255, blue: 255, alpha: 255),
                         zOrder: 0
                     ),
-                    animationBindings: [],
+                    animationBindings: layer.animationBindings,
                     isSupported: true
                 )
             },
@@ -531,20 +782,61 @@ private struct PixelLayer {
     let scale: (Double, Double)
     let opacity: Double
     let visible: Bool
+    let parentIndex: Int?
+    let animationBindings: [SceneTypedAnimationTrack]
 
     init(
         textureIndex: Int,
         origin: (Double, Double) = (0, 0),
         scale: (Double, Double) = (1, 1),
         opacity: Double = 1,
-        visible: Bool = true
+        visible: Bool = true,
+        parentIndex: Int? = nil,
+        animationBindings: [SceneTypedAnimationTrack] = []
     ) {
         self.textureIndex = textureIndex
         self.origin = origin
         self.scale = scale
         self.opacity = opacity
         self.visible = visible
+        self.parentIndex = parentIndex
+        self.animationBindings = animationBindings
     }
+}
+
+private struct SyntheticGolden: Decodable {
+    let schemaVersion: Int
+    let tolerance: Int
+    let instancePolicy: SyntheticInstancePolicy
+    let cases: [SyntheticGoldenCase]
+}
+
+private struct SyntheticInstancePolicy: Decodable {
+    let diagnosticCode: String
+    let status: String
+    let survivingDrawCount: Int
+}
+
+private struct SyntheticGoldenCase: Decodable {
+    let id: String
+    let width: Int
+    let height: Int
+    let scalingMode: String
+    let mediaTimeSeconds: Double
+    let status: String
+    let drawCount: Int
+    let skippedDrawCount: Int
+    let samples: [SyntheticGoldenSample]
+}
+
+private struct SyntheticGoldenSample: Decodable {
+    let x: Int
+    let y: Int
+    let bgra: [UInt8]
+}
+
+private enum GoldenTestError: Error {
+    case unknownCase(String)
 }
 
 private struct RendererFixture {
