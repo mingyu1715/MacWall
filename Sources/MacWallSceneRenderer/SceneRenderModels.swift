@@ -93,6 +93,7 @@ public enum SceneRenderError: Error, Equatable, Sendable {
     case sessionInvalidated
     case cancelled
     case commandFailed
+    case snapshotEncodingFailed
     case texturePipeline(SceneTexturePipelineError)
 }
 

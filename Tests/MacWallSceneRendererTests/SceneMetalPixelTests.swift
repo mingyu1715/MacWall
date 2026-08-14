@@ -273,6 +273,54 @@ final class SceneMetalPixelTests: XCTestCase {
         XCTAssertTrue(snapshot.isInvalidated)
     }
 
+    func testSnapshotRequestReturnsPNGFromCompletedFrame() async throws {
+        let fixture = try makeRendererFixture(textureBytes: [255, 0, 0, 255])
+        let session = try await fixture.makeSession()
+
+        let frame = try await session.render(.init(
+            mediaTimeSeconds: 0,
+            outputWidth: 1,
+            outputHeight: 1,
+            scalingMode: .stretch,
+            requestsSnapshot: true
+        ))
+
+        let png = try XCTUnwrap(frame.snapshotPNG)
+        XCTAssertEqual(Array(png.prefix(8)), [137, 80, 78, 71, 13, 10, 26, 10])
+        XCTAssertFalse(frame.diagnostics.contains {
+            $0.code == "renderer.snapshot-failed"
+        })
+        frame.release()
+        await session.invalidate()
+    }
+
+    func testSnapshotFailureKeepsCompletedFrameAndAddsSnapshotDiagnostic() async throws {
+        let fixture = try makeRendererFixture(textureBytes: [255, 0, 0, 255])
+        let session = try await fixture.makeSession(limits: .init(
+            snapshotReadbackBudgetBytes: 3
+        ))
+
+        let frame = try await session.render(.init(
+            mediaTimeSeconds: 0,
+            outputWidth: 1,
+            outputHeight: 1,
+            scalingMode: .stretch,
+            requestsSnapshot: true
+        ))
+        let pixels = try await readBGRA8(frame.texture)
+
+        XCTAssertNil(frame.snapshotPNG)
+        XCTAssertEqual(Array(pixels), [0, 0, 255, 255])
+        XCTAssertEqual(frame.status, .exact)
+        XCTAssertEqual(frame.diagnostics.last, .init(
+            severity: .warning,
+            code: "renderer.snapshot-failed",
+            arguments: ["resourceLimit.snapshotReadbackBytes"]
+        ))
+        frame.release()
+        await session.invalidate()
+    }
+
     private func makeRendererFixture(
         textureBytes: [UInt8],
         visible: Bool = true
@@ -505,12 +553,15 @@ private struct RendererFixture {
     let store: SceneTextureStore
     let context: SceneTexturePackageContext
 
-    func makeSession() async throws -> SceneRenderSession {
+    func makeSession(
+        limits: SceneRenderLimits = .init()
+    ) async throws -> SceneRenderSession {
         try await SceneRenderSession.prepare(
             program: program,
             device: device,
             textureStore: store,
-            textureContext: context
+            textureContext: context,
+            limits: limits
         )
     }
 }

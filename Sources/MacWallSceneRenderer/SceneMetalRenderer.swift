@@ -13,6 +13,7 @@ actor SceneMetalRenderer {
     private let pipelines: SceneMetalPipelineResources
     private let targetPool: SceneRenderTargetPool
     private let frameGate: SceneInFlightFrameGate
+    private let snapshotReader = SceneSnapshotReader()
     private let textureLeases: [Int: SceneTextureLease]
     private let mipUniformBuffer: any MTLBuffer
     private let passSlots: [SceneMetalPassSlot]
@@ -89,7 +90,7 @@ actor SceneMetalRenderer {
             outputHeight: request.outputHeight,
             drawItemCount: program.drawCount,
             requestedInFlightFrameCount: limits.maximumInFlightFrameCount,
-            requestsSnapshot: request.requestsSnapshot
+            requestsSnapshot: false
         )
 
         let externalReservation: ObjectIdentifier?
@@ -276,14 +277,46 @@ actor SceneMetalRenderer {
         guard !Task.isCancelled else {
             throw SceneRenderError.cancelled
         }
+        var snapshotPNG: Data?
+        var completedDiagnostics = diagnostics
+        if request.requestsSnapshot {
+            do {
+                snapshotPNG = try await snapshotReader.pngData(
+                    from: finalTexture,
+                    commandQueue: commandQueue,
+                    limits: limits
+                )
+            } catch let error as SceneRenderError {
+                guard error != .cancelled else { throw error }
+                completedDiagnostics.append(.init(
+                    severity: .warning,
+                    code: "renderer.snapshot-failed",
+                    arguments: [Self.snapshotDiagnosticArgument(error)]
+                ))
+            } catch is CancellationError {
+                throw SceneRenderError.cancelled
+            } catch {
+                completedDiagnostics.append(.init(
+                    severity: .warning,
+                    code: "renderer.snapshot-failed",
+                    arguments: ["snapshotEncodingFailed"]
+                ))
+            }
+        }
+        guard !invalidated else {
+            throw SceneRenderError.sessionInvalidated
+        }
+        guard !Task.isCancelled else {
+            throw SceneRenderError.cancelled
+        }
         return SceneRenderCompletedFrame(
             texture: finalTexture,
             mediaTimeSeconds: request.mediaTimeSeconds,
             status: status,
-            diagnostics: diagnostics,
+            diagnostics: completedDiagnostics,
             drawCount: encodedDrawCount,
             skippedDrawCount: skippedDrawCount,
-            snapshotPNG: nil,
+            snapshotPNG: snapshotPNG,
             targetAllocation: retainedAllocation
         )
     }
@@ -346,6 +379,24 @@ actor SceneMetalRenderer {
                     MemoryLayout<SIMD4<Float>>.stride
                 )
             }
+        }
+    }
+
+    private static func snapshotDiagnosticArgument(
+        _ error: SceneRenderError
+    ) -> String {
+        switch error {
+        case .resourceLimit(let limit):
+            return "resourceLimit.\(limit.rawValue)"
+        case .invalidProgram: return "invalidProgram"
+        case .unsupported: return "unsupported"
+        case .incompatibleDevice: return "incompatibleDevice"
+        case .invalidTarget: return "invalidTarget"
+        case .sessionInvalidated: return "sessionInvalidated"
+        case .cancelled: return "cancelled"
+        case .commandFailed: return "commandFailed"
+        case .snapshotEncodingFailed: return "snapshotEncodingFailed"
+        case .texturePipeline: return "texturePipeline"
         }
     }
 }
