@@ -774,8 +774,9 @@ actor SceneRenderTargetPool {
 
 - [ ] `.rgba16Float` internal target, `.bgra8Unorm_srgb` final target, render usage,
   same-device tests를 먼저 작성한다.
-- [ ] sampler는 linear min/mag/mip, clamp-to-edge, anisotropy
-  `min(8, device.maxSamplerAnisotropy)`로 만든다.
+- [ ] sampler는 linear min/mag/mip, clamp-to-edge로 만들고 anisotropy는 공식
+  `MTLSamplerDescriptor` 허용 범위 `1...16` 안의 `8`로 고정한다. Metal에는
+  device별 maximum anisotropy query가 없으므로 존재하지 않는 API를 가정하지 않는다.
 - [ ] source sRGB decode → linear tint/opacity → premultiplied source-over blend를 pipeline
   descriptor에 고정한다.
 - [ ] straight source RGB에 alpha를 명시적으로 곱한 뒤 blend factor source `one`,
@@ -791,8 +792,10 @@ actor SceneRenderTargetPool {
   갖고 마지막 owner가 해제되는 `deinit`에서만 pool slot을 반환한다.
 - [ ] caller target validation은 device/size/pixel format/usage를 검사하되 외부 command의
   전역 in-flight 상태를 안다고 주장하지 않는다.
-- [ ] content rect sampling은 texel-center mapping과 logical-edge clamp를 사용해 physical
-  padding이 linear filter footprint에 섞이지 않게 한다.
+- [ ] Task 6은 clamp sampler 기반만 고정한다. content rect uniform과 exact per-mip
+  texel-center/logical-edge clamp는 Task 7의 immutable per-mip rect 계약을 받은 뒤
+  Task 8 encode/pixel test에서 완성해 physical padding이 filter footprint에 섞이지
+  않게 한다.
 
 **RED:** `swift test --filter SceneMetalPipelineTests`
 

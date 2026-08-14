@@ -43,3 +43,33 @@ fragment float4 sceneImageFragment(
     float alpha = sampled.a * uniforms.tint.a * uniforms.opacity;
     return float4(sampled.rgb * uniforms.tint.rgb * alpha, alpha);
 }
+
+vertex SceneImageVertexOutput sceneFinalVertex(
+    uint vertexID [[vertex_id]]
+) {
+    const float2 positions[4] = {
+        float2(-1.0, -1.0),
+        float2(1.0, -1.0),
+        float2(-1.0, 1.0),
+        float2(1.0, 1.0)
+    };
+    const float2 textureCoordinates[4] = {
+        float2(0.0, 1.0),
+        float2(1.0, 1.0),
+        float2(0.0, 0.0),
+        float2(1.0, 0.0)
+    };
+
+    SceneImageVertexOutput output;
+    output.position = float4(positions[vertexID], 0.0, 1.0);
+    output.textureCoordinate = textureCoordinates[vertexID];
+    return output;
+}
+
+fragment float4 sceneFinalFragment(
+    SceneImageVertexOutput input [[stage_in]],
+    texture2d<float> composition [[texture(0)]],
+    sampler compositionSampler [[sampler(0)]]
+) {
+    return composition.sample(compositionSampler, input.textureCoordinate);
+}
