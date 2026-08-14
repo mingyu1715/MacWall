@@ -1,6 +1,6 @@
 # MacWall Scene Engine Design
 
-상태: Approved design / S0-S3 implemented / S4 next design
+상태: Approved design / S0-S3 implemented / S4 design approved
 
 작성일: 2026-07-29
 대상: Wallpaper Engine Scene compatibility runtime
@@ -257,9 +257,9 @@ Scene staging은 기존 video `source.mp4` 단일 파일 규칙과 분리합니�
 | `MacWallSceneAssets` | Formats | canonical path, layered resolver, dependency provenance |
 | `MacWallSceneGraph` | Formats, Assets | typed node/material/pass/effect/animation graph |
 | `MacWallSceneRuntime` | Graph | clock, property, input, lifecycle, later SceneScript |
-| `MacWallSceneMetal` | Graph, Runtime, Metal | GPU resource, graph evaluation, render pass |
-| `MacWallSceneNativeAdapter` | Metal, NativeRuntimeSupport | CVPixelBuffer/sample buffer output |
-| `MacWallSceneSnapshot` | Metal | final render target image export |
+| `MacWallSceneTextures` | Graph, Assets, Formats, Metal | GPU texture 준비, generation ownership, memory budget |
+| `MacWallSceneRenderer` | Graph, Textures, Metal | immutable render program, graph evaluation, render pass, actual-output snapshot |
+| `MacWallSceneNativeAdapter` | Renderer, NativeRuntimeSupport | CVPixelBuffer/sample buffer output |
 
 `MacWallCore`는 최종 Metal renderer를 소유하지 않습니다. S1에서 기존 Scene
 format/audit 구현을 제거했으며 compatibility facade, typealias, re-export를
@@ -690,11 +690,16 @@ Scene fallback, animation/video, heap/streaming은 S3에 포함하지 않는다.
 
 ### S4: Headless 2D Metal Renderer
 
-- image layer
-- transform/opacity/Z order
-- parent/instance/timeline
-- offscreen deterministic frame
-- actual Metal snapshot
+상태: 설계 승인. 세부 계약은
+[S4 Headless 2D Metal Renderer 설계](2026-08-14-scene-headless-2d-metal-renderer-design.md)를
+기준으로 한다.
+
+- immutable compiled render program
+- image layer와 stable transform/opacity/Z order
+- typed parent/instance/Loop-Mirror-Single timeline
+- linear RGBA16Float composition과 BGRA8 sRGB output
+- deterministic offscreen frame과 actual Metal snapshot
+- effect/text/particle/media/3D는 후속 phase로 유지
 
 ### S5: Native Scene Frame Adapter
 

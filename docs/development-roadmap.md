@@ -383,10 +383,10 @@ parse/render합니다. Main App이 만든 `MTLTexture`를 extension으로 전달
 | `SceneAudit` | sample과 unsupported feature에 대한 deterministic JSON report 생성 |
 | `SceneAssets` | package-local asset과 optional user-copied shared asset resolve |
 | `SceneGraph` | JSON을 typed layer, composition, material, effect, animation track으로 변환 |
-| `SceneMetal` | GPU resource upload 및 Metal frame render |
+| `MacWallSceneTextures` | GPU texture 준비, generation ownership, memory budget |
+| `MacWallSceneRenderer` | immutable render program, timeline/transform 평가, headless Metal frame |
 | `SceneRuntime` | time, pause state, user property, input, 이후 SceneScript 구동 |
 | `SceneNativeAdapter` | extension 내부 Metal output을 IOSurface-backed sample buffer로 변환 |
-| `SceneSnapshot` | desktop fallback cache용 대표 Scene frame 캡처 |
 
 최종 Metal runtime logic은 `MacWallCore`에 넣지 않습니다. Format과 audit
 module은 AppKit/Metal desktop rendering 없이 test와 non-GUI code에서 사용할
@@ -493,12 +493,20 @@ archive에 보관합니다.
 
 ### S4: Headless 2D Metal Renderer
 
-- `MTKView`에 종속되지 않는 headless Scene renderer를 추가합니다.
-- Metal device, command queue, render pipeline, quad geometry, orthographic camera, alpha blending을 추가합니다.
-- image layer를 stable Z order로 render합니다.
-- parent-child transform, instance, opacity, timeline을 평가합니다.
+상태: 설계 승인 / [S4 설계 문서](superpowers/specs/2026-08-14-scene-headless-2d-metal-renderer-design.md) 작성 완료 / 구현 계획 대기
+
+- `MacWallSceneRenderer` 독립 target에 `MTKView` 비의존 headless renderer를 추가합니다.
+- graph를 immutable render program으로 compile하고 frame마다 typed timeline과
+  transform만 평가합니다.
+- image layer를 stable Z/source order로 render합니다.
+- parent-child transform, supported instance override, opacity, visibility,
+  Loop/Mirror/Single timeline을 평가합니다.
 - `Fit`, `Fill`, `Stretch`를 구현합니다.
-- 같은 rendered output에서 snapshot을 캡처합니다.
+- sRGB source를 linear RGBA16Float에서 premultiplied-alpha 합성하고 final
+  BGRA8 sRGB output으로 변환합니다.
+- 같은 actual Metal output에서 snapshot을 캡처합니다.
+- effect/shader/text/particle/media/3D는 fake output 없이 degraded/unsupported로
+  분류합니다.
 
 완료 기준:
 
@@ -670,7 +678,7 @@ S0 Format Research and Fixture Catalog (완료)
 -> S1 Format Layer Hardening (완료)
 -> S2 Asset Resolver and Typed Scene Graph (구현 완료: local fixture 5 tests 및 전체 414 tests, 0 failures)
 -> S3 GPU Texture Pipeline (구현 완료: focused 164 tests, full 583 tests, 0 failures/0 skips)
--> S4 Headless 2D Metal Renderer
+-> S4 Headless 2D Metal Renderer (설계 승인 / executable plan 대기)
 -> S5 Native Scene Frame Adapter
 -> S6 Effects
 -> S7 Text
@@ -690,9 +698,11 @@ S5에서 common 2D Scene은 extension 내부의 실제 Metal output으로 재생
 다음 planning:
 
 1. 별도 사용자 gate에서 Native auto-pause, sleep/wake, 1회 recovery의 실제 Desktop 동작을 확인합니다.
-2. S4 Headless 2D Metal Renderer design/spec과 executable implementation plan을
-   작성합니다. S4는 S3의 `SceneTextureLease`와 S2 graph contract만 소비합니다.
-3. S4 설계 전에는 Desktop Scene, Scene fallback, Native Scene surface,
-   animation/video texture, heap/streaming을 시작하지 않습니다.
-4. snapshot/export는 `docs/superpowers/plans/2026-06-15-native-wallpaper-snapshot-export-gate.md`, BGRA IOSurface memory는 별도 최적화 작업으로 유지합니다.
-5. proper Apple signing/provisioning 기반 App Group runtime QA는 release 전 별도 gate로 유지합니다.
+2. 승인된 [S4 Headless 2D Metal Renderer 설계](superpowers/specs/2026-08-14-scene-headless-2d-metal-renderer-design.md)를
+   재검토한 뒤 executable implementation plan을 작성합니다.
+3. implementation plan의 Task 0에서 pivot/Z/instance/timeline/orientation 가정을
+   공식 문서와 fixture evidence로 먼저 고정합니다.
+4. S4 완료 전에는 Desktop Scene, Scene fallback, Native Scene surface,
+   animation/video texture, effect render graph, heap/streaming을 시작하지 않습니다.
+5. snapshot/export는 `docs/superpowers/plans/2026-06-15-native-wallpaper-snapshot-export-gate.md`, BGRA IOSurface memory는 별도 최적화 작업으로 유지합니다.
+6. proper Apple signing/provisioning 기반 App Group runtime QA는 release 전 별도 gate로 유지합니다.

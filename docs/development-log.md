@@ -2,6 +2,49 @@
 
 모든 시간은 Asia/Seoul 기준입니다.
 
+## 2026-08-14
+
+### 20:21 KST
+
+- 완료: S4 written spec 자체 검토 및 독립 design review 반영
+- 자체 검토 보강:
+  - compiler input을 `SceneGraphBuildResult`로 고정하고 texture acquisition을
+    device-bound session 준비 단계로 분리
+  - padded mip의 per-mip content rect 필요 여부와 node tint color space를 Task 0
+    evidence gate에 추가
+  - owned output frame lease와 last-success lifetime을 명시
+- 독립 review에서 확인한 Important 4건 수정:
+  - raw instance override 변환을 `MacWallSceneGraph` typed contract로 이동
+  - acquisition manifest에 validated `SceneTextureResource` 보존
+  - partial texture acquisition의 surviving draw set/status/readiness 규칙 확정
+  - caller target의 exclusive lease/token과 외부 in-flight 검증 한계 명시
+- 독립 재검토: 위 4건 해소, 남은 Critical/Important finding 없음
+- 검증: relative Markdown link, code fence, active S4 상태 문구,
+  `git diff --check` 정적 검사
+- 코드 테스트 미실행: 문서/설계만 변경
+
+### 20:08 KST
+
+- 완료: Scene Engine S4 Headless 2D Metal Renderer 설계 승인 및 written spec 작성
+- 설계: [S4 Headless 2D Metal Renderer](superpowers/specs/2026-08-14-scene-headless-2d-metal-renderer-design.md)
+- 핵심 결정:
+  - `MacWallSceneRenderer` 독립 target과 immutable compiled render program
+  - raw JSON을 renderer에서 해석하지 않는 typed timeline/instance override 경계
+  - stable Z/source ordering, parent/world transform, Fit/Fill/Stretch
+  - sRGB source, linear RGBA16Float composition, premultiplied alpha, BGRA8 sRGB output
+  - actual Metal output snapshot, max 3 in-flight와 explicit render/readback budget
+  - unsupported effect/shader/text/particle/media/3D는 fake output 없이
+    degraded/unsupported로 분류
+- 근거 재검증:
+  - Apple Metal 공식 문서의 pixel format, sampler/mipmap, storage mode,
+    CPU/GPU synchronization 원칙 확인
+  - Wallpaper Engine 공식 문서의 origin, Loop/Mirror/Single, Bezier/linear timeline
+    동작 확인
+  - 현재 S2 graph와 S3 `SceneTextureLease` public contract 대조
+- 다음: written spec 사용자 검토 후 S4 executable implementation plan 작성
+- 미실행: S4 코드, `swift test`, 앱/GUI/System Settings, Desktop Scene,
+  Scene fallback, Native adapter, package/DMG/notarization/dist
+
 ## 2026-08-13
 
 ### 01:39 KST
