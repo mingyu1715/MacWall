@@ -1,6 +1,7 @@
 import Foundation
 import Metal
 import MacWallSceneGraph
+import MacWallSceneTextures
 
 public enum SceneRenderStatus: String, Codable, Sendable {
     case exact
@@ -133,4 +134,92 @@ public struct SceneRenderFrameRequest: Sendable {
         self.output = output
         self.requestsSnapshot = requestsSnapshot
     }
+}
+
+public struct SceneRenderCompileResult: Sendable {
+    public let program: SceneRenderProgram?
+    public let status: SceneRenderStatus
+    public let diagnostics: [SceneRenderDiagnostic]
+
+    public init(
+        program: SceneRenderProgram?,
+        status: SceneRenderStatus,
+        diagnostics: [SceneRenderDiagnostic]
+    ) {
+        self.program = program
+        self.status = status
+        self.diagnostics = diagnostics
+    }
+}
+
+public struct SceneRenderProgram: Sendable {
+    public let canvas: SceneRenderCanvas
+    public let fingerprint: String
+    public let drawCount: Int
+
+    let drawTemplates: [SceneRenderDrawTemplate]
+    let evaluationOrder: [SceneRenderNodeIdentity]
+    let evaluationParentIndices: [Int?]
+    let textureManifest: [SceneRenderTextureManifestEntry]
+
+    init(
+        canvas: SceneRenderCanvas,
+        fingerprint: String,
+        drawTemplates: [SceneRenderDrawTemplate],
+        evaluationOrder: [SceneRenderNodeIdentity],
+        evaluationParentIndices: [Int?],
+        textureManifest: [SceneRenderTextureManifestEntry]
+    ) {
+        self.canvas = canvas
+        self.fingerprint = fingerprint
+        drawCount = drawTemplates.count
+        self.drawTemplates = drawTemplates
+        self.evaluationOrder = evaluationOrder
+        self.evaluationParentIndices = evaluationParentIndices
+        self.textureManifest = textureManifest
+    }
+}
+
+struct SceneRenderNodeIdentity: Hashable, Comparable, Sendable {
+    let nodeID: SceneNodeID
+    let instancePath: [SceneNodeID]
+
+    static func < (
+        lhs: SceneRenderNodeIdentity,
+        rhs: SceneRenderNodeIdentity
+    ) -> Bool {
+        if lhs.nodeID != rhs.nodeID {
+            return lhs.nodeID < rhs.nodeID
+        }
+        return lhs.instancePath.lexicographicallyPrecedes(rhs.instancePath)
+    }
+}
+
+struct SceneRenderDrawTemplate: Equatable, Sendable {
+    let identity: SceneRenderNodeIdentity
+    let sourceOrder: Int
+    let effectiveZ: Double
+    let textureManifestIndex: Int
+    let baseProperties: SceneRenderBaseProperties
+    let animationBindings: [SceneTypedAnimationTrack]
+}
+
+struct SceneRenderBaseProperties: Equatable, Sendable {
+    let origin: SceneGraphVector3
+    let pivot: SceneGraphVector3
+    let position: SceneGraphVector3
+    let scale: SceneGraphVector3
+    let rotationZ: Double
+    let opacity: Double
+    let visible: Bool
+    let enabled: Bool
+    let color: SceneGraphColor
+    let zOrder: Double
+}
+
+struct SceneRenderTextureManifestEntry: Equatable, Sendable {
+    let resource: SceneTextureResource
+    let imageIndex: Int
+    let colorIntent: SceneTextureColorIntent
+    let dependentDrawIndices: [Int]
 }

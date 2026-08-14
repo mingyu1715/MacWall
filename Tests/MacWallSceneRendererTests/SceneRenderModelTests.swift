@@ -53,6 +53,17 @@ final class SceneRenderModelTests: XCTestCase {
         }
     }
 
+    func testRejectsCanvasPixelLimit() {
+        XCTAssertThrowsError(try SceneRenderLimits().validate(
+            canvas: .init(width: 7_680, height: 4_321)
+        )) { error in
+            XCTAssertEqual(
+                error as? SceneRenderError,
+                .resourceLimit(.outputPixels)
+            )
+        }
+    }
+
     func testValidatesFrameRequirementsWithCheckedArithmetic() throws {
         let validated = try SceneRenderLimits().validateFrame(
             outputWidth: 3_840,
@@ -175,4 +186,3 @@ final class SceneRenderModelTests: XCTestCase {
         }
     }
 }
-

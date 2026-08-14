@@ -47,6 +47,11 @@ extension SceneRenderLimits {
               canvas.height <= Double(maximumDimension) else {
             throw SceneRenderError.resourceLimit(.outputDimension)
         }
+        let pixelCount = canvas.width * canvas.height
+        guard pixelCount.isFinite,
+              pixelCount <= Double(maximumPixelCount) else {
+            throw SceneRenderError.resourceLimit(.outputPixels)
+        }
     }
 
     func validateFrame(
