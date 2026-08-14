@@ -157,6 +157,7 @@ public struct SceneRenderProgram: Sendable {
     public let fingerprint: String
     public let drawCount: Int
 
+    let nodeTemplates: [SceneRenderNodeTemplate]
     let drawTemplates: [SceneRenderDrawTemplate]
     let evaluationOrder: [SceneRenderNodeIdentity]
     let evaluationParentIndices: [Int?]
@@ -165,17 +166,17 @@ public struct SceneRenderProgram: Sendable {
     init(
         canvas: SceneRenderCanvas,
         fingerprint: String,
+        nodeTemplates: [SceneRenderNodeTemplate],
         drawTemplates: [SceneRenderDrawTemplate],
-        evaluationOrder: [SceneRenderNodeIdentity],
-        evaluationParentIndices: [Int?],
         textureManifest: [SceneRenderTextureManifestEntry]
     ) {
         self.canvas = canvas
         self.fingerprint = fingerprint
         drawCount = drawTemplates.count
+        self.nodeTemplates = nodeTemplates
         self.drawTemplates = drawTemplates
-        self.evaluationOrder = evaluationOrder
-        self.evaluationParentIndices = evaluationParentIndices
+        evaluationOrder = nodeTemplates.map(\.identity)
+        evaluationParentIndices = nodeTemplates.map(\.parentIndex)
         self.textureManifest = textureManifest
     }
 }
@@ -195,13 +196,20 @@ struct SceneRenderNodeIdentity: Hashable, Comparable, Sendable {
     }
 }
 
+struct SceneRenderNodeTemplate: Equatable, Sendable {
+    let identity: SceneRenderNodeIdentity
+    let parentIndex: Int?
+    let baseProperties: SceneRenderBaseProperties
+    let animationBindings: [SceneTypedAnimationTrack]
+    let isSupported: Bool
+}
+
 struct SceneRenderDrawTemplate: Equatable, Sendable {
     let identity: SceneRenderNodeIdentity
     let sourceOrder: Int
     let effectiveZ: Double
+    let evaluationNodeIndex: Int
     let textureManifestIndex: Int
-    let baseProperties: SceneRenderBaseProperties
-    let animationBindings: [SceneTypedAnimationTrack]
 }
 
 struct SceneRenderBaseProperties: Equatable, Sendable {
@@ -215,6 +223,19 @@ struct SceneRenderBaseProperties: Equatable, Sendable {
     let enabled: Bool
     let color: SceneGraphColor
     let zOrder: Double
+
+    static let identity = SceneRenderBaseProperties(
+        origin: .init(x: 0, y: 0, z: 0),
+        pivot: .init(x: 0, y: 0, z: 0),
+        position: .init(x: 0, y: 0, z: 0),
+        scale: .init(x: 1, y: 1, z: 1),
+        rotationZ: 0,
+        opacity: 1,
+        visible: true,
+        enabled: true,
+        color: .init(red: 255, green: 255, blue: 255, alpha: 255),
+        zOrder: 0
+    )
 }
 
 struct SceneRenderTextureManifestEntry: Equatable, Sendable {

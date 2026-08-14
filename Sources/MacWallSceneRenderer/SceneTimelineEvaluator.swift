@@ -12,8 +12,8 @@ struct SceneTimelineEvaluator: Sendable {
         }
 
         scratch.nodes.removeAll(keepingCapacity: true)
-        scratch.nodes.reserveCapacity(program.drawTemplates.count)
-        for template in program.drawTemplates {
+        scratch.nodes.reserveCapacity(program.nodeTemplates.count)
+        for template in program.nodeTemplates {
             var properties = SceneEvaluatedNodeProperties(
                 base: template.baseProperties
             )

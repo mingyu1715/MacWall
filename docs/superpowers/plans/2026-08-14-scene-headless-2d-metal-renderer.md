@@ -656,12 +656,16 @@ git add Sources/MacWallSceneRenderer/SceneTimelineEvaluator.swift \
 git commit -m "feat(scene): evaluate typed scene timelines"
 ```
 
-## 9. Task 5: Hierarchy, instance, output transform 구현
+## 9. Task 5: Hierarchy와 output transform 구현, instance 명시적 제외
 
 **Files:**
 
 - 생성: `Sources/MacWallSceneRenderer/SceneTransformEvaluator.swift`
+- 수정: `Sources/MacWallSceneRenderer/SceneRenderCompiler.swift`
 - 수정: `Sources/MacWallSceneRenderer/SceneRenderModels.swift`
+- 수정: `Sources/MacWallSceneRenderer/SceneTimelineEvaluator.swift`
+- 수정: `Tests/MacWallSceneRendererTests/SceneRenderCompilerTests.swift`
+- 수정: `Tests/MacWallSceneRendererTests/SceneTimelineEvaluatorTests.swift`
 - 생성: `Tests/MacWallSceneRendererTests/SceneTransformEvaluatorTests.swift`
 
 **Interfaces:**
@@ -699,8 +703,12 @@ struct SceneFrameDrawItem: Sendable {
 }
 ```
 
-- [ ] identity, origin, pivot, scale, Z rotation, parent-child, nested instance,
-  typed instance override priority tests를 먼저 작성한다.
+- [ ] identity, origin, scale, Z rotation, parent-child transform tests를 먼저 작성한다.
+- [ ] explicit pivot/position/Z와 instance/instance override는 Gate 0 판정대로
+  compiler에서 지원하지 않고 deterministic diagnostic과 layer skip으로 고정한다.
+- [ ] draw에 base/animation을 중복 저장하지 않는다. evaluation order와 같은 immutable
+  node template array에 parent index, base, absolute timeline을 저장하고 draw는 해당
+  node index만 참조한다.
 - [ ] visibility/enabled false parent가 descendant draw에 미치는 Gate 0 의미를 test로
   고정한다.
 - [ ] scene coordinate → clip coordinate matrix와 top-left texture flip을 각각 한
@@ -709,7 +717,7 @@ struct SceneFrameDrawItem: Sendable {
   size와 portrait/landscape를 test한다.
 - [ ] Fill crop은 texture UV 변조가 아니라 canvas-to-output transform/scissor로
   수행한다.
-- [ ] opacity는 node의 `base → override → timeline` 평가 후 parent opacity를 곱하고,
+- [ ] opacity는 node의 `base → supported absolute timeline` 평가 후 parent opacity를 곱하고,
   각 단계가 아니라 final fragment 입력 직전에만 유효 범위로 정규화한다.
 - [ ] tint는 Gate 0이 sRGB 의미를 confirmed한 경우에만 linear shader input으로
   변환한다.
@@ -730,7 +738,11 @@ swift test --filter SceneTimelineEvaluatorTests
 
 ```bash
 git add Sources/MacWallSceneRenderer/SceneTransformEvaluator.swift \
+  Sources/MacWallSceneRenderer/SceneRenderCompiler.swift \
   Sources/MacWallSceneRenderer/SceneRenderModels.swift \
+  Sources/MacWallSceneRenderer/SceneTimelineEvaluator.swift \
+  Tests/MacWallSceneRendererTests/SceneRenderCompilerTests.swift \
+  Tests/MacWallSceneRendererTests/SceneTimelineEvaluatorTests.swift \
   Tests/MacWallSceneRendererTests/SceneTransformEvaluatorTests.swift
 git commit -m "feat(scene): evaluate scene transforms and scaling"
 ```

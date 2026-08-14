@@ -319,12 +319,10 @@ final class SceneTimelineEvaluatorTests: XCTestCase {
         return SceneRenderProgram(
             canvas: .init(width: 100, height: 100),
             fingerprint: "test",
-            drawTemplates: [
+            nodeTemplates: [
                 .init(
                     identity: identity,
-                    sourceOrder: 0,
-                    effectiveZ: 0,
-                    textureManifestIndex: 0,
+                    parentIndex: nil,
                     baseProperties: .init(
                         origin: .init(x: 1, y: 2, z: 0),
                         pivot: .init(x: 0, y: 0, z: 0),
@@ -337,11 +335,19 @@ final class SceneTimelineEvaluatorTests: XCTestCase {
                         color: .init(red: 255, green: 255, blue: 255, alpha: 255),
                         zOrder: 0
                     ),
-                    animationBindings: tracks
+                    animationBindings: tracks,
+                    isSupported: true
                 )
             ],
-            evaluationOrder: [identity],
-            evaluationParentIndices: [nil],
+            drawTemplates: [
+                .init(
+                    identity: identity,
+                    sourceOrder: 0,
+                    effectiveZ: 0,
+                    evaluationNodeIndex: 0,
+                    textureManifestIndex: 0
+                )
+            ],
             textureManifest: []
         )
     }

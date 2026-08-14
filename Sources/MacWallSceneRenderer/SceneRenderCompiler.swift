@@ -71,8 +71,67 @@ public struct SceneRenderCompiler: Sendable {
         let resources = ResourceIndex(document.resources)
         let dependencyIndex = DependencyIndex(document.dependencies)
         let animationIndex = AnimationIndex(document.animations)
-        var unboundDraws: [SceneRenderUnboundDrawTemplate] = []
+        let nodeByID = Dictionary(uniqueKeysWithValues:
+            document.nodes.map { ($0.id, $0) }
+        )
+        let unresolvedParentNodes = Set<SceneNodeID>(document.hierarchyEdges.compactMap { edge in
+            if case .resolved = edge.resolution { return nil }
+            return edge.childID
+        })
+        let instanceEdges = Dictionary(
+            uniqueKeysWithValues: document.instanceEdges.map { ($0.instanceID, $0) }
+        )
+        var nodeTemplates: [SceneRenderNodeTemplate] = []
+        nodeTemplates.reserveCapacity(evaluationOrder.count)
+        var evaluationIndexByNodeID: [SceneNodeID: Int] = [:]
+        evaluationIndexByNodeID.reserveCapacity(evaluationOrder.count)
         var wasDegraded = graphResult.status != .exact
+
+        for (index, identity) in evaluationOrder.enumerated() {
+            guard let node = nodeByID[identity.nodeID] else {
+                diagnostics.append(.init(
+                    severity: .error,
+                    code: "renderer.invalid-hierarchy",
+                    nodeID: identity.nodeID
+                ))
+                return result(nil, status: .invalid, diagnostics: diagnostics)
+            }
+            evaluationIndexByNodeID[node.id] = index
+            var nodeDiagnostics: [SceneRenderDiagnostic] = []
+            let exactBase = baseProperties(node, diagnostics: &nodeDiagnostics)
+            let animationResult = supportedAnimations(
+                animationIndex[node.id] ?? [],
+                nodeID: node.id
+            )
+            nodeDiagnostics.append(contentsOf: animationResult.diagnostics)
+
+            var isSupported = exactBase != nil
+                && !unresolvedParentNodes.contains(node.id)
+            if let instanceEdge = instanceEdges[node.id] {
+                let code = instanceEdge.overrides.isEmpty
+                    ? "renderer.unsupported-instance"
+                    : "renderer.unsupported-instance-override"
+                nodeDiagnostics.append(.init(
+                    severity: .warning,
+                    code: code,
+                    nodeID: node.id
+                ))
+                isSupported = false
+            }
+            wasDegraded = wasDegraded
+                || !isSupported
+                || animationResult.wasDegraded
+            diagnostics.append(contentsOf: nodeDiagnostics)
+            nodeTemplates.append(.init(
+                identity: identity,
+                parentIndex: evaluationParentIndices[index],
+                baseProperties: exactBase ?? .identity,
+                animationBindings: isSupported ? animationResult.tracks : [],
+                isSupported: isSupported
+            ))
+        }
+
+        var unboundDraws: [SceneRenderUnboundDrawTemplate] = []
 
         for node in document.nodes.sorted(by: Self.nodePrecedes) {
             guard case .image = node.payload else {
@@ -88,11 +147,17 @@ public struct SceneRenderCompiler: Sendable {
                 continue
             }
 
+            guard let evaluationNodeIndex = evaluationIndexByNodeID[node.id],
+                  nodeTemplates[evaluationNodeIndex].isSupported else {
+                wasDegraded = true
+                continue
+            }
+
             let compiled = compileImageNode(
                 node,
+                evaluationNodeIndex: evaluationNodeIndex,
                 resources: resources,
-                dependencies: dependencyIndex,
-                animations: animationIndex[node.id] ?? []
+                dependencies: dependencyIndex
             )
             diagnostics.append(contentsOf: compiled.diagnostics)
             wasDegraded = wasDegraded || compiled.wasDegraded || compiled.template == nil
@@ -122,16 +187,14 @@ public struct SceneRenderCompiler: Sendable {
         let fingerprint = SceneRenderFingerprint.make(
             canvas: canvas,
             draws: bound.drawTemplates,
-            evaluationOrder: evaluationOrder,
-            evaluationParentIndices: evaluationParentIndices,
+            nodes: nodeTemplates,
             manifest: bound.textureManifest
         )
         let program = SceneRenderProgram(
             canvas: canvas,
             fingerprint: fingerprint,
+            nodeTemplates: nodeTemplates,
             drawTemplates: bound.drawTemplates,
-            evaluationOrder: evaluationOrder,
-            evaluationParentIndices: evaluationParentIndices,
             textureManifest: bound.textureManifest
         )
         return result(
@@ -143,14 +206,11 @@ public struct SceneRenderCompiler: Sendable {
 
     private func compileImageNode(
         _ node: SceneGraphNode,
+        evaluationNodeIndex: Int,
         resources: ResourceIndex,
-        dependencies: DependencyIndex,
-        animations: [SceneAnimationTrack]
+        dependencies: DependencyIndex
     ) -> CompiledNode {
         var diagnostics: [SceneRenderDiagnostic] = []
-        guard let baseProperties = baseProperties(node, diagnostics: &diagnostics) else {
-            return .init(template: nil, diagnostics: diagnostics, wasDegraded: true)
-        }
         guard let modelPath = dependencies.packagePath(
             owner: .node(node.id),
             role: .model
@@ -247,19 +307,15 @@ public struct SceneRenderCompiler: Sendable {
             return .init(template: nil, diagnostics: diagnostics, wasDegraded: true)
         }
 
-        let animationResult = supportedAnimations(animations, nodeID: node.id)
-        diagnostics.append(contentsOf: animationResult.diagnostics)
-        wasDegraded = wasDegraded || animationResult.wasDegraded
         return .init(
             template: SceneRenderUnboundDrawTemplate(
                 identity: .init(nodeID: node.id, instancePath: []),
                 sourceOrder: node.sourceOrder,
                 effectiveZ: 0,
+                evaluationNodeIndex: evaluationNodeIndex,
                 textureResource: texture,
                 imageIndex: 0,
-                colorIntent: .colorSRGB,
-                baseProperties: baseProperties,
-                animationBindings: animationResult.tracks
+                colorIntent: .colorSRGB
             ),
             diagnostics: diagnostics,
             wasDegraded: wasDegraded
@@ -425,9 +481,8 @@ public struct SceneRenderCompiler: Sendable {
                 identity: draw.identity,
                 sourceOrder: draw.sourceOrder,
                 effectiveZ: draw.effectiveZ,
-                textureManifestIndex: manifestIndex,
-                baseProperties: draw.baseProperties,
-                animationBindings: draw.animationBindings
+                evaluationNodeIndex: draw.evaluationNodeIndex,
+                textureManifestIndex: manifestIndex
             ))
         }
         return .init(
@@ -538,11 +593,10 @@ struct SceneRenderUnboundDrawTemplate: Sendable {
     let identity: SceneRenderNodeIdentity
     let sourceOrder: Int
     let effectiveZ: Double
+    let evaluationNodeIndex: Int
     let textureResource: SceneTextureResource
     let imageIndex: Int
     let colorIntent: SceneTextureColorIntent
-    let baseProperties: SceneRenderBaseProperties
-    let animationBindings: [SceneTypedAnimationTrack]
 }
 
 private struct CompiledNode {
@@ -688,21 +742,16 @@ private enum SceneRenderFingerprint {
     static func make(
         canvas: SceneRenderCanvas,
         draws: [SceneRenderDrawTemplate],
-        evaluationOrder: [SceneRenderNodeIdentity],
-        evaluationParentIndices: [Int?],
+        nodes: [SceneRenderNodeTemplate],
         manifest: [SceneRenderTextureManifestEntry]
     ) -> String {
         var encoder = CanonicalEncoder()
         encoder.append("MacWall.SceneRenderProgram")
-        encoder.append(1)
+        encoder.append(2)
         encoder.append(canvas.width)
         encoder.append(canvas.height)
-        encoder.append(evaluationOrder.count)
-        for (identity, parentIndex) in zip(evaluationOrder, evaluationParentIndices) {
-            encoder.append(identity)
-            encoder.append(parentIndex != nil)
-            if let parentIndex { encoder.append(parentIndex) }
-        }
+        encoder.append(nodes.count)
+        nodes.forEach { encoder.append($0) }
         encoder.append(draws.count)
         draws.forEach { encoder.append($0) }
         encoder.append(manifest.count)
@@ -749,10 +798,18 @@ private struct CanonicalEncoder {
         append(draw.identity)
         append(draw.sourceOrder)
         append(draw.effectiveZ)
+        append(draw.evaluationNodeIndex)
         append(draw.textureManifestIndex)
-        append(draw.baseProperties)
-        append(draw.animationBindings.count)
-        draw.animationBindings.forEach { append($0) }
+    }
+
+    mutating func append(_ node: SceneRenderNodeTemplate) {
+        append(node.identity)
+        append(node.parentIndex != nil)
+        if let parentIndex = node.parentIndex { append(parentIndex) }
+        append(node.baseProperties)
+        append(node.animationBindings.count)
+        node.animationBindings.forEach { append($0) }
+        append(node.isSupported)
     }
 
     mutating func append(_ properties: SceneRenderBaseProperties) {

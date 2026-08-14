@@ -59,7 +59,8 @@ final class SceneRenderCompilerTests: XCTestCase {
         XCTAssertEqual(program.textureManifest[0].imageIndex, 0)
         XCTAssertEqual(program.textureManifest[0].colorIntent, .colorSRGB)
         XCTAssertEqual(program.textureManifest[0].dependentDrawIndices, [0])
-        XCTAssertEqual(program.drawTemplates[0].baseProperties, .init(
+        let nodeTemplate = try XCTUnwrap(program.nodeTemplates.first)
+        XCTAssertEqual(nodeTemplate.baseProperties, .init(
             origin: .init(x: 100, y: 200, z: 0),
             pivot: .init(x: 0, y: 0, z: 0),
             position: .init(x: 0, y: 0, z: 0),
@@ -71,7 +72,7 @@ final class SceneRenderCompilerTests: XCTestCase {
             color: .init(red: 255, green: 255, blue: 255, alpha: 255),
             zOrder: 0
         ))
-        XCTAssertTrue(program.drawTemplates[0].animationBindings.isEmpty)
+        XCTAssertTrue(nodeTemplate.animationBindings.isEmpty)
         XCTAssertEqual(program.fingerprint.count, 64)
         XCTAssertNotNil(program.fingerprint.range(
             of: #"^[0-9a-f]{64}$"#,
@@ -86,6 +87,41 @@ final class SceneRenderCompilerTests: XCTestCase {
         XCTAssertEqual(program.drawTemplates.map(\.identity.nodeID.objectIndex), [0, 1, 2])
         XCTAssertEqual(program.drawTemplates.map(\.textureManifestIndex), [0, 1, 0])
         XCTAssertEqual(program.textureManifest.map(\.dependentDrawIndices), [[0, 2], [1]])
+    }
+
+    func testCompilesFullscreenParentIntoEvaluationTemplates() throws {
+        let graph = try build(entries: exactEntries(scene: scene(objects: [
+            #"{"id":10,"fullscreen":true,"origin":"10 20 0","scale":"2 2 1","alpha":0.5}"#,
+            #"{"id":20,"image":"models/base.json","parent":10,"origin":"5 0 0"}"#
+        ])))
+
+        let result = SceneRenderCompiler().compile(graph)
+        let program = try XCTUnwrap(result.program)
+
+        XCTAssertEqual(result.status, .exact)
+        XCTAssertEqual(program.nodeTemplates.map(\.identity.nodeID.objectIndex), [0, 1])
+        XCTAssertEqual(program.nodeTemplates.map(\.parentIndex), [nil, 0])
+        XCTAssertEqual(program.nodeTemplates[0].baseProperties.origin, .init(x: 10, y: 20, z: 0))
+        XCTAssertEqual(program.nodeTemplates[0].baseProperties.opacity, 0.5)
+        XCTAssertEqual(program.drawTemplates.map(\.evaluationNodeIndex), [1])
+    }
+
+    func testSkipsUnsupportedInstanceNodeWithoutExpandingItsSource() throws {
+        let graph = try build(entries: exactEntries(scene: scene(objects: [
+            #"{"id":20,"image":"models/base.json"}"#,
+            #"{"id":10,"image":"models/base.json","instance":20}"#
+        ])))
+
+        let result = SceneRenderCompiler().compile(graph)
+        let program = try XCTUnwrap(result.program)
+
+        XCTAssertEqual(result.status, .degraded)
+        XCTAssertEqual(program.drawTemplates.map(\.identity.nodeID.objectIndex), [0])
+        XCTAssertEqual(program.nodeTemplates.map(\.isSupported), [true, false])
+        XCTAssertTrue(result.diagnostics.contains {
+            $0.code == "renderer.unsupported-instance"
+                && $0.nodeID?.objectIndex == 1
+        })
     }
 
     func testStoresParentIndicesAndIncludesHierarchyInFingerprint() throws {
@@ -212,10 +248,11 @@ final class SceneRenderCompilerTests: XCTestCase {
 
         let result = SceneRenderCompiler().compile(graph)
         let draw = try XCTUnwrap(result.program?.drawTemplates.first)
+        let node = try XCTUnwrap(result.program?.nodeTemplates[draw.evaluationNodeIndex])
 
         XCTAssertEqual(result.status, .degraded)
-        XCTAssertEqual(draw.baseProperties.opacity, 0.5)
-        XCTAssertTrue(draw.animationBindings.isEmpty)
+        XCTAssertEqual(node.baseProperties.opacity, 0.5)
+        XCTAssertTrue(node.animationBindings.isEmpty)
         XCTAssertTrue(result.diagnostics.contains {
             $0.code == "renderer.unsupported-animation"
                 && $0.arguments == ["opacity", "relative"]
