@@ -4,6 +4,30 @@
 
 ## 2026-08-14
 
+### S4 Headless 2D Metal Renderer 실행 계획 준비
+
+- 완료:
+  - 승인된 S4 설계를 구현 가능한 task/commit 단위의 executable plan으로
+    분해했습니다.
+  - Gate 0 evidence, additive Graph typed semantics, immutable compiler,
+    timeline/transform evaluator, Metal session/output, snapshot, synthetic/local
+    fixture 검증 순서를 고정했습니다.
+  - 각 task에 정확한 파일, 공개 계약, RED/GREEN 명령, commit 경계를 기록했습니다.
+  - Renderer가 Assets에 직접 의존하지 않도록 S3의 additive
+    `SceneTexturePackageContext` 경계를 계획에 고정했습니다.
+- 검토:
+  - Apple TN3133, Metal shader library/readback/same-device/triple-buffering/feature
+    limit 문서와 Wallpaper Engine timeline 공식 문서를 다시 확인했습니다.
+  - `.metal` source는 explicit `.process` resource가 아니라 SwiftPM target source로
+    두어 자동 metallib compile과 `Bundle.module`을 사용하도록 정정했습니다.
+  - GUI, Main App, Native Wallpaper, fallback, Scene effect/Web 확장은 S4 범위에서
+    제외했습니다.
+- 다음:
+  - [S4 실행 계획](superpowers/plans/2026-08-14-scene-headless-2d-metal-renderer.md)
+    실행 방식 선택
+  - 구현 전 Task 0 Scene 의미 evidence gate 완료
+- 미실행: S4 코드, `swift test`, 앱/GUI/System Settings, package/DMG/notarization/dist
+
 ### 20:21 KST
 
 - 완료: S4 written spec 자체 검토 및 독립 design review 반영

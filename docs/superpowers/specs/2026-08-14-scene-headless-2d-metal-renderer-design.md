@@ -162,6 +162,7 @@ MacWallSceneRenderer
 |- Metal
 |- CoreGraphics
 |- ImageIO
+|- CryptoKit
 `- simd
 ```
 
@@ -226,9 +227,11 @@ program은 다음을 보존한다.
 texture acquisition manifest entry는 validated `SceneTextureResource`, image index,
 color intent를 보존한다. 이는 S3 `acquire`가 요구하는 exact resource resolution을
 잃지 않기 위한 CPU-only graph value다. S3의 runtime-random
-`SceneTexturePackageID`는 program이나 fingerprint에 넣지 않는다. session 준비 시
-caller가 package ID와 resolver를 제공하고 manifest entry와 함께
-`SceneTextureRequest`를 만든다.
+`SceneTexturePackageID`는 program이나 fingerprint에 넣지 않는다. S3 Textures target은
+package ID와 resolver를 감싼 additive `SceneTexturePackageContext`와 context 기반
+`acquire` overload를 제공한다. session 준비 시 caller가 이 context를 제공하고
+manifest entry와 함께 `SceneTextureRequest`를 만든다. 따라서 Renderer target은
+`MacWallSceneAssets`를 직접 import하거나 의존하지 않는다.
 
 fingerprint는 canonical graph identity/value, compiler policy version, output에
 영향을 주는 typed option만 포함한다. UUID, absolute path, object address,

@@ -1,6 +1,6 @@
 # MacWall 개발 로드맵
 
-수정일: 2026-08-13
+수정일: 2026-08-14
 
 이 문서는 현재 활성 제품 개발 방향과 Scene 개발 방향을 정리합니다. 완료된 세부 구현 계획은 `docs/implemented/`에 기록하고, 과거 계획은 `docs/archive/`에 보관합니다.
 
@@ -493,7 +493,7 @@ archive에 보관합니다.
 
 ### S4: Headless 2D Metal Renderer
 
-상태: 설계 승인 / [S4 설계 문서](superpowers/specs/2026-08-14-scene-headless-2d-metal-renderer-design.md) 작성 완료 / 구현 계획 대기
+상태: 설계 승인 / [S4 설계 문서](superpowers/specs/2026-08-14-scene-headless-2d-metal-renderer-design.md) 작성 완료 / [executable implementation plan](superpowers/plans/2026-08-14-scene-headless-2d-metal-renderer.md) 준비 완료 / 구현 대기
 
 - `MacWallSceneRenderer` 독립 target에 `MTKView` 비의존 headless renderer를 추가합니다.
 - graph를 immutable render program으로 compile하고 frame마다 typed timeline과
@@ -678,7 +678,7 @@ S0 Format Research and Fixture Catalog (완료)
 -> S1 Format Layer Hardening (완료)
 -> S2 Asset Resolver and Typed Scene Graph (구현 완료: local fixture 5 tests 및 전체 414 tests, 0 failures)
 -> S3 GPU Texture Pipeline (구현 완료: focused 164 tests, full 583 tests, 0 failures/0 skips)
--> S4 Headless 2D Metal Renderer (설계 승인 / executable plan 대기)
+-> S4 Headless 2D Metal Renderer (설계 및 executable plan 준비 완료 / 구현 대기)
 -> S5 Native Scene Frame Adapter
 -> S6 Effects
 -> S7 Text
@@ -698,10 +698,11 @@ S5에서 common 2D Scene은 extension 내부의 실제 Metal output으로 재생
 다음 planning:
 
 1. 별도 사용자 gate에서 Native auto-pause, sleep/wake, 1회 recovery의 실제 Desktop 동작을 확인합니다.
-2. 승인된 [S4 Headless 2D Metal Renderer 설계](superpowers/specs/2026-08-14-scene-headless-2d-metal-renderer-design.md)를
-   재검토한 뒤 executable implementation plan을 작성합니다.
-3. implementation plan의 Task 0에서 pivot/Z/instance/timeline/orientation 가정을
-   공식 문서와 fixture evidence로 먼저 고정합니다.
+2. 승인된 [S4 Headless 2D Metal Renderer 설계](superpowers/specs/2026-08-14-scene-headless-2d-metal-renderer-design.md)와
+   [실행 계획](superpowers/plans/2026-08-14-scene-headless-2d-metal-renderer.md)을
+   기준으로 S4를 구현합니다.
+3. Task 0에서 pivot/Z/instance/timeline/orientation 가정을 공식 문서와 fixture
+   evidence로 먼저 고정한 뒤 typed graph와 renderer 구현을 시작합니다.
 4. S4 완료 전에는 Desktop Scene, Scene fallback, Native Scene surface,
    animation/video texture, effect render graph, heap/streaming을 시작하지 않습니다.
 5. snapshot/export는 `docs/superpowers/plans/2026-06-15-native-wallpaper-snapshot-export-gate.md`, BGRA IOSurface memory는 별도 최적화 작업으로 유지합니다.
